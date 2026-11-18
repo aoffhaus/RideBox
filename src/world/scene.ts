@@ -707,6 +707,21 @@ function drawLabel(a: ArchObj, big: string, small: string, color: string) {
 // View
 // ---------------------------------------------------------------------------
 
+/** Free GPU resources (geometries, materials, their textures) under `root`. */
+function disposeTree(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    m.geometry?.dispose?.();
+    const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+    const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
+    mats.forEach((x) => {
+      (x as THREE.MeshBasicMaterial).map?.dispose();
+      x.dispose();
+    });
+    if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
+  });
+}
+
 /** The 3D world view. Reads the session each frame; never changes it. */
 export class WorldView {
   private renderer: THREE.WebGLRenderer;
@@ -733,6 +748,11 @@ export class WorldView {
   private route: ReturnType<typeof exaggerateRoute>;
   private camMode: CameraMode = 'chase';
   private effort = 0;
+  private exaggeration: number;
+  private theme!: ReturnType<typeof themeFor>;
+  private high = true;
+  /** everything built from the (exaggerated) route: terrain, road, scenery, ground */
+  private world = Object.assign(new THREE.Group(), { name: 'route-world' });
 
   constructor(
     private container: HTMLElement,
@@ -740,6 +760,7 @@ export class WorldView {
     quality: 'high' | 'low' = 'high',
     exaggeration = 1.8,
   ) {
+    this.exaggeration = exaggeration;
     this.route = exaggerateRoute(session.route, exaggeration);
     const high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: 'high-performance' });
@@ -768,22 +789,10 @@ export class WorldView {
     sc.far = 400;
     this.scene.add(this.sun, this.sun.target);
 
-    const route = this.route; // drawn with visual grade exaggeration
-    if (theme.build) {
-      // themed landscape: the theme supplies terrain & scenery; road furniture is shared
-      this.scene.add(...theme.build(route, { high }), buildRoad(route, theme.roadTexture?.()), buildPosts(route), buildClimbSigns(route));
-      if (theme.clouds) this.scene.add(buildClouds(route));
-    } else {
-      this.scene.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
-    }
-    let minY = Infinity;
-    for (const y of route.y) minY = Math.min(minY, y);
-    if (theme.groundColor) {
-      const ground = new THREE.Mesh(new THREE.CircleGeometry(12000, 48), new THREE.MeshLambertMaterial({ color: theme.groundColor }));
-      ground.rotation.x = -Math.PI / 2;
-      ground.position.y = minY - 30;
-      this.scene.add(ground);
-    }
+    this.theme = theme;
+    this.high = high;
+    this.scene.add(this.world);
+    this.buildWorld();
 
     this.rider = buildRider();
     this.scene.add(this.rider.group);
@@ -797,12 +806,57 @@ export class WorldView {
 
     const s = session.snapshot();
     this.motion = new MotionSmoother(s.distance);
-    const t0 = cameraTargets(route, s.distance, 1.7, CAMERA_RIGS[this.camMode]);
+    const t0 = cameraTargets(this.route, s.distance, 1.7, CAMERA_RIGS[this.camMode]);
     this.camPos.copy(t0.pos);
     this.camLook.copy(t0.look);
     this.camera.fov = CAMERA_RIGS[this.camMode].fov;
     this.camera.updateProjectionMatrix();
     this.loop();
+  }
+
+  /** (Re)build all route-derived scenery into `this.world` from `this.route`. */
+  private buildWorld() {
+    const route = this.route; // drawn with visual grade exaggeration
+    const theme = this.theme;
+    const high = this.high;
+    const w = this.world;
+    if (theme.build) {
+      // themed landscape: the theme supplies terrain & scenery; road furniture is shared
+      w.add(...theme.build(route, { high }), buildRoad(route, theme.roadTexture?.()), buildPosts(route), buildClimbSigns(route));
+      if (theme.clouds) w.add(buildClouds(route));
+    } else {
+      w.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
+    }
+    let minY = Infinity;
+    for (const y of route.y) minY = Math.min(minY, y);
+    if (theme.groundColor) {
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(12000, 48), new THREE.MeshLambertMaterial({ color: theme.groundColor }));
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = minY - 30;
+      w.add(ground);
+    }
+  }
+
+  /**
+   * Change the visual hill exaggeration live. Rebuilds every route-derived mesh
+   * (terrain, road, scenery, signs, ground); the rider, arches and camera follow
+   * `this.route` each frame so they pick up the new heights automatically.
+   * Purely visual: the session (physics, trainer, HUD grade) uses the true route.
+   */
+  setGradeExaggeration(k: number) {
+    k = Math.min(3, Math.max(1, k));
+    if (Math.abs(k - this.exaggeration) < 1e-6) return;
+    this.exaggeration = k;
+    this.route = exaggerateRoute(this.session.route, k);
+    for (const child of [...this.world.children]) {
+      this.world.remove(child);
+      disposeTree(child);
+    }
+    this.buildWorld();
+    // the camera eases its height toward the new road (see loop), so no pop
+  }
+  get gradeExaggeration() {
+    return this.exaggeration;
   }
 
   private resize() {
@@ -958,16 +1012,7 @@ export class WorldView {
   dispose() {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
-    this.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose?.();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
-      mats.forEach((x) => {
-        (x as THREE.MeshBasicMaterial).map?.dispose();
-        x.dispose();
-      });
-    });
+    disposeTree(this.scene);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

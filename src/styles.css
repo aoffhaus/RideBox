@@ -219,3 +219,11 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .hud-left { width: 230px; }
   .hud-top { left: 250px; }
 }
+
+/* in-ride settings popover (sits left of the controls; doesn't block the view) */
+.ride-settings { position: absolute; right: 96px; top: 314px; width: 280px; z-index: 15; }
+.ride-settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ride-settings-head .panel-title { margin-bottom: 0; }
+.ride-settings-close { background: transparent; padding: 2px 8px; }
+.ride-settings-fields { display: flex; flex-direction: column; gap: 12px; }
+.ride-settings input[type='range'] { width: 100%; }

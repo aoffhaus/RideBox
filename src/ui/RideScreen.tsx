@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RideSession, Snapshot } from '../app/session';
 import { WorldView } from '../world/scene';
 import type { CameraMode } from '../world/camera';
@@ -9,11 +9,14 @@ import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, hrZoneColor, r0, speedU
 import { SimulatedTrainer } from '../ble/simulated';
 import { ElevationProfile, gradeColor } from './ElevationProfile';
 import { MiniMap } from './MiniMap';
+import { RideSettings, type RideSettingsPatch } from './RideSettings';
 
 interface Props {
   session: RideSession;
   settings: Settings;
   onEnd: () => void;
+  /** Persist settings changed from the in-ride settings popover. */
+  onSettingsChange?: (s: Settings) => void;
 }
 
 function Tile({ label, value, unit, sub, color, big }: { label: string; value: string; unit?: string; sub?: React.ReactNode; color?: string; big?: boolean }) {
@@ -29,12 +32,14 @@ function Tile({ label, value, unit, sub, color, big }: { label: string; value: s
   );
 }
 
-export function RideScreen({ session, settings, onEnd }: Props) {
+export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props) {
   const viewRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<WorldView | null>(null);
   const [snap, setSnap] = useState<Snapshot>(() => session.snapshot());
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const closeSettings = useCallback(() => setShowSettings(false), []);
   const engine = session.engine;
   const ftp = settings.ftp;
 
@@ -49,6 +54,17 @@ export function RideScreen({ session, settings, onEnd }: Props) {
       view.dispose();
     };
   }, [session]);
+
+  // In-ride settings: apply visuals live, then persist like the Settings page.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const applyRideSettings = useCallback(
+    (patch: RideSettingsPatch) => {
+      if (patch.gradeExaggeration != null) worldRef.current?.setGradeExaggeration(patch.gradeExaggeration);
+      onSettingsChange?.({ ...settingsRef.current, ...patch });
+    },
+    [onSettingsChange],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -194,6 +210,7 @@ export function RideScreen({ session, settings, onEnd }: Props) {
             <button onClick={() => session.skipInterval()} title="→ key">Skip ⏭</button>
           </>
         )}
+        <button onClick={() => setShowSettings((v) => !v)} title="Ride settings" aria-label="Ride settings" aria-expanded={showSettings}>⚙</button>
         <button onClick={() => setShowHelp((h) => !h)}>?</button>
         <button className="danger" onClick={() => setConfirmEnd(true)}>End ride</button>
       </div>
@@ -212,6 +229,8 @@ export function RideScreen({ session, settings, onEnd }: Props) {
           />
         </div>
       )}
+
+      {showSettings && <RideSettings settings={settings} onChange={applyRideSettings} onClose={closeSettings} />}
 
       {showHelp && (
         <div className="modal-bg" onClick={() => setShowHelp(false)}>

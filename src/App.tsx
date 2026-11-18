@@ -160,7 +160,12 @@ export function App() {
     setTab('history');
   }
 
-  if (session) return <RideScreen session={session} settings={settings} onEnd={endRide} />;
+  async function updateSettings(s: Settings) {
+    setSettings(s);
+    await saveSettings(s);
+  }
+
+  if (session) return <RideScreen session={session} settings={settings} onEnd={endRide} onSettingsChange={updateSettings} />;
 
   const sel = workouts.find((w) => w.id === selected);
   const selIv = sel ? flatten(sel.workout) : [];
@@ -282,10 +287,7 @@ export function App() {
       ) : (
         <SettingsPage
           settings={settings}
-          onSave={async (s) => {
-            setSettings(s);
-            await saveSettings(s);
-          }}
+          onSave={updateSettings}
         />
       )}
     </div>
