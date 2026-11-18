@@ -27,6 +27,8 @@ No trainer nearby? Click **Simulator** to try everything with a fake trainer and
 | K | Manual lap (free ride) |
 | `[` / `]` | Simulator power −/+ 10 W |
 
+The **mini map** (top right) turns with you so your direction is always up. The road from you to the next interval's start is drawn in your current interval's color, with a pulsing marker and countdown where the next one begins. Later intervals follow in their zone colors, and the bar underneath fills as the current interval progresses.
+
 The arch ahead of you sits where you'll be when the current interval ends. Its position is recalculated continuously from your speed, so you ride through it exactly as the interval finishes. The arch's color is the power zone of the next interval. A faint second arch marks the end of the interval after that.
 
 ## Getting workouts in

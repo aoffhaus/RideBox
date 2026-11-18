@@ -8,6 +8,7 @@ import type { Settings } from '../storage/db';
 import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, hrZoneColor, r0, speedUnit } from './format';
 import { SimulatedTrainer } from '../ble/simulated';
 import { ElevationProfile, gradeColor } from './ElevationProfile';
+import { MiniMap } from './MiniMap';
 
 interface Props {
   session: RideSession;
@@ -172,6 +173,10 @@ export function RideScreen({ session, settings, onEnd }: Props) {
       </div>
 
       {st?.cue && <div className="cue">{st.cue}</div>}
+
+      <div className="hud-map">
+        <MiniMap session={session} settings={settings} snap={snap} />
+      </div>
 
       <div className={`hud-elev ${engine ? '' : 'no-chart'}`}>
         <ElevationProfile route={session.route} distance={snap.distance} settings={settings} />

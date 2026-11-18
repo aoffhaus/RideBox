@@ -35,6 +35,8 @@ export interface Snapshot {
   intervalStats?: IntervalStats;
   archDistance?: number;
   nextArchDistance?: number;
+  /** Projected route distance where each upcoming interval starts (next few). */
+  upcoming: { index: number; distance: number; startsIn: number }[];
   lapCount: number;
 }
 
@@ -260,9 +262,18 @@ export class RideSession {
     const workoutActive = !!st && !st.finished;
     let archDistance: number | undefined;
     let nextArchDistance: number | undefined;
+    const upcoming: Snapshot['upcoming'] = [];
     if (workoutActive && st) {
       archDistance = this.arch.archDistance(this.distance, st.remaining);
       if (st.next) nextArchDistance = this.arch.archDistance(this.distance, st.remaining + st.next.duration);
+      const ivs = this.engine!.intervals;
+      let t = st.remaining;
+      for (let i = st.index + 1; i < ivs.length && upcoming.length < 6; i++) {
+        upcoming.push({ index: i, distance: this.arch.archDistance(this.distance, t), startsIn: t });
+        t += ivs[i].duration;
+      }
+      // where the workout ends (useful to show the finish on the map)
+      if (upcoming.length < 6) upcoming.push({ index: ivs.length, distance: this.arch.archDistance(this.distance, t), startsIn: t });
     }
     return {
       started: this.started,
@@ -291,6 +302,7 @@ export class RideSession {
         : undefined,
       archDistance,
       nextArchDistance,
+      upcoming,
       lapCount: this.laps.length,
     };
   }
