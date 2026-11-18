@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Served from https://<user>.github.io/ridebox/
+// Served from GitHub Pages
 export default defineConfig({
-  base: process.env.NODE_ENV === 'production' ? '/ridebox/' : '/',
+  // relative paths: works at any Pages URL (repo-name casing included) and locally
+  base: './',
   plugins: [react()],
   build: { chunkSizeWarningLimit: 2000 },
   test: { environment: 'node' },
