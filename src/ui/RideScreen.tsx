@@ -3,14 +3,14 @@ import type { RideSession, Snapshot } from '../app/session';
 import { WorldView } from '../world/scene';
 import type { CameraMode } from '../world/camera';
 import { WorkoutChart } from './WorkoutChart';
-import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
+import { intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 import type { Settings } from '../storage/db';
-import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, hrZoneColor, r0, speedUnit } from './format';
+import { r0 } from './format';
 import { SimulatedTrainer } from '../ble/simulated';
-import { ElevationProfile, gradeColor } from './ElevationProfile';
+import { ElevationProfile } from './ElevationProfile';
 import { MiniMap } from './MiniMap';
 import { RideSettings, type RideSettingsPatch } from './RideSettings';
-import { IntervalHero } from './IntervalHero';
+import { RideHud } from './RideHud';
 
 interface Props {
   session: RideSession;
@@ -18,19 +18,6 @@ interface Props {
   onEnd: () => void;
   /** Persist settings changed from the in-ride settings popover. */
   onSettingsChange?: (s: Settings) => void;
-}
-
-function Tile({ label, value, unit, sub, color, big }: { label: string; value: string; unit?: string; sub?: React.ReactNode; color?: string; big?: boolean }) {
-  return (
-    <div className={`tile ${big ? 'tile-big' : ''}`}>
-      <div className="tile-label">{label}</div>
-      <div className="tile-value" style={{ color }}>
-        {value}
-        {unit && <span className="tile-unit">{unit}</span>}
-      </div>
-      {sub && <div className="tile-sub">{sub}</div>}
-    </div>
-  );
 }
 
 export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props) {
@@ -126,10 +113,6 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
 
   const st = snap.workout;
   const iv = st?.interval;
-  const target = st?.targetWatts ?? null;
-  const p3 = snap.power3s;
-  const diff = target ? p3 - target : 0;
-  const compliance = !target ? undefined : Math.abs(diff) <= target * 0.05 ? '#27ae60' : diff > 0 ? '#f2994a' : '#2f80ed';
   const ivColor = iv ? (iv.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(iv, ftp)).color) : '#9aa4b2';
   const k = (st?.intensity ?? 100) / 100;
   const ivDesc = (x: typeof iv) =>
@@ -145,21 +128,9 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
     <div className="ride">
       <div ref={viewRef} className="ride-view" />
 
-      {/* Top: metric tiles either side of the interval hero */}
+      {/* Top centre: the main ride HUD card */}
       <div className="hud-top">
-        <div className="tiles tiles-l">
-          <Tile big label="POWER 3s" value={r0(p3)} unit="W" color={compliance} sub={target != null ? <>target <b>{target}</b> W</> : snap.mode === 'sim' ? `SIM ${(snap.grade * 100).toFixed(1)}%` : ''} />
-          <Tile big label="HEART RATE" value={r0(snap.hr)} unit="bpm" color={hrZoneColor(snap.hr, settings.maxHr)} sub={snap.hr ? `${Math.round((snap.hr / settings.maxHr) * 100)}% max` : 'no HRM'} />
-          <Tile big label="CADENCE" value={r0(snap.cadence)} unit="rpm" sub={iv?.cadence ? `target ${iv.cadence}` : ''} />
-        </div>
-        <div className="hud-hero">
-          <IntervalHero session={session} settings={settings} snap={snap} />
-        </div>
-        <div className="tiles tiles-r">
-          <Tile label="ELAPSED" value={formatDuration(snap.elapsed)} sub={st && !st.finished ? `${formatDuration(st.totalRemaining)} left` : ''} />
-          <Tile label="SPEED" value={fmtSpeed(snap.speed, settings)} unit={speedUnit(settings)} sub={`${fmtDist(snap.distance, settings)} ${distUnit(settings)}`} />
-          <Tile label="GRADE" value={(snap.grade * 100).toFixed(1)} unit="%" color={gradeColor(snap.grade)} sub={`${fmtElev(snap.altitude, settings)} ${elevUnit(settings)}`} />
-        </div>
+        <RideHud session={session} settings={settings} snap={snap} />
       </div>
 
       {/* Left: workout info */}
