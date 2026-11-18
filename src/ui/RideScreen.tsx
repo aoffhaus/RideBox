@@ -6,6 +6,7 @@ import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workou
 import type { Settings } from '../storage/db';
 import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, hrZoneColor, r0, speedUnit } from './format';
 import { SimulatedTrainer } from '../ble/simulated';
+import { ElevationProfile, gradeColor } from './ElevationProfile';
 
 interface Props {
   session: RideSession;
@@ -35,7 +36,7 @@ export function RideScreen({ session, settings, onEnd }: Props) {
   const ftp = settings.ftp;
 
   useEffect(() => {
-    const view = new WorldView(viewRef.current!, session);
+    const view = new WorldView(viewRef.current!, session, settings.graphics);
     session.start();
     const id = window.setInterval(() => setSnap(session.snapshot()), 200);
     return () => {
@@ -127,7 +128,7 @@ export function RideScreen({ session, settings, onEnd }: Props) {
         {iv && <Tile big label="INTERVAL" value={formatDuration(Math.ceil(st!.remaining))} color={ivColor} sub={`${st!.index + 1} / ${engine!.intervals.length}`} />}
         <Tile label="ELAPSED" value={formatDuration(snap.elapsed)} sub={st && !st.finished ? `${formatDuration(st.totalRemaining)} left` : ''} />
         <Tile label="SPEED" value={fmtSpeed(snap.speed, settings)} unit={speedUnit(settings)} sub={`${fmtDist(snap.distance, settings)} ${distUnit(settings)}`} />
-        <Tile label="GRADE" value={(snap.grade * 100).toFixed(1)} unit="%" sub={`${fmtElev(snap.altitude, settings)} ${elevUnit(settings)}`} />
+        <Tile label="GRADE" value={(snap.grade * 100).toFixed(1)} unit="%" color={gradeColor(snap.grade)} sub={`${fmtElev(snap.altitude, settings)} ${elevUnit(settings)}`} />
       </div>
 
       {/* Left: workout info */}
@@ -163,6 +164,10 @@ export function RideScreen({ session, settings, onEnd }: Props) {
       </div>
 
       {st?.cue && <div className="cue">{st.cue}</div>}
+
+      <div className={`hud-elev ${engine ? '' : 'no-chart'}`}>
+        <ElevationProfile route={session.route} distance={snap.distance} settings={settings} />
+      </div>
 
       {/* Controls */}
       <div className="hud-controls">

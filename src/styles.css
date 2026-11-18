@@ -184,3 +184,10 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .tile { min-width: 84px; padding: 6px 10px; }
   .hud-left { width: 240px; }
 }
+
+.hud-elev { position: absolute; right: 12px; bottom: 140px; width: 360px; }
+.hud-elev.no-chart { bottom: 12px; }
+.elev { padding: 8px 10px 6px; }
+.elev svg { display: block; border-radius: 6px; background: rgba(0,0,0,0.25); }
+.elev-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; margin-bottom: 4px; letter-spacing: 0.04em; }
+.elev-head > span:first-child { color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; }

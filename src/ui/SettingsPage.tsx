@@ -54,6 +54,14 @@ export function SettingsPage({ settings, onSave }: { settings: Settings; onSave:
           <small className="muted">How much of the road grade the KICKR applies in free rides / SIM mode (like Zwift&apos;s trainer difficulty). Shift your real gears as usual.</small>
         </label>
         {num('cda', 'CdA (m²)', 0.01, 'Aero drag for virtual speed: 0.32 hoods, 0.28 drops')}
+        <label className="field">
+          <span>Graphics</span>
+          <select value={s.graphics} onChange={(e) => setS({ ...s, graphics: e.target.value as Settings['graphics'] })}>
+            <option value="high">High (shadows, full scenery)</option>
+            <option value="low">Low (older or slower computers)</option>
+          </select>
+          <small className="muted">Use Low if the ride looks choppy on this computer.</small>
+        </label>
       </div>
       <button className="primary" onClick={() => onSave(s)}>Save settings</button>
 

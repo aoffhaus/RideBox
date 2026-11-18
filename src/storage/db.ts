@@ -11,6 +11,8 @@ export interface Settings {
   /** 0–100: how much of the real road grade the trainer applies in SIM mode */
   simDifficulty: number;
   cda: number;
+  /** 3D detail: 'low' for older / integrated-GPU computers */
+  graphics: 'high' | 'low';
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -21,6 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   units: 'imperial',
   simDifficulty: 50,
   cda: 0.32,
+  graphics: 'high',
 };
 
 export interface StoredWorkout {
