@@ -182,7 +182,7 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .ride { position: fixed; inset: 0; overflow: hidden; background: #000; user-select: none; }
 .ride-view { position: absolute; inset: 0; }
 .panel { background: rgba(10, 13, 18, 0.78); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; }
-.hud-left { position: absolute; left: 12px; top: 12px; width: 290px; }
+.hud-left { position: absolute; left: 12px; top: 12px; width: 290px; max-height: calc(100vh - 12px - var(--chart-h, 110px) - 44px); overflow: hidden; }
 
 .panel-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .row-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -203,9 +203,13 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   background: rgba(255, 122, 26, 0.92); color: #111; font-weight: 700; font-size: 20px;
   padding: 10px 22px; border-radius: 12px; max-width: 60vw; text-align: center;
 }
-.hud-controls { position: absolute; right: 12px; top: 314px; display: flex; flex-direction: column; gap: 4px; }
-.hud-controls button { background: rgba(10, 13, 18, 0.8); padding: 5px 12px; }
-.hud-bottom { position: absolute; left: 12px; right: 12px; bottom: 12px; background: rgba(10, 13, 18, 0.7); border-radius: 10px; padding: 6px; }
+/* right column: mini map, controls, road ahead stacked — bottom edge set inline to sit above the chart */
+.hud-right { position: absolute; top: 12px; right: 12px; width: 280px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.hud-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.hud-controls button { background: rgba(10, 13, 18, 0.82); padding: 6px 8px; }
+.hud-controls .span2 { grid-column: span 2; }
+.hud-controls button.danger { background: #4a171a; }
+.hud-bottom { position: absolute; left: 12px; right: 12px; bottom: 12px; background: rgba(10, 13, 18, 0.7); border-radius: 10px; padding: 6px; pointer-events: none; }
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: grid; place-items: center; z-index: 20; }
 .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; min-width: 320px; }
 .keys td { padding: 3px 12px 3px 0; }
@@ -215,15 +219,13 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .hud-left { width: 230px; }
 }
 
-.hud-elev { position: absolute; right: 12px; bottom: 140px; width: 360px; }
-.hud-elev.no-chart { bottom: 12px; }
+.hud-elev { margin-top: auto; min-height: 0; }
 .elev { padding: 8px 10px 6px; }
 .elev svg { display: block; border-radius: 6px; background: rgba(0,0,0,0.25); }
 .elev-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; margin-bottom: 4px; letter-spacing: 0.04em; }
 .elev-head > span:first-child { color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* mini map */
-.hud-map { position: absolute; right: 12px; top: 12px; width: 280px; }
 .minimap {
   position: relative; border-radius: 14px; overflow: hidden;
   box-shadow: 0 6px 20px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.12);
@@ -237,9 +239,18 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .mm-pill svg { color: #ffc04d; }
 .dotc { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 /* in-ride settings popover (sits left of the controls; doesn't block the view) */
-.ride-settings { position: absolute; right: 96px; top: 314px; width: 280px; z-index: 15; }
+.ride-settings { position: absolute; right: 304px; top: 230px; width: 280px; z-index: 15; }
 .ride-settings-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .ride-settings-head .panel-title { margin-bottom: 0; }
 .ride-settings-close { background: transparent; padding: 2px 8px; }
 .ride-settings-fields { display: flex; flex-direction: column; gap: 12px; }
 .ride-settings input[type='range'] { width: 100%; }
+
+/* short windows (typical laptop browser): keep everything clear of the chart */
+@media (max-height: 820px) {
+  .elev svg { height: 60px; }
+}
+@media (max-height: 700px) {
+  .hud-elev { display: none; }
+  .iv-stats { display: none; }
+}

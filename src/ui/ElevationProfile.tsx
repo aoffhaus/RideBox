@@ -57,9 +57,9 @@ export const ElevationProfile = memo(function ElevationProfile({ route, distance
     <div className="elev panel">
       <div className="elev-head">
         <span>Road ahead</span>
-        <span className="muted">
-          next 1 km: {ahead1k >= 0 ? '+' : ''}
-          {fmtElev(ahead1k, settings)} {elevUnit(settings)} · climbing {fmtElev(climb, settings)} {elevUnit(settings)}
+        <span className="muted" title={`Climbing in the next 2.5 km: ${fmtElev(climb, settings)} ${elevUnit(settings)}`}>
+          next 1 km {ahead1k >= 0 ? '+' : ''}
+          {fmtElev(ahead1k, settings)} {elevUnit(settings)}
         </span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">

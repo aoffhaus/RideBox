@@ -28,6 +28,16 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const [showHelp, setShowHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const closeSettings = useCallback(() => setShowSettings(false), []);
+  const [winH, setWinH] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setWinH(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const chartH = winH < 720 ? 76 : 110;
+  // refs so the key handler (bound once) sees current modal state
+  const modalRef = useRef({ help: false, end: false, settings: false });
+  modalRef.current = { help: showHelp, end: confirmEnd, settings: showSettings };
   const engine = session.engine;
   const ftp = settings.ftp;
 
@@ -101,6 +111,11 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
         case '3':
           worldRef.current?.setCamera((['chase', 'close', 'first'] as CameraMode[])[Number(e.key) - 1]);
           break;
+        case 'Escape':
+          if (modalRef.current.settings) break; // the settings panel closes itself
+          if (modalRef.current.help) setShowHelp(false);
+          else setConfirmEnd(!modalRef.current.end);
+          break;
         case '?':
           setShowHelp((h) => !h);
           break;
@@ -125,7 +140,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
           : `${Math.round(toWatts(x.powerStart, x.unit, ftp) * k)}→${Math.round(toWatts(x.powerEnd, x.unit, ftp) * k)} W`;
 
   return (
-    <div className="ride">
+    <div className="ride" style={{ ['--chart-h' as string]: `${engine ? chartH : -24}px` }}>
       <div ref={viewRef} className="ride-view" />
 
       {/* Top centre: the main ride HUD card */}
@@ -162,29 +177,29 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
 
       {st?.cue && <div className="cue">{st.cue}</div>}
 
-      <div className="hud-map">
+      {/* Right column: map, controls, road ahead — stacked so they can never overlap */}
+      <div className="hud-right" style={{ bottom: engine ? chartH + 32 : 12 }}>
         <MiniMap session={session} settings={settings} snap={snap} />
-      </div>
 
-      <div className={`hud-elev ${engine ? '' : 'no-chart'}`}>
-        <ElevationProfile route={session.route} distance={snap.distance} settings={settings} />
-      </div>
+        <div className="hud-controls">
+          <button className="span2" onClick={() => session.togglePause()}>{snap.paused && !snap.autoPaused ? '▶ Resume' : '⏸ Pause'}</button>
+          {engine && (
+            <>
+              <button onClick={() => session.adjustIntensity(-1)} title="Intensity −1% (− key)">−1%</button>
+              <button onClick={() => session.adjustIntensity(1)} title="Intensity +1% (+ key)">+1%</button>
+              <button onClick={() => session.toggleErg()} title="E key">{snap.ergOn ? 'ERG on' : 'ERG off'}</button>
+              <button onClick={() => session.extendInterval(60)} title="L key">+1 min</button>
+              <button onClick={() => session.skipInterval()} title="→ key">Skip ⏭</button>
+            </>
+          )}
+          <button onClick={() => setShowSettings((v) => !v)} title="Ride settings" aria-label="Ride settings" aria-expanded={showSettings}>⚙ Settings</button>
+          <button onClick={() => setShowHelp((h) => !h)} title="Keyboard shortcuts">? Keys</button>
+          <button className="danger span2" onClick={() => setConfirmEnd(true)} title="Esc key">End ride</button>
+        </div>
 
-      {/* Controls */}
-      <div className="hud-controls">
-        <button onClick={() => session.togglePause()}>{snap.paused && !snap.autoPaused ? '▶ Resume' : '⏸ Pause'}</button>
-        {engine && (
-          <>
-            <button onClick={() => session.adjustIntensity(-1)} title="Intensity −1% (− key)">−1%</button>
-            <button onClick={() => session.adjustIntensity(1)} title="Intensity +1% (+ key)">+1%</button>
-            <button onClick={() => session.toggleErg()} title="E key">{snap.ergOn ? 'ERG on' : 'ERG off'}</button>
-            <button onClick={() => session.extendInterval(60)} title="L key">+1 min</button>
-            <button onClick={() => session.skipInterval()} title="→ key">Skip ⏭</button>
-          </>
-        )}
-        <button onClick={() => setShowSettings((v) => !v)} title="Ride settings" aria-label="Ride settings" aria-expanded={showSettings}>⚙</button>
-        <button onClick={() => setShowHelp((h) => !h)}>?</button>
-        <button className="danger" onClick={() => setConfirmEnd(true)}>End ride</button>
+        <div className="hud-elev">
+          <ElevationProfile route={session.route} distance={snap.distance} settings={settings} />
+        </div>
       </div>
 
       {engine && (
@@ -192,7 +207,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
           <WorkoutChart
             intervals={engine.intervals}
             ftp={ftp}
-            height={110}
+            height={chartH}
             elapsed={st?.elapsed}
             samples={session.samples}
             maxHr={settings.maxHr}
@@ -211,6 +226,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
             <table className="keys">
               <tbody>
                 <tr><td>Space</td><td>Pause / resume</td></tr>
+                <tr><td>Esc</td><td>End ride (asks to confirm)</td></tr>
                 <tr><td>1 / 2 / 3</td><td>Camera: chase (default) / close chase / first person</td></tr>
                 <tr><td>+ / − (or ↑ / ↓)</td><td>Intensity ±1%</td></tr>
                 <tr><td>→</td><td>Skip to next interval</td></tr>
