@@ -3,6 +3,7 @@ import type { RideSession } from '../app/session';
 import type { Route } from './route';
 import { rng } from './route';
 import { MotionSmoother } from './smoother';
+import { themeFor } from './themes';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
 const ROAD_HALF = 4.5;
@@ -103,7 +104,7 @@ function cloudTexture() {
 // ---------------------------------------------------------------------------
 // Geometry builders
 // ---------------------------------------------------------------------------
-function buildRoad(route: Route): THREE.Mesh {
+function buildRoad(route: Route, map: THREE.Texture = roadTexture()): THREE.Mesh {
   const n = route.x.length;
   const pos = new Float32Array((n + 1) * 2 * 3);
   const uv = new Float32Array((n + 1) * 2 * 2);
@@ -132,7 +133,7 @@ function buildRoad(route: Route): THREE.Mesh {
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: roadTexture() }));
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map }));
   m.receiveShadow = true;
   return m;
 }
@@ -435,12 +436,12 @@ function buildClimbSigns(route: Route): THREE.Group {
 }
 
 /** Sky dome with a vertical gradient (drawn behind everything, no fog). */
-function buildSky(): THREE.Mesh {
+function buildSky(top: THREE.Color = SKY_TOP, horizon: THREE.Color = SKY_HORIZON): THREE.Mesh {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
-    uniforms: { top: { value: SKY_TOP }, horizon: { value: SKY_HORIZON } },
+    uniforms: { top: { value: top }, horizon: { value: horizon } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 horizon; varying vec3 vDir;
       void main(){ float h = clamp(vDir.y, 0.0, 1.0); vec3 c = mix(horizon, top, pow(h, 0.55)); gl_FragColor = vec4(c, 1.0); }`,
@@ -738,11 +739,13 @@ export class WorldView {
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
 
-    this.scene.fog = new THREE.Fog(HAZE, 180, 1700);
-    this.sky = buildSky();
+    const theme = themeFor(session.route);
+    this.renderer.toneMappingExposure = theme.exposure;
+    this.scene.fog = new THREE.Fog(theme.id === 'countryside' ? HAZE : new THREE.Color(theme.haze), theme.fogNear, theme.fogFar);
+    this.sky = theme.id === 'countryside' ? buildSky() : buildSky(new THREE.Color(theme.skyTop), new THREE.Color(theme.skyHorizon));
     this.scene.add(this.sky);
-    this.scene.add(new THREE.HemisphereLight('#e3f1ff', '#4d6a35', 1.15));
-    this.sun = new THREE.DirectionalLight('#fff1d6', 2.2);
+    this.scene.add(new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiIntensity));
+    this.sun = new THREE.DirectionalLight(theme.sunColor, theme.sunIntensity);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     this.sun.shadow.bias = -0.0005;
@@ -755,13 +758,21 @@ export class WorldView {
     this.scene.add(this.sun, this.sun.target);
 
     const route = session.route;
-    this.scene.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
+    if (theme.build) {
+      // themed landscape: the theme supplies terrain & scenery; road furniture is shared
+      this.scene.add(...theme.build(route, { high }), buildRoad(route, theme.roadTexture?.()), buildPosts(route), buildClimbSigns(route));
+      if (theme.clouds) this.scene.add(buildClouds(route));
+    } else {
+      this.scene.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
+    }
     let minY = Infinity;
     for (const y of route.y) minY = Math.min(minY, y);
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(12000, 48), new THREE.MeshLambertMaterial({ color: '#5d8445' }));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = minY - 30;
-    this.scene.add(ground);
+    if (theme.groundColor) {
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(12000, 48), new THREE.MeshLambertMaterial({ color: theme.groundColor }));
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = minY - 30;
+      this.scene.add(ground);
+    }
 
     this.rider = buildRider();
     this.scene.add(this.rider.group);
