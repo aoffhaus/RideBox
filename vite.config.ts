@@ -7,5 +7,5 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: { chunkSizeWarningLimit: 2000 },
-  test: { environment: 'node' },
+  test: { environment: 'node', exclude: ['**/node_modules/**', '.claude/**'] },
 } as any);

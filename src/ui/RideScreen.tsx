@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RideSession, Snapshot } from '../app/session';
 import { WorldView } from '../world/scene';
+import type { CameraMode } from '../world/camera';
 import { WorkoutChart } from './WorkoutChart';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 import type { Settings } from '../storage/db';
@@ -29,6 +30,7 @@ function Tile({ label, value, unit, sub, color, big }: { label: string; value: s
 
 export function RideScreen({ session, settings, onEnd }: Props) {
   const viewRef = useRef<HTMLDivElement>(null);
+  const worldRef = useRef<WorldView | null>(null);
   const [snap, setSnap] = useState<Snapshot>(() => session.snapshot());
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -36,7 +38,8 @@ export function RideScreen({ session, settings, onEnd }: Props) {
   const ftp = settings.ftp;
 
   useEffect(() => {
-    const view = new WorldView(viewRef.current!, session, settings.graphics);
+    const view = new WorldView(viewRef.current!, session, settings.graphics, settings.gradeExaggeration);
+    worldRef.current = view;
     session.start();
     const id = window.setInterval(() => setSnap(session.snapshot()), 200);
     return () => {
@@ -87,6 +90,11 @@ export function RideScreen({ session, settings, onEnd }: Props) {
           break;
         case '[':
           if (sim) sim.manualPower = Math.max(0, sim.manualPower - 10);
+          break;
+        case '1':
+        case '2':
+        case '3':
+          worldRef.current?.setCamera((['chase', 'close', 'first'] as CameraMode[])[Number(e.key) - 1]);
           break;
         case '?':
           setShowHelp((h) => !h);
@@ -207,6 +215,7 @@ export function RideScreen({ session, settings, onEnd }: Props) {
             <table className="keys">
               <tbody>
                 <tr><td>Space</td><td>Pause / resume</td></tr>
+                <tr><td>1 / 2 / 3</td><td>Camera: chase (default) / close chase / first person</td></tr>
                 <tr><td>+ / − (or ↑ / ↓)</td><td>Intensity ±1%</td></tr>
                 <tr><td>→</td><td>Skip to next interval</td></tr>
                 <tr><td>L</td><td>Extend current interval by 1 min</td></tr>

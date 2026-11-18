@@ -55,6 +55,11 @@ export function SettingsPage({ settings, onSave }: { settings: Settings; onSave:
         </label>
         {num('cda', 'CdA (m²)', 0.01, 'Aero drag for virtual speed: 0.32 hoods, 0.28 drops')}
         <label className="field">
+          <span>Grade exaggeration: {s.gradeExaggeration.toFixed(1)}×</span>
+          <input type="range" min={1} max={3} step={0.1} value={s.gradeExaggeration} onChange={(e) => setS({ ...s, gradeExaggeration: Number(e.target.value) })} />
+          <small className="muted">Makes hills look steeper on screen, like Zwift. Visual only: resistance, speed and the grade readout stay true.</small>
+        </label>
+        <label className="field">
           <span>Graphics</span>
           <select value={s.graphics} onChange={(e) => setS({ ...s, graphics: e.target.value as Settings['graphics'] })}>
             <option value="high">High (shadows, full scenery)</option>

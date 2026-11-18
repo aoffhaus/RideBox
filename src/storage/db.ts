@@ -13,6 +13,8 @@ export interface Settings {
   cda: number;
   /** 3D detail: 'low' for older / integrated-GPU computers */
   graphics: 'high' | 'low';
+  /** visual-only vertical scale of the world (Zwift-style); 1 = true to life */
+  gradeExaggeration: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   simDifficulty: 50,
   cda: 0.32,
   graphics: 'high',
+  gradeExaggeration: 1.8,
 };
 
 export interface StoredWorkout {

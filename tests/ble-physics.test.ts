@@ -161,3 +161,22 @@ describe('recording + FIT', () => {
     expect(messages.recordMesgs![10].power).toBe(150);
   });
 });
+
+describe('visual exaggeration', () => {
+  it('scales elevation and grade for drawing only', async () => {
+    const { exaggerateRoute } = await import('../src/world/route');
+    const r = generateRoute('hilly', 2);
+    const v = exaggerateRoute(r, 2);
+    for (const d of [0, 1234.5, 5000, r.length - 1]) {
+      const a = r.at(d);
+      const b = v.at(d);
+      expect(b.x).toBeCloseTo(a.x);
+      expect(b.z).toBeCloseTo(a.z);
+      expect(b.grade).toBeCloseTo(a.grade * 2, 5);
+    }
+    const min = Math.min(...r.y);
+    expect(v.at(777).y - min).toBeCloseTo((r.at(777).y - min) * 2, 3);
+    expect(v.base).toBe(r);
+    expect(exaggerateRoute(r, 1)).toBe(r);
+  });
+});

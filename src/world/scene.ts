@@ -3,6 +3,8 @@ import type { RideSession } from '../app/session';
 import type { Route } from './route';
 import { rng } from './route';
 import { MotionSmoother } from './smoother';
+import { exaggerateRoute } from './route';
+import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
 const ROAD_HALF = 4.5;
@@ -368,7 +370,8 @@ function buildClimbSigns(route: Route): THREE.Group {
   const g = new THREE.Group();
   const n = route.x.length;
   const look = Math.round(400 / route.step);
-  const avg = (i: number, len: number) => (route.y[(i + len) % n] - route.y[i]) / (len * route.step);
+  const ty = (route.base ?? route).y; // labels use true elevations
+  const avg = (i: number, len: number) => (ty[(i + len) % n] - ty[i]) / (len * route.step);
   const texCache = new Map<string, THREE.Texture>();
   let i = 0;
   let placed = 0;
@@ -380,7 +383,7 @@ function buildClimbSigns(route: Route): THREE.Group {
       while (j < i + n && avg(j % n, Math.round(200 / route.step)) > 0.015) j += 4;
       const lenM = (j - i) * route.step;
       if (lenM >= 300) {
-        const gradeAvg = Math.round(((route.y[j % n] - route.y[i]) / lenM) * 100);
+        const gradeAvg = Math.round(((ty[j % n] - ty[i]) / lenM) * 100);
         const label = `▲ ${gradeAvg}%|${lenM >= 1000 ? (lenM / 1000).toFixed(1) + ' km' : Math.round(lenM / 10) * 10 + ' m'}`;
         let tex = texCache.get(label);
         if (!tex) {
@@ -724,11 +727,19 @@ export class WorldView {
   private motion = new MotionSmoother();
   private speed = 0;
   private pitch = 0;
-  private fov = 60;
   private cadence = 0;
+  /** what's drawn: the route with exaggerated elevation */
+  private route: ReturnType<typeof exaggerateRoute>;
+  private camMode: CameraMode = 'chase';
   private effort = 0;
 
-  constructor(private container: HTMLElement, private session: RideSession, quality: 'high' | 'low' = 'high') {
+  constructor(
+    private container: HTMLElement,
+    private session: RideSession,
+    quality: 'high' | 'low' = 'high',
+    exaggeration = 1.8,
+  ) {
+    this.route = exaggerateRoute(session.route, exaggeration);
     const high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio, 2) : 1);
@@ -754,7 +765,7 @@ export class WorldView {
     sc.far = 400;
     this.scene.add(this.sun, this.sun.target);
 
-    const route = session.route;
+    const route = this.route;
     this.scene.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
     let minY = Infinity;
     for (const y of route.y) minY = Math.min(minY, y);
@@ -775,10 +786,11 @@ export class WorldView {
 
     const s = session.snapshot();
     this.motion = new MotionSmoother(s.distance);
-    const back = route.at(s.distance - 7);
-    const ahead = route.at(s.distance + 14);
-    this.camPos.set(back.x, back.y + 2.4, back.z);
-    this.camLook.set(ahead.x, ahead.y + 1, ahead.z);
+    const t0 = cameraTargets(route, s.distance, 1.7, CAMERA_RIGS[this.camMode]);
+    this.camPos.copy(t0.pos);
+    this.camLook.copy(t0.look);
+    this.camera.fov = CAMERA_RIGS[this.camMode].fov;
+    this.camera.updateProjectionMatrix();
     this.loop();
   }
 
@@ -791,15 +803,18 @@ export class WorldView {
   }
 
   private place(obj: THREE.Object3D, distance: number, lateral = 0) {
-    const p = this.session.route.at(distance);
+    const p = this.route.at(distance);
     obj.position.set(p.x - Math.sin(p.heading) * lateral, p.y, p.z + Math.cos(p.heading) * lateral);
     obj.rotation.set(0, -p.heading, 0);
     return p;
   }
 
-  private pointAt(distance: number, lateral: number, up: number) {
-    const p = this.session.route.at(distance);
-    return new THREE.Vector3(p.x - Math.sin(p.heading) * lateral, p.y + up, p.z + Math.cos(p.heading) * lateral);
+  /** Switch camera: 'chase' (Zwift-style default), 'close', or 'first' person. */
+  setCamera(mode: CameraMode) {
+    this.camMode = mode;
+  }
+  get cameraMode() {
+    return this.camMode;
   }
 
   private updateLegs() {
@@ -838,7 +853,7 @@ export class WorldView {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     const s = this.session.snapshot();
-    const route = this.session.route;
+    const route = this.route;
 
     // --- smooth motion: predict with speed, gently correct toward the true distance
     const d = this.motion.update(dt, s.distance, s.speed);
@@ -861,32 +876,28 @@ export class WorldView {
     const ftp = this.session.engine?.ftp ?? 200;
     const effortTarget = Math.min(1.5, (s.power3s || 0) / ftp);
     this.effort += (effortTarget - this.effort) * (1 - Math.exp(-dt * 2));
-    const climbing = Math.max(0, Math.min(1, (p.grade - 0.04) / 0.05)) * Math.min(1, this.effort);
+    const climbing = Math.max(0, Math.min(1, (s.grade - 0.04) / 0.05)) * Math.min(1, this.effort); // true grade
     const rock = Math.sin(this.crankAngle * 2) * 0.03 * (0.4 + this.effort);
     this.rider.torso.rotation.set(rock, 0, -0.08 * this.effort - 0.05 * climbing);
     this.rider.torso.position.set(-0.17 + 0.12 * climbing, 0.98 + 0.08 * climbing, 0);
     this.rider.bike.rotation.x = Math.sin(this.crankAngle) * 0.06 * climbing; // bike rocks when climbing hard
     this.updateLegs();
 
-    // --- camera: low chase cam, level horizon so the road's tilt shows
-    const camDist = 6.5 + Math.min(2.5, this.speed * 0.08);
-    const camTarget = this.pointAt(d - camDist, 1.4, 0);
-    camTarget.y = p.y + 2.1 + Math.max(0, (p.y - camTarget.y) * 0.35); // stay just above rider when descending behind
-    const lookTarget = this.pointAt(d + 16, 1.1, 0);
-    lookTarget.y = p.y + 1.0 + (lookTarget.y - p.y) * 0.55; // look up climbs / down descents (partially)
-    const k = 1 - Math.exp(-dt * 5);
-    this.camPos.lerp(camTarget, k);
-    this.camLook.lerp(lookTarget, k);
+    // --- camera (Zwift-style rigs; see camera.ts). Sits in the road's frame so
+    // climbs look like climbs; smoothed so it glides rather than snaps.
+    const rig = CAMERA_RIGS[this.camMode];
+    this.rider.group.visible = rig.showRider;
+    const tgt = cameraTargets(route, d, 1.7, rig);
+    // Follow exactly along the road (d is already smooth, so no lag at speed);
+    // only ease the heights so bumps in the terrain don't jolt the view.
+    const k = 1 - Math.exp(-dt * (this.camMode === 'first' ? 12 : 5));
+    this.camPos.set(tgt.pos.x, this.camPos.y + (tgt.pos.y - this.camPos.y) * k, tgt.pos.z);
+    this.camLook.set(tgt.look.x, this.camLook.y + (tgt.look.y - this.camLook.y) * k, tgt.look.z);
+    if (Math.abs(this.camPos.y - tgt.pos.y) > 30) this.camPos.y = tgt.pos.y; // after jumps
     this.camera.position.copy(this.camPos);
-    // tiny road-vibration at speed
-    const buzz = Math.min(1, this.speed / 15) * 0.012;
-    this.camera.position.y += Math.sin(now * 0.045) * buzz;
     this.camera.lookAt(this.camLook);
-    // wider FOV at speed sells velocity
-    const fovTarget = 58 + Math.min(14, this.speed * 0.9);
-    this.fov += (fovTarget - this.fov) * (1 - Math.exp(-dt * 1.5));
-    if (Math.abs(this.camera.fov - this.fov) > 0.05) {
-      this.camera.fov = this.fov;
+    if (Math.abs(this.camera.fov - rig.fov) > 0.05) {
+      this.camera.fov += (rig.fov - this.camera.fov) * Math.min(1, dt * 6);
       this.camera.updateProjectionMatrix();
     }
 

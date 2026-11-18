@@ -19,6 +19,7 @@ No trainer nearby? Click **Simulator** to try everything with a fake trainer and
 | Key | Action |
 | --- | --- |
 | Space | Pause / resume (it also auto-pauses when you stop pedaling) |
+| 1 / 2 / 3 | Camera: chase (default, Zwift-style) / close chase / first person |
 | `+` / `−` or ↑ / ↓ | Workout intensity ±1% |
 | → | Skip to the next interval |
 | L | Extend the current interval by 1 minute |
@@ -82,5 +83,7 @@ npm run build
 ```
 
 Every push to `main` builds and deploys to GitHub Pages via `.github/workflows/deploy.yml`. In the repo, set **Settings → Pages → Source** to **GitHub Actions**.
+
+Visuals: the world is drawn with **grade exaggeration** (Settings, default 1.8×) so climbs and descents read clearly on screen, like Zwift. It's visual only: trainer resistance, speed and the grade readout use the true gradient.
 
 Built with Vite, React, TypeScript, Three.js, idb, and the Garmin FIT SDK.

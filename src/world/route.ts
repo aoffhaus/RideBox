@@ -39,6 +39,8 @@ export interface Route {
   heading: Float32Array;
   totalClimb: number; // m per lap
   at(distance: number): RoutePoint;
+  /** For a visually exaggerated copy: the true route it was made from. */
+  base?: Route;
 }
 
 // Small seeded PRNG (mulberry32)
@@ -203,4 +205,39 @@ export function generateRoute(presetId: RoutePresetId, seed = 1): Route {
     },
   };
   return route;
+}
+
+/**
+ * A copy of the route with elevations scaled by `k` around the lowest point —
+ * used only for drawing (like Zwift, climbs and descents look steeper than they
+ * are). Physics, the trainer and the HUD keep using the true route.
+ */
+export function exaggerateRoute(route: Route, k: number): Route {
+  if (k === 1) return route;
+  const n = route.y.length;
+  let minY = Infinity;
+  for (const v of route.y) minY = Math.min(minY, v);
+  const y = new Float32Array(n);
+  const grade = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    y[i] = minY + (route.y[i] - minY) * k;
+    grade[i] = route.grade[i] * k;
+  }
+  const { length, step } = route;
+  return {
+    ...route,
+    y,
+    grade,
+    totalClimb: route.totalClimb * k,
+    base: route,
+    at(distance: number): RoutePoint {
+      const p = route.at(distance);
+      const d = ((distance % length) + length) % length;
+      const f = d / step;
+      const i = Math.floor(f) % n;
+      const j = (i + 1) % n;
+      const w = f - Math.floor(f);
+      return { ...p, y: y[i] + (y[j] - y[i]) * w, grade: grade[i] + (grade[j] - grade[i]) * w };
+    },
+  };
 }
