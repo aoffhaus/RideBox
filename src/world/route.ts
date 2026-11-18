@@ -1,6 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'flat' | 'rolling' | 'hilly' | 'mountain';
+export type RoutePresetId = 'flat' | 'rolling' | 'hilly' | 'mountain' | 'bigsur' | 'redwoods' | 'zion';
+
+/** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -10,6 +13,7 @@ export interface RoutePreset {
   maxGrade: number; // fraction
   harmonics: [number, number]; // elevation wave numbers per lap
   bendiness: number; // 0..1
+  theme?: ThemeId; // scenery theme (default 'countryside')
 }
 
 export const ROUTE_PRESETS: RoutePreset[] = [
@@ -17,6 +21,36 @@ export const ROUTE_PRESETS: RoutePreset[] = [
   { id: 'rolling', name: 'Rolling Farmland', description: 'Short punchy rollers', lengthKm: 20, maxGrade: 0.045, harmonics: [8, 30], bendiness: 0.45 },
   { id: 'hilly', name: 'Hill Country', description: 'Longer climbs and descents', lengthKm: 18, maxGrade: 0.07, harmonics: [3, 12], bendiness: 0.55 },
   { id: 'mountain', name: 'Alpine Pass', description: 'One big climb per lap', lengthKm: 26, maxGrade: 0.075, harmonics: [1, 4], bendiness: 0.7 },
+  {
+    id: 'bigsur',
+    name: 'Big Sur Coast',
+    description: 'Cliff-top coast road above the Pacific: golden headlands, sea stacks and steep pitches out of every cove',
+    lengthKm: 24,
+    maxGrade: 0.065,
+    harmonics: [3, 14],
+    bendiness: 0.65,
+    theme: 'bigsur',
+  },
+  {
+    id: 'redwoods',
+    name: 'Redwood Forest',
+    description: 'Gentle rollers through misty old-growth giants, ferns brushing the road',
+    lengthKm: 15,
+    maxGrade: 0.035,
+    harmonics: [5, 20],
+    bendiness: 0.6,
+    theme: 'redwoods',
+  },
+  {
+    id: 'zion',
+    name: 'Zion Canyon',
+    description: 'Red-road canyon floor beneath towering sandstone walls, with a couple of long steady climbs',
+    lengthKm: 20,
+    maxGrade: 0.06,
+    harmonics: [2, 8],
+    bendiness: 0.5,
+    theme: 'zion',
+  },
 ];
 
 export interface RoutePoint {
