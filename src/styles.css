@@ -152,7 +152,7 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .tile-unit { font-size: 13px; font-weight: 500; color: #9aa4b2; margin-left: 4px; }
 .tile-sub { font-size: 12px; color: #c9d1d9; min-height: 16px; }
 .panel { background: rgba(10, 13, 18, 0.78); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; }
-.hud-left { position: absolute; left: 12px; top: 140px; width: 290px; }
+.hud-left { position: absolute; left: 12px; top: 140px; width: 290px; max-height: calc(100vh - 140px - var(--chart-h, 110px) - 44px); overflow: hidden; }
 .panel-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .row-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #2a3240; font-weight: 600; }
@@ -172,9 +172,13 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   background: rgba(255, 122, 26, 0.92); color: #111; font-weight: 700; font-size: 20px;
   padding: 10px 22px; border-radius: 12px; max-width: 60vw; text-align: center;
 }
-.hud-controls { position: absolute; right: 12px; top: 314px; display: flex; flex-direction: column; gap: 4px; }
-.hud-controls button { background: rgba(10, 13, 18, 0.8); padding: 5px 12px; }
-.hud-bottom { position: absolute; left: 12px; right: 12px; bottom: 12px; background: rgba(10, 13, 18, 0.7); border-radius: 10px; padding: 6px; }
+/* right column: mini map, controls, road ahead stacked — bottom edge set inline to sit above the chart */
+.hud-right { position: absolute; top: 12px; right: 12px; width: 260px; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.hud-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.hud-controls button { background: rgba(10, 13, 18, 0.82); padding: 6px 8px; }
+.hud-controls .span2 { grid-column: span 2; }
+.hud-controls button.danger { background: #4a171a; }
+.hud-bottom { position: absolute; left: 12px; right: 12px; bottom: 12px; background: rgba(10, 13, 18, 0.7); border-radius: 10px; padding: 6px; pointer-events: none; }
 .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: grid; place-items: center; z-index: 20; }
 .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; min-width: 320px; }
 .keys td { padding: 3px 12px 3px 0; }
@@ -186,15 +190,13 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .hud-left { width: 240px; }
 }
 
-.hud-elev { position: absolute; right: 12px; bottom: 140px; width: 360px; }
-.hud-elev.no-chart { bottom: 12px; }
+.hud-elev { margin-top: auto; min-height: 0; }
 .elev { padding: 8px 10px 6px; }
 .elev svg { display: block; border-radius: 6px; background: rgba(0,0,0,0.25); }
 .elev-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; margin-bottom: 4px; letter-spacing: 0.04em; }
 .elev-head > span:first-child { color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* mini map */
-.hud-map { position: absolute; right: 12px; top: 12px; width: 260px; }
 .minimap { border-radius: 12px; overflow: hidden; background: rgba(10,13,18,0.78); border: 1px solid rgba(255,255,255,0.08); }
 .minimap canvas { display: block; }
 .mm-info { padding: 6px 10px 8px; font-size: 12px; }
@@ -218,4 +220,16 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .tile-value { font-size: 20px; }
   .hud-left { width: 230px; }
   .hud-top { left: 250px; }
+}
+
+/* short windows (typical laptop browser): keep everything clear of the chart */
+@media (max-height: 820px) {
+  .hud-left { top: 104px; }
+  .tile-sub { display: none; }
+  .elev svg { height: 60px; }
+  .cue { top: 104px; }
+}
+@media (max-height: 700px) {
+  .hud-elev { display: none; }
+  .iv-stats { display: none; }
 }

@@ -19,6 +19,7 @@ No trainer nearby? Click **Simulator** to try everything with a fake trainer and
 | Key | Action |
 | --- | --- |
 | Space | Pause / resume (it also auto-pauses when you stop pedaling) |
+| Esc | End ride (asks to confirm) |
 | 1 / 2 / 3 | Camera: chase (default, Zwift-style) / close chase / first person |
 | `+` / `−` or ↑ / ↓ | Workout intensity ±1% |
 | → | Skip to the next interval |

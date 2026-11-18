@@ -5,9 +5,7 @@ import { formatDuration, intervalFtpFraction, toWatts, zoneFor, type Interval } 
 import { distUnit, fmtDist } from './format';
 
 const W = 260;
-const H = 210;
 const CX = W / 2;
-const CY = H * 0.7; // rider sits low so you see more road ahead
 
 function ivColor(iv: Interval | undefined, ftp: number) {
   if (!iv) return '#ffffff';
@@ -21,7 +19,9 @@ function ivColor(iv: Interval | undefined, ftp: number) {
  * Marker positions are projected from your current speed — the same projection
  * the arches use, so the map and arches always agree.
  */
-export function MiniMap({ session, settings, snap }: { session: RideSession; settings: Settings; snap: Snapshot }) {
+export function MiniMap({ session, settings, snap, height = 210 }: { session: RideSession; settings: Settings; snap: Snapshot; height?: number }) {
+  const H = height;
+  const CY = H * 0.7; // rider sits low so you see more road ahead
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const route = session.route;
   const ftp = settings.ftp;
@@ -179,7 +179,7 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [session, route, outline, ftp]);
+  }, [session, route, outline, ftp, H, CY]);
 
   // ---- progress row under the map ----
   const st = snap.workout;
