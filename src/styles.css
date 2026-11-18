@@ -138,7 +138,12 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 /* ride HUD */
 .ride { position: fixed; inset: 0; overflow: hidden; background: #000; user-select: none; }
 .ride-view { position: absolute; inset: 0; }
-.hud-top { position: absolute; top: 12px; left: 310px; right: 284px; display: flex; gap: 8px; justify-content: center; }
+/* Wide screens: hero exactly top-centre, tiles split either side of it. */
+.hud-top { position: absolute; top: 12px; left: 0; right: 0; height: 0; }
+.tiles { display: flex; gap: 8px; }
+.tiles-l { position: absolute; top: 0; right: calc(50% + 180px); }
+.tiles-r { position: absolute; top: 0; left: calc(50% + 180px); }
+.hud-hero { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
 .hud-top .tile { flex: 0 1 auto; }
 .tile {
   background: rgba(10, 13, 18, 0.78); backdrop-filter: blur(6px);
@@ -153,6 +158,28 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .tile-sub { font-size: 12px; color: #c9d1d9; min-height: 16px; }
 .panel { background: rgba(10, 13, 18, 0.78); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; }
 .hud-left { position: absolute; left: 12px; top: 140px; width: 290px; }
+
+/* interval hero (top centre) */
+.hero {
+  width: 340px; flex: 0 0 auto;
+  background: rgba(10, 13, 18, 0.82); backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.1); border-top: 3px solid var(--iv, var(--accent));
+  border-radius: 14px; padding: 8px 16px 10px;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.35);
+}
+.hero-head { display: flex; justify-content: space-between; align-items: baseline; }
+.hero-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #9aa4b2; }
+.hero-index { font-size: 12px; color: #9aa4b2; font-variant-numeric: tabular-nums; }
+.hero-main { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.hero-time { font-size: 46px; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.hero-dist { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: #e6edf3; }
+.hero-dist small { font-size: 12px; color: #9aa4b2; font-weight: 500; }
+.hero-route { font-size: 24px; font-weight: 700; line-height: 1.2; margin: 2px 0 1px; }
+.hero-bar { height: 8px; background: rgba(255,255,255,0.12); border-radius: 4px; margin: 6px 0 6px; overflow: hidden; }
+.hero-bar > div { height: 100%; border-radius: 4px; transition: width 0.25s linear; }
+.hero-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: #c9d1d9; font-variant-numeric: tabular-nums; }
+.hero-next { display: flex; align-items: center; gap: 6px; }
+.hero-next-label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #9aa4b2; }
 .panel-title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .row-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #2a3240; font-weight: 600; }
@@ -168,7 +195,7 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .iv-next span { color: #9aa4b2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
 .iv-done { margin-top: 8px; color: var(--ok); font-weight: 600; }
 .cue {
-  position: absolute; top: 140px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: 150px; left: 50%; transform: translateX(-50%);
   background: rgba(255, 122, 26, 0.92); color: #111; font-weight: 700; font-size: 20px;
   padding: 10px 22px; border-radius: 12px; max-width: 60vw; text-align: center;
 }
@@ -194,16 +221,18 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .elev-head > span:first-child { color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* mini map */
-.hud-map { position: absolute; right: 12px; top: 12px; width: 260px; }
-.minimap { border-radius: 12px; overflow: hidden; background: rgba(10,13,18,0.78); border: 1px solid rgba(255,255,255,0.08); }
+.hud-map { position: absolute; right: 12px; top: 12px; width: 280px; }
+.minimap {
+  position: relative; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.12);
+}
 .minimap canvas { display: block; }
-.mm-info { padding: 6px 10px 8px; font-size: 12px; }
-.mm-row { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
-.mm-row b { font-size: 16px; font-variant-numeric: tabular-nums; }
-.mm-label { color: #9aa4b2; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
-.mm-bar { height: 6px; background: rgba(255,255,255,0.12); border-radius: 3px; margin: 5px 0 4px; overflow: hidden; }
-.mm-bar > div { height: 100%; border-radius: 3px; transition: width 0.25s linear; }
-.mm-next { color: #c9d1d9; display: flex; align-items: center; gap: 6px; }
+.mm-pill {
+  position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 5px;
+  background: rgba(16, 20, 26, 0.72); color: #fff; border-radius: 999px;
+  padding: 2px 9px 2px 7px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.mm-pill svg { color: #ffc04d; }
 .dotc { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 @media (max-width: 1750px) {
   .hud-top { gap: 5px; }
@@ -217,7 +246,14 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .tile-big .tile-value { font-size: 26px; }
   .tile-value { font-size: 20px; }
   .hud-left { width: 230px; }
-  .hud-top { left: 250px; }
+}
+/* Narrower screens: one row of tiles (clear of the minimap), hero centred below it. */
+@media (max-width: 1599px) {
+  .hud-top { left: 12px; right: 304px; height: auto; display: flex; justify-content: center; gap: 8px; }
+  .tiles-l, .tiles-r { position: static; }
+  .tiles { gap: 5px; }
+  .hud-hero { top: calc(100% + 8px); left: calc(50vw - 12px); }
+  .cue { top: 250px; }
 }
 
 /* in-ride settings popover (sits left of the controls; doesn't block the view) */

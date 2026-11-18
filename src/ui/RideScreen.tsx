@@ -10,6 +10,7 @@ import { SimulatedTrainer } from '../ble/simulated';
 import { ElevationProfile, gradeColor } from './ElevationProfile';
 import { MiniMap } from './MiniMap';
 import { RideSettings, type RideSettingsPatch } from './RideSettings';
+import { IntervalHero } from './IntervalHero';
 
 interface Props {
   session: RideSession;
@@ -130,7 +131,6 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const diff = target ? p3 - target : 0;
   const compliance = !target ? undefined : Math.abs(diff) <= target * 0.05 ? '#27ae60' : diff > 0 ? '#f2994a' : '#2f80ed';
   const ivColor = iv ? (iv.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(iv, ftp)).color) : '#9aa4b2';
-  const next = st?.next;
   const k = (st?.intensity ?? 100) / 100;
   const ivDesc = (x: typeof iv) =>
     !x
@@ -145,15 +145,21 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
     <div className="ride">
       <div ref={viewRef} className="ride-view" />
 
-      {/* Top tiles */}
+      {/* Top: metric tiles either side of the interval hero */}
       <div className="hud-top">
-        <Tile big label="POWER 3s" value={r0(p3)} unit="W" color={compliance} sub={target != null ? <>target <b>{target}</b> W</> : snap.mode === 'sim' ? `SIM ${(snap.grade * 100).toFixed(1)}%` : ''} />
-        <Tile big label="HEART RATE" value={r0(snap.hr)} unit="bpm" color={hrZoneColor(snap.hr, settings.maxHr)} sub={snap.hr ? `${Math.round((snap.hr / settings.maxHr) * 100)}% max` : 'no HRM'} />
-        <Tile big label="CADENCE" value={r0(snap.cadence)} unit="rpm" sub={iv?.cadence ? `target ${iv.cadence}` : ''} />
-        {iv && <Tile big label="INTERVAL" value={formatDuration(Math.ceil(st!.remaining))} color={ivColor} sub={`${st!.index + 1} / ${engine!.intervals.length}`} />}
-        <Tile label="ELAPSED" value={formatDuration(snap.elapsed)} sub={st && !st.finished ? `${formatDuration(st.totalRemaining)} left` : ''} />
-        <Tile label="SPEED" value={fmtSpeed(snap.speed, settings)} unit={speedUnit(settings)} sub={`${fmtDist(snap.distance, settings)} ${distUnit(settings)}`} />
-        <Tile label="GRADE" value={(snap.grade * 100).toFixed(1)} unit="%" color={gradeColor(snap.grade)} sub={`${fmtElev(snap.altitude, settings)} ${elevUnit(settings)}`} />
+        <div className="tiles tiles-l">
+          <Tile big label="POWER 3s" value={r0(p3)} unit="W" color={compliance} sub={target != null ? <>target <b>{target}</b> W</> : snap.mode === 'sim' ? `SIM ${(snap.grade * 100).toFixed(1)}%` : ''} />
+          <Tile big label="HEART RATE" value={r0(snap.hr)} unit="bpm" color={hrZoneColor(snap.hr, settings.maxHr)} sub={snap.hr ? `${Math.round((snap.hr / settings.maxHr) * 100)}% max` : 'no HRM'} />
+          <Tile big label="CADENCE" value={r0(snap.cadence)} unit="rpm" sub={iv?.cadence ? `target ${iv.cadence}` : ''} />
+        </div>
+        <div className="hud-hero">
+          <IntervalHero session={session} settings={settings} snap={snap} />
+        </div>
+        <div className="tiles tiles-r">
+          <Tile label="ELAPSED" value={formatDuration(snap.elapsed)} sub={st && !st.finished ? `${formatDuration(st.totalRemaining)} left` : ''} />
+          <Tile label="SPEED" value={fmtSpeed(snap.speed, settings)} unit={speedUnit(settings)} sub={`${fmtDist(snap.distance, settings)} ${distUnit(settings)}`} />
+          <Tile label="GRADE" value={(snap.grade * 100).toFixed(1)} unit="%" color={gradeColor(snap.grade)} sub={`${fmtElev(snap.altitude, settings)} ${elevUnit(settings)}`} />
+        </div>
       </div>
 
       {/* Left: workout info */}
@@ -179,11 +185,6 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
               <tr><td>Avg cadence</td><td>{r0(snap.intervalStats.avgCadence)} rpm</td></tr>
             </tbody>
           </table>
-        )}
-        {next && (
-          <div className="iv-next">
-            <span>Next</span> <b>{formatDuration(next.duration)}</b> {ivDesc(next)}
-          </div>
         )}
         {st?.finished && <div className="iv-done">Workout complete 🎉 Keep riding to cool down, or End ride.</div>}
       </div>
