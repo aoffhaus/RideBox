@@ -6,7 +6,7 @@ vi.mock('../src/storage/db', () => ({
   setFlag: async (k: string, v: unknown) => void kv.set(k, v),
 }));
 
-import { updateActivity, authorizeUrl, completeOAuth, interpretUpload, loadStrava, parseOAuthReturn, redirectUri, uploadFit, DEFAULT_STRAVA } from '../src/strava/strava';
+import { updateActivity, authorizeUrl, canReadActivities, completeOAuth, interpretUpload, loadStrava, parseOAuthReturn, redirectUri, uploadFit, DEFAULT_STRAVA } from '../src/strava/strava';
 
 afterEach(() => {
   kv.clear();
@@ -20,9 +20,16 @@ describe('strava oauth', () => {
     expect(u.origin + u.pathname).toBe('https://www.strava.com/oauth/authorize');
     expect(u.searchParams.get('client_id')).toBe('12345');
     expect(u.searchParams.get('redirect_uri')).toBe('https://me.github.io/RideBox/');
-    expect(u.searchParams.get('scope')).toBe('activity:write');
+    expect(u.searchParams.get('scope')).toBe('activity:write,activity:read_all');
     expect(u.searchParams.get('response_type')).toBe('code');
     expect(u.searchParams.get('state')).toBe('ridebox-strava');
+  });
+
+  it('knows whether the connection may read activities', () => {
+    const c = { clientId: '1', clientSecret: 's', refreshToken: 'r' };
+    expect(canReadActivities({ ...c, scope: 'read,activity:write' })).toBe(false);
+    expect(canReadActivities({ ...c, scope: 'read,activity:write,activity:read_all' })).toBe(true);
+    expect(canReadActivities({ clientId: '1', clientSecret: 's', scope: 'activity:read_all' })).toBe(false); // not connected
   });
 
   it('strips query and hash from the redirect URI', () => {
