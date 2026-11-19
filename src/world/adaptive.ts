@@ -1,23 +1,40 @@
-// Adaptive render quality: watches the real frame rate and trades resolution (and,
-// as a last resort, ambient occlusion) for smoothness. It steps down quickly when the
-// GPU can't keep up and only tries stepping back up after a long run of smooth frames,
-// backing off for a while if that step up made it choppy again.
+// Adaptive render quality: watches the real frame rate and trades detail for smoothness.
+// It first gives up the cheap-to-lose extras (ambient-occlusion quality, shadow-map
+// resolution), then resolution, then ambient occlusion and bloom resolution as a last
+// resort. It steps down quickly when the GPU can't keep up and only tries stepping back
+// up after a long run of smooth frames, backing off for a while if that made it choppy.
 
 export interface QualityLevel {
   /** renderer pixel ratio (1 = one rendered pixel per CSS pixel) */
   pixelRatio: number;
   /** ambient occlusion pass on (high graphics only) */
   ao: boolean;
+  /** fewer ambient-occlusion samples */
+  aoLite: boolean;
+  /** sun shadow map size in texels (square) */
+  shadowMap: number;
+  /** bloom buffer size relative to normal (1 = default, 0.5 = half) */
+  bloomScale: number;
 }
 
 /** The ladder of levels to walk, best first, for a graphics setting and display. */
 export function qualityLevels(graphics: 'high' | 'low', devicePixelRatio: number): QualityLevel[] {
   const top = graphics === 'high' ? Math.min(devicePixelRatio, 2) : 1;
   const ratios = [2, 1.75, 1.5, 1.25, 1].filter((r) => r < top - 1e-3);
-  const withAo = graphics === 'high';
-  const levels: QualityLevel[] = [top, ...ratios].map((pixelRatio) => ({ pixelRatio, ao: withAo }));
-  if (withAo) levels.push({ pixelRatio: 1, ao: false });
-  levels.push({ pixelRatio: 0.75, ao: false });
+  if (graphics === 'low') {
+    // no post chain and no shadows: resolution is the only knob
+    return [top, 0.75].map((pixelRatio) => ({ pixelRatio, ao: false, aoLite: false, shadowMap: 1024, bloomScale: 1 }));
+  }
+  const full: QualityLevel = { pixelRatio: top, ao: true, aoLite: false, shadowMap: 1536, bloomScale: 1 };
+  const levels: QualityLevel[] = [
+    full,
+    { ...full, aoLite: true, shadowMap: 1024 },
+    { ...full, aoLite: true, shadowMap: 768 },
+  ];
+  const lean = levels[levels.length - 1];
+  for (const pixelRatio of ratios) levels.push({ ...lean, pixelRatio });
+  levels.push({ ...lean, pixelRatio: 1, ao: false });
+  levels.push({ ...lean, pixelRatio: 0.75, ao: false, bloomScale: 0.5 });
   return levels;
 }
 

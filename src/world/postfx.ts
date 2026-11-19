@@ -147,9 +147,20 @@ class SceneAOPass extends GTAOPass {
   }
 }
 
+/** Unreal bloom whose buffers can be shrunk further when the frame rate needs it. */
+class ScaledBloomPass extends UnrealBloomPass {
+  scale = 1;
+  setSize(width: number, height: number) {
+    super.setSize(Math.max(2, Math.round(width * this.scale)), Math.max(2, Math.round(height * this.scale)));
+  }
+}
+
+const AO_FULL = { samples: 12, pd: 8 };
+const AO_LITE = { samples: 8, pd: 6 };
+
 export class PostFX {
   readonly composer: EffectComposer;
-  readonly bloom: UnrealBloomPass;
+  readonly bloom: ScaledBloomPass;
   readonly ao: SceneAOPass;
   readonly effort: ShaderPass;
   private baseBloom: number;
@@ -166,13 +177,13 @@ export class PostFX {
     this.ao = new SceneAOPass(scene, camera, size.x, size.y);
     // Radius in metres: big enough to darken tree bases, creases in rock and the ground
     // under the bike, small enough that distant hills don't pick up halos.
-    this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 2.5, scale: 1.0, samples: 12, distanceFallOff: 1.0 });
+    this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 2.5, scale: 1.0, samples: AO_FULL.samples, distanceFallOff: 1.0 });
     // denoise radius is in AO-buffer pixels: 3 at half resolution covers what 6 did at full
-    this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 3, rings: 2, samples: 8 });
+    this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 3, rings: 2, samples: AO_FULL.pd });
     this.ao.blendIntensity = 0.85;
     this.composer.addPass(this.ao);
 
-    this.bloom = new UnrealBloomPass(size, bloom.strength, bloom.radius, bloom.threshold);
+    this.bloom = new ScaledBloomPass(size, bloom.strength, bloom.radius, bloom.threshold);
     this.composer.addPass(this.bloom);
     this.baseBloom = bloom.strength;
     this.effort = new ShaderPass(EffortShader);
@@ -180,6 +191,22 @@ export class PostFX {
     this.effort.uniforms.fxSurge = fxSurge;
     this.composer.addPass(this.effort);
     this.composer.addPass(new OutputPass());
+  }
+
+  private aoLite = false;
+  /**
+   * Adaptive-quality knobs. AO sample counts are shader defines, so only the two small AO
+   * shaders recompile when they change; the bloom size applies on the next setSize.
+   */
+  setQuality(q: { ao: boolean; aoLite: boolean; bloomScale: number }) {
+    this.ao.enabled = q.ao;
+    if (q.aoLite !== this.aoLite) {
+      this.aoLite = q.aoLite;
+      const s = q.aoLite ? AO_LITE : AO_FULL;
+      this.ao.updateGtaoMaterial({ samples: s.samples });
+      this.ao.updatePdMaterial({ samples: s.pd });
+    }
+    this.bloom.scale = q.bloomScale;
   }
 
   /** Objects were added to or removed from the scene (refreshes what the AO pass ignores). */

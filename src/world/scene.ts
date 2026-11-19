@@ -16,6 +16,9 @@ import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
 const ROAD_HALF = 4.5;
+/** Half-size (m) of the sun's shadow box, and how far up the road from the rider it is centred. */
+const SHADOW_HALF = 32;
+const SHADOW_AHEAD = 22;
 const SKY_TOP = new THREE.Color('#3f86d6');
 const SKY_HORIZON = new THREE.Color('#cfe5f5');
 const HAZE = new THREE.Color('#b9d3e6');
@@ -792,13 +795,16 @@ export class WorldView {
     this.scene.add(new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiIntensity));
     this.sun = new THREE.DirectionalLight(theme.sunColor, theme.sunIntensity);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    // The shadow box is centred SHADOW_AHEAD metres up the road (see loop): the camera looks
+    // forward, so a box centred on the rider spent almost half its texels behind the lens.
+    const sm = this.adaptive.level.shadowMap;
+    this.sun.shadow.mapSize.set(sm, sm);
     this.sun.shadow.bias = -0.0005;
     const sc = this.sun.shadow.camera;
-    sc.left = -45;
-    sc.right = 45;
-    sc.top = 45;
-    sc.bottom = -45;
+    sc.left = -SHADOW_HALF;
+    sc.right = SHADOW_HALF;
+    sc.top = SHADOW_HALF;
+    sc.bottom = -SHADOW_HALF;
     sc.far = 400;
     this.scene.add(this.sun, this.sun.target);
 
@@ -902,7 +908,13 @@ export class WorldView {
     this.renderer.setPixelRatio(l.pixelRatio);
     if (this.post) {
       this.post.composer.setPixelRatio(l.pixelRatio);
-      this.post.ao.enabled = l.ao;
+      this.post.setQuality(l);
+    }
+    if (this.sun.shadow.mapSize.x !== l.shadowMap) {
+      this.sun.shadow.mapSize.set(l.shadowMap, l.shadowMap);
+      // drop the old map; the renderer allocates one at the new size next frame
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
     }
     this.resize();
   }
@@ -987,7 +999,7 @@ export class WorldView {
     if (trace) trace.push(d, now);
 
     // --- rider
-    const p = this.place(this.rider.group, d, 1.7);
+    this.place(this.rider.group, d, 1.7);
     if (this.lampRig) {
       this.lampRig.position.copy(this.rider.group.position);
       this.lampRig.rotation.copy(this.rider.group.rotation);
@@ -1034,8 +1046,10 @@ export class WorldView {
     }
 
     this.sky.position.copy(this.camera.position);
-    this.sun.position.set(p.x, p.y, p.z).addScaledVector(this.sunDir, 170);
-    this.sun.target.position.set(p.x, p.y, p.z);
+    // shadow box centred up the road, where the camera is looking
+    const ahead = route.at(d + SHADOW_AHEAD);
+    this.sun.target.position.set(ahead.x, ahead.y, ahead.z);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 170);
 
     // --- arches: placed from the smoothed rider distance and the workout clock run
     // forward to this frame (it only ticks at 10 Hz), so they hold still in the world
