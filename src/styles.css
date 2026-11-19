@@ -210,9 +210,28 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .badge-erg { background: #1f6feb; }
 .badge-sim { background: #2d7d46; }
 .badge-warn { background: #8a5a00; }
-.iv-now { border-left: 5px solid; padding: 4px 10px; margin-bottom: 8px; }
-.iv-label { font-weight: 600; font-size: 15px; }
-.iv-target { color: #c9d1d9; }
+/* workout interval list (left panel) */
+.ivl { margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.ivl-head { display: flex; justify-content: space-between; font-size: 11px; color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.ivl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ivl-row {
+  position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
+  padding: 3px 6px 3px 4px; border-left: 3px solid transparent; border-radius: 4px; font-size: 12px; overflow: hidden;
+}
+.ivl-row > span { position: relative; }
+.ivl-mark { display: grid; place-items: center; font-size: 10px; }
+.ivl-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ivl-dur { color: #c9d1d9; }
+.ivl-w { min-width: 48px; text-align: right; font-weight: 600; }
+.ivl-w small { font-weight: 400; color: #8a93a0; }
+.ivl-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.ivl-done { opacity: 0.5; }
+.ivl-done .ivl-mark { color: var(--ok, #4ade80); font-size: 12px; }
+.ivl-now { background: rgba(255, 255, 255, 0.1); font-size: 13px; padding-top: 5px; padding-bottom: 5px; }
+.ivl-now .ivl-name { font-weight: 700; }
+.ivl-now .ivl-dur { color: #fff; font-weight: 700; }
+.ivl-prog { position: absolute; left: 0; top: 0; bottom: 0; opacity: 0.22; transition: width 0.25s linear; }
+.ivl-more { font-size: 11px; color: #6e7681; padding: 1px 0 1px 23px; }
 .iv-stats { width: 100%; font-variant-numeric: tabular-nums; }
 .iv-stats td:last-child { text-align: right; font-weight: 600; }
 .iv-next { margin-top: 8px; color: #c9d1d9; }
@@ -282,6 +301,7 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 /* short windows (typical laptop browser): keep everything clear of the chart */
 @media (max-height: 820px) {
   .elev svg { height: 60px; }
+  .ivl-far { display: none; }
 }
 @media (max-height: 700px) {
   .hud-elev { display: none; }

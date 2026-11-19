@@ -12,7 +12,7 @@ function forDuration(sec: number) {
   return formatDuration(sec);
 }
 
-function targetText(iv: Interval, ftp: number, k: number) {
+export function targetText(iv: Interval, ftp: number, k: number) {
   if (iv.free) return null;
   const a = Math.round(toWatts(iv.powerStart, iv.unit, ftp) * k);
   const b = Math.round(toWatts(iv.powerEnd, iv.unit, ftp) * k);

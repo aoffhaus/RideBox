@@ -3,7 +3,6 @@ import type { RideSession, Snapshot } from '../app/session';
 import { WorldView } from '../world/scene';
 import type { CameraMode } from '../world/camera';
 import { WorkoutChart } from './WorkoutChart';
-import { intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 import type { Settings } from '../storage/db';
 import { r0 } from './format';
 import { SimulatedTrainer } from '../ble/simulated';
@@ -11,6 +10,7 @@ import { ElevationProfile } from './ElevationProfile';
 import { MiniMap } from './MiniMap';
 import { RideSettings, type RideSettingsPatch } from './RideSettings';
 import { RideHud } from './RideHud';
+import { IntervalList } from './IntervalList';
 
 interface Props {
   session: RideSession;
@@ -147,17 +147,6 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   }, [session]);
 
   const st = snap.workout;
-  const iv = st?.interval;
-  const ivColor = iv ? (iv.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(iv, ftp)).color) : '#9aa4b2';
-  const k = (st?.intensity ?? 100) / 100;
-  const ivDesc = (x: typeof iv) =>
-    !x
-      ? ''
-      : x.free
-        ? 'Free ride'
-        : x.powerStart === x.powerEnd
-          ? `${Math.round(toWatts(x.powerStart, x.unit, ftp) * k)} W`
-          : `${Math.round(toWatts(x.powerStart, x.unit, ftp) * k)}→${Math.round(toWatts(x.powerEnd, x.unit, ftp) * k)} W`;
 
   return (
     <div className="ride" style={{ ['--chart-h' as string]: `${engine ? chartH : -24}px` }}>
@@ -177,12 +166,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
           {snap.paused && <span className="badge badge-warn">{snap.autoPaused ? 'Paused, pedal to resume' : 'Paused'}</span>}
           {!snap.started && <span className="badge badge-warn">Start pedaling to begin</span>}
         </div>
-        {iv && (
-          <div className="iv-now" style={{ borderColor: ivColor }}>
-            <div className="iv-label">{iv.label ?? (iv.free ? 'Free ride' : zoneFor(intervalFtpFraction(iv, ftp)).name)}</div>
-            <div className="iv-target">{ivDesc(iv)}{!iv.free && ` · ${Math.round(intervalFtpFraction(iv, ftp) * 100 * k)}% FTP`}</div>
-          </div>
-        )}
+        <IntervalList session={session} snap={snap} ftp={ftp} />
         {snap.intervalStats && (
           <table className="iv-stats">
             <tbody>
