@@ -9,7 +9,7 @@ import { getFlag, setFlag } from '../storage/db';
 const AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize';
 const TOKEN_URL = 'https://www.strava.com/oauth/token';
 const DEAUTH_URL = 'https://www.strava.com/oauth/deauthorize';
-const API = 'https://www.strava.com/api/v3';
+export const API = 'https://www.strava.com/api/v3';
 const KV_KEY = 'strava';
 /** marks our own OAuth redirect so we don't react to unrelated ?code= params */
 export const OAUTH_STATE = 'ridebox-strava';
@@ -22,6 +22,8 @@ export interface StravaConfig {
   /** seconds since epoch */
   expiresAt?: number;
   athleteName?: string;
+  /** scopes the rider granted, e.g. "read,activity:write,activity:read_all" */
+  scope?: string;
 }
 
 export interface StravaUploadState {
@@ -46,6 +48,8 @@ export async function saveStrava(c: StravaConfig) {
 }
 
 export const isConnected = (c: StravaConfig) => !!(c.refreshToken && c.clientId && c.clientSecret);
+/** Connected with permission to read activities (older connections only had upload permission). */
+export const canReadActivities = (c: StravaConfig) => isConnected(c) && /activity:read(_all)?/.test(c.scope ?? '');
 
 /** The page URL without query/hash: Strava sends the rider back here. */
 export function redirectUri(loc: { origin: string; pathname: string } = location) {
@@ -58,7 +62,8 @@ export function authorizeUrl(clientId: string, redirect = redirectUri()) {
     redirect_uri: redirect,
     response_type: 'code',
     approval_prompt: 'auto',
-    scope: 'activity:write',
+    // read_all: import activities (outdoor rides count toward training load)
+    scope: 'activity:write,activity:read_all',
     state: OAUTH_STATE,
   });
   return `${AUTHORIZE_URL}?${q}`;
@@ -108,13 +113,14 @@ export async function completeOAuth(c: StravaConfig, ret: { code: string; scope:
     refreshToken: t.refresh_token,
     expiresAt: t.expires_at,
     athleteName: [t.athlete?.firstname, t.athlete?.lastname].filter(Boolean).join(' ') || undefined,
+    scope: ret.scope,
   };
   await saveStrava(next);
   return next;
 }
 
 /** Returns a valid access token, refreshing (and persisting) it when it is about to expire. */
-async function accessToken(): Promise<string> {
+export async function accessToken(): Promise<string> {
   const c = await loadStrava();
   if (!isConnected(c)) throw new Error('Strava isn’t connected. Connect it in Settings.');
   if (c.accessToken && c.expiresAt && c.expiresAt - 120 > Date.now() / 1000) return c.accessToken;
@@ -140,7 +146,7 @@ export async function disconnect(): Promise<StravaConfig> {
 }
 
 /** Strava error bodies look like {message, errors:[{resource, field, code}]}. */
-function describeError(json: any): string {
+export function describeError(json: any): string {
   if (!json || typeof json !== 'object') return 'unknown error';
   const parts = [json.message, ...(Array.isArray(json.errors) ? json.errors.map((e: any) => [e.resource, e.field, e.code].filter(Boolean).join(' ')) : [])];
   return parts.filter(Boolean).join(': ') || 'unknown error';

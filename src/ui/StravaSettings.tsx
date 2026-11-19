@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authorizeUrl, disconnect, isConnected, redirectUri, saveStrava, type StravaConfig } from '../strava/strava';
+import { authorizeUrl, canReadActivities, disconnect, isConnected, redirectUri, saveStrava, type StravaConfig } from '../strava/strava';
 
 /** Settings → Strava: API app credentials, connect / disconnect, auto-upload. */
 export function StravaSettings({ config, onChange }: { config: StravaConfig; onChange: (c: StravaConfig) => void }) {
@@ -34,11 +34,20 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
             Nothing uploads automatically. After a ride, choose <b>Upload to Strava</b> on its summary (or <b>Strava…</b> in History). Rides upload as
             virtual rides with one lap per interval, and a ride that&apos;s already on Strava is linked instead of duplicated.
           </p>
+          {canReadActivities(config) ? (
+            <p className="muted small">Your Strava activities are imported on the Fitness tab, so outdoor rides count toward fitness and the coach sees them.</p>
+          ) : (
+            <p className="small">
+              <b>Reconnect to import activities:</b> this connection can only upload. Click <b>Reconnect</b> and allow “View data about your private
+              activities” so outdoor rides count toward fitness and training plans.{' '}
+              <button onClick={() => (location.href = authorizeUrl(config.clientId))}>Reconnect</button>
+            </p>
+          )}
         </div>
       ) : (
         <>
           <p className="muted">
-            RideBox has no server, so you connect Strava through your own (free) Strava API app. It takes a minute, once:
+            Connect Strava through your own (free) Strava API app. It takes a minute, once:
           </p>
           <ol className="steps">
             <li>
@@ -67,8 +76,8 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
             Connect Strava
           </button>
           <p className="muted small">
-            Strava will ask you to allow uploads, then send you back to <code>{redirectUri()}</code>. The secret and sign-in tokens are stored only in this
-            browser. Only this app (and you) can use them.
+            Strava will ask you to allow uploads and reading your activities, then send you back to <code>{redirectUri()}</code>. The secret and sign-in
+            tokens stay in your browser and your private, sign-in-protected RideBox database.
           </p>
         </>
       )}

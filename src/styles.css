@@ -66,7 +66,7 @@ textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 
   position: sticky; top: 0; z-index: 5; flex-wrap: wrap;
 }
 .brand { font-weight: 700; font-size: 17px; }
-nav { display: flex; gap: 4px; }
+nav { display: flex; gap: 4px; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 nav button { background: transparent; border-color: transparent; }
 nav button.active { background: var(--panel-2); border-color: var(--border); }
 .devices { margin-left: auto; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
@@ -328,3 +328,26 @@ button.garmin:hover:not(:disabled) { background: #11609e; }
 .sync-synced { color: #6fcf97; }
 .sync-syncing { color: #9ab; }
 .sync-offline, .sync-error { color: #f2c94c; }
+
+/* ---------- fitness / charts ---------- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 12px 0; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.tile-label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.tile-value { font-size: 28px; font-weight: 650; margin: 2px 0; font-variant-numeric: tabular-nums; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; }
+.chart-wrap { position: relative; width: 100%; overflow: hidden; }
+.chart-wrap svg { display: block; }
+.chart-wrap .grid { stroke: rgba(255,255,255,0.06); stroke-width: 1; }
+.chart-wrap .axis-zero { stroke: rgba(255,255,255,0.25); stroke-width: 1; }
+.chart-wrap .tick { fill: var(--muted); font-size: 11px; }
+.chart-wrap .end-label { fill: var(--text); font-size: 12px; }
+.chart-wrap .crosshair { stroke: rgba(255,255,255,0.35); stroke-width: 1; }
+.chart-wrap .future-band { fill: rgba(255,255,255,0.03); }
+.chart-tip { position: absolute; pointer-events: none; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.5; min-width: 140px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 12px; margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 4px 10px; font-size: 12px; }
+.seg button.active { background: var(--accent); color: #111; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline; cursor: pointer; font-size: inherit; }
+.table-scroll { max-height: 280px; overflow: auto; margin-top: 8px; }

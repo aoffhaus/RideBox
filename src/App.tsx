@@ -4,7 +4,7 @@ import { bluetoothAvailable, pairHeartRate, pairTrainer } from './ble/bluetooth'
 import { SimulatedHrm, SimulatedTrainer } from './ble/simulated';
 import { RideSession } from './app/session';
 import type { RideRecord } from './app/recorder';
-import { DEFAULT_SETTINGS, deleteRide, getFlag, listRides, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
+import { DEFAULT_SETTINGS, deleteRide, getFlag, listAll, listRides, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
 import { BUILTIN_WORKOUTS } from './workout/builtin';
 import { flatten, formatDuration, plannedStats } from './workout/model';
 import { ROUTE_PRESETS, generateRoute, type Route, type RoutePresetId } from './world/route';
@@ -17,9 +17,12 @@ import { History } from './ui/History';
 import { SettingsPage } from './ui/SettingsPage';
 import { WorkoutChart } from './ui/WorkoutChart';
 import { distUnit, elevUnit, fmtDist, fmtElev } from './ui/format';
-import { DEFAULT_STRAVA, completeOAuth, isConnected, loadStrava, parseOAuthReturn, type StravaConfig } from './strava/strava';
+import { DEFAULT_STRAVA, canReadActivities, completeOAuth, isConnected, loadStrava, parseOAuthReturn, type StravaConfig } from './strava/strava';
 import { renameRide, uploadRide } from './strava/uploadRide';
 import { sync, type SyncStatus } from './storage/sync';
+import { importStravaActivities } from './strava/activities';
+import type { PlannedWorkout, StravaActivity } from './training/model';
+import { Fitness } from './ui/Fitness';
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
 let pendingOAuth = parseOAuthReturn(location.search);
@@ -27,7 +30,8 @@ if (pendingOAuth) history.replaceState(null, '', location.pathname);
 
 const SYNC_LABEL: Record<SyncStatus, string> = { off: '', syncing: '⟳ Syncing', synced: '✓ Synced', offline: '⚠ Offline', error: '⚠ Sync error' };
 
-type Tab = 'ride' | 'workouts' | 'history' | 'settings';
+type Tab = 'ride' | 'workouts' | 'fitness' | 'history' | 'settings';
+const TABS: Tab[] = ['ride', 'workouts', 'fitness', 'history', 'settings'];
 
 function StatusDot({ s }: { s: ConnState }) {
   return <span className={`dot dot-${s}`} title={s} />;
@@ -58,6 +62,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>('ride');
   const [workouts, setWorkouts] = useState<StoredWorkout[]>([]);
   const [rides, setRides] = useState<RideRecord[]>([]);
+  const [acts, setActs] = useState<StravaActivity[]>([]);
+  const [calendar, setCalendar] = useState<PlannedWorkout[]>([]);
   const [trainer, setTrainer] = useState<Trainer | null>(null);
   const [trainerState, setTrainerState] = useState<ConnState>('disconnected');
   const [hrm, setHrm] = useState<HeartRateMonitor | null>(null);
@@ -78,6 +84,8 @@ export function App() {
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
     setRides(await listRides());
+    setActs(await listAll<StravaActivity>('strava_acts'));
+    setCalendar(await listAll<PlannedWorkout>('calendar'));
   }, []);
 
   useEffect(() => sync.onStatus(setSyncStatus), []);
@@ -119,6 +127,12 @@ export function App() {
         await setFlag('seeded-v1', true);
       }
       await refresh();
+      // pick up new Strava activities in the background
+      if (canReadActivities(sc)) {
+        importStravaActivities()
+          .then((n) => (n ? refresh() : undefined))
+          .catch((e) => console.warn('Strava import', e));
+      }
     })();
   }, [refresh]);
 
@@ -250,7 +264,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">🚴 RideBox</div>
         <nav>
-          {(['ride', 'workouts', 'history', 'settings'] as Tab[]).map((t) => (
+          {TABS.map((t) => (
             <button
               key={t}
               className={tab === t && !summary && editing === undefined ? 'active' : ''}
@@ -410,6 +424,8 @@ export function App() {
             setTab('ride');
           }}
         />
+      ) : tab === 'fitness' ? (
+        <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} strava={strava} onSettingsChange={updateSettings} onImported={refresh} />
       ) : tab === 'history' ? (
         <History rides={rides} settings={settings} stravaConnected={isConnected(strava)} onOpen={setSummary} onChange={refresh} />
       ) : (
