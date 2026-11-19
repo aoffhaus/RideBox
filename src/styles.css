@@ -351,3 +351,57 @@ button.garmin:hover:not(:disabled) { background: #11609e; }
 .seg button.active { background: var(--accent); color: #111; }
 button.link { background: none; border: 0; padding: 0; color: var(--accent-2); text-decoration: underline; cursor: pointer; font-size: inherit; }
 .table-scroll { max-height: 280px; overflow: auto; margin-top: 8px; }
+
+/* ---------- calendar ---------- */
+.page.wide { max-width: 1400px; }
+.cal-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 10px; }
+.cal-title { margin: 0 0 0 8px; font-size: 20px; }
+.cal { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--panel); }
+.cal-head, .cal-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) 128px; }
+.cal-head > div { padding: 6px 8px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.cal-row + .cal-row { border-top: 1px solid var(--border); }
+.cal-day { position: relative; min-height: 112px; padding: 4px 6px 6px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-view-week .cal-day { min-height: 220px; }
+.cal-day.out { background: rgba(0,0,0,0.18); }
+.cal-day.out .cal-date { opacity: 0.45; }
+.cal-day.today { background: rgba(255,122,26,0.07); }
+.cal-day.today .cal-date { color: var(--accent-2); font-weight: 700; }
+.cal-day.over { outline: 2px dashed var(--accent); outline-offset: -3px; }
+.cal-day.pickable { cursor: copy; }
+.cal-day.pickable:hover { background: rgba(255,122,26,0.12); }
+.cal-phase { position: absolute; left: 0; right: 0; top: 0; height: 3px; opacity: 0.85; }
+.cal-date { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.cal-dow { display: none; color: var(--muted); }
+.cal-add { margin-left: auto; padding: 0 7px; font-size: 14px; line-height: 20px; opacity: 0; background: transparent; border-color: transparent; }
+.cal-day:hover .cal-add, .cal-add:focus { opacity: 1; }
+.cal-card { background: var(--panel-2); border: 1px solid var(--border); border-left: 4px solid #5c6b80; border-radius: 6px; padding: 4px 6px; cursor: grab; font-size: 12px; min-width: 0; }
+.cal-card:hover, .cal-card:focus { border-color: #4a5566; outline: none; }
+.cal-card-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-card-meta { color: var(--muted); font-size: 11px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cal-card.status-done { background: #14271c; border-color: #24563a; }
+.cal-card.status-missed { background: #2a1517; border-color: #5a2328; }
+.cal-card.status-missed .cal-card-name { color: #ffb3b0; }
+.cal-card.status-skipped { opacity: 0.55; }
+.cal-card.activity { border-left-color: #6b7686; background: transparent; border-style: dashed; cursor: pointer; }
+.tag { font-size: 10px; padding: 0 5px; border-radius: 6px; background: rgba(155,138,251,0.2); color: #c9c0ff; }
+.cal-week { padding: 8px; font-size: 12px; display: flex; flex-direction: column; gap: 1px; background: rgba(0,0,0,0.12); }
+.cal-week-phase { font-weight: 700; }
+kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel-2); }
+@media (max-width: 760px) {
+  .cal-head { display: none; }
+  .cal-row { grid-template-columns: 1fr; }
+  .cal-day { min-height: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .cal-view-month .cal-day.out { display: none; }
+  .cal-view-week .cal-day { min-height: 0; }
+  .cal-dow { display: inline; }
+  .cal-add { opacity: 1; }
+}
+
+/* ---------- modal ---------- */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; width: min(640px, 100%); max-height: 90vh; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.modal h3 { margin: 0; }
+.modal textarea { font-family: inherit; font-size: 13px; }
+.picker-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow: auto; }
+.picker-item { text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 4px; }
+.nowrap { white-space: nowrap; }

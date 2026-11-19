@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConnState, HeartRateMonitor, Trainer } from './ble/types';
 import { bluetoothAvailable, pairHeartRate, pairTrainer } from './ble/bluetooth';
 import { SimulatedHrm, SimulatedTrainer } from './ble/simulated';
 import { RideSession } from './app/session';
 import type { RideRecord } from './app/recorder';
-import { DEFAULT_SETTINGS, deleteRide, getFlag, listAll, listRides, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
+import { DEFAULT_SETTINGS, deleteOne, deleteRide, getFlag, listAll, listRides, putOne, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
 import { BUILTIN_WORKOUTS } from './workout/builtin';
 import { flatten, formatDuration, plannedStats } from './workout/model';
 import { ROUTE_PRESETS, generateRoute, type Route, type RoutePresetId } from './world/route';
@@ -21,7 +21,10 @@ import { DEFAULT_STRAVA, canReadActivities, completeOAuth, isConnected, loadStra
 import { renameRide, uploadRide } from './strava/uploadRide';
 import { sync, type SyncStatus } from './storage/sync';
 import { importStravaActivities } from './strava/activities';
-import type { PlannedWorkout, StravaActivity } from './training/model';
+import type { PlannedWorkout, StravaActivity, TrainingPlan } from './training/model';
+import { reconcile } from './training/calendar';
+import { today } from './training/load';
+import { Calendar } from './ui/Calendar';
 import { Fitness } from './ui/Fitness';
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
@@ -30,8 +33,8 @@ if (pendingOAuth) history.replaceState(null, '', location.pathname);
 
 const SYNC_LABEL: Record<SyncStatus, string> = { off: '', syncing: '⟳ Syncing', synced: '✓ Synced', offline: '⚠ Offline', error: '⚠ Sync error' };
 
-type Tab = 'ride' | 'workouts' | 'fitness' | 'history' | 'settings';
-const TABS: Tab[] = ['ride', 'workouts', 'fitness', 'history', 'settings'];
+type Tab = 'ride' | 'calendar' | 'workouts' | 'fitness' | 'history' | 'settings';
+const TABS: Tab[] = ['ride', 'calendar', 'workouts', 'fitness', 'history', 'settings'];
 
 function StatusDot({ s }: { s: ConnState }) {
   return <span className={`dot dot-${s}`} title={s} />;
@@ -64,6 +67,7 @@ export function App() {
   const [rides, setRides] = useState<RideRecord[]>([]);
   const [acts, setActs] = useState<StravaActivity[]>([]);
   const [calendar, setCalendar] = useState<PlannedWorkout[]>([]);
+  const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [trainer, setTrainer] = useState<Trainer | null>(null);
   const [trainerState, setTrainerState] = useState<ConnState>('disconnected');
   const [hrm, setHrm] = useState<HeartRateMonitor | null>(null);
@@ -83,9 +87,40 @@ export function App() {
 
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
-    setRides(await listRides());
-    setActs(await listAll<StravaActivity>('strava_acts'));
-    setCalendar(await listAll<PlannedWorkout>('calendar'));
+    const rs = await listRides();
+    const as = await listAll<StravaActivity>('strava_acts');
+    let cal = await listAll<PlannedWorkout>('calendar');
+    // link finished rides to planned workouts, mark unridden past days missed
+    const s = await loadSettings();
+    const changed = reconcile(cal, rs, as, (p) => plannedStats(flatten(p.workout), s.ftp).duration, today());
+    if (changed.length) {
+      for (const c of changed) await putOne('calendar', c);
+      const byId = new Map(changed.map((c) => [c.id, c]));
+      cal = cal.map((c) => byId.get(c.id) ?? c);
+    }
+    setRides(rs);
+    setActs(as);
+    setCalendar(cal);
+    setPlans(await listAll<TrainingPlan>('plans'));
+  }, []);
+
+  // today's planned workout is the default pick on the Ride tab
+  const preselected = useRef(false);
+  useEffect(() => {
+    if (preselected.current || !calendar.length) return;
+    preselected.current = true;
+    const first = calendar.filter((c) => c.date === today() && c.status === 'planned').sort((x, y) => (x.order ?? 0) - (y.order ?? 0))[0];
+    if (first) setSelected((cur) => (cur === 'free' ? `cal:${first.id}` : cur));
+  }, [calendar]);
+
+  const saveCalendar = useCallback(async (items: PlannedWorkout[]) => {
+    const byId = new Map(items.map((c) => [c.id, c]));
+    setCalendar((cal) => [...cal.filter((c) => !byId.has(c.id)), ...items]);
+    for (const c of items) await putOne('calendar', c);
+  }, []);
+  const deleteCalendar = useCallback(async (ids: string[]) => {
+    setCalendar((cal) => cal.filter((c) => !ids.includes(c.id)));
+    for (const id of ids) await deleteOne('calendar', id);
   }, []);
 
   useEffect(() => sync.onStatus(setSyncStatus), []);
@@ -201,12 +236,13 @@ export function App() {
       setTab('ride');
       return;
     }
+    const planned = workoutId.startsWith('cal:') ? calendar.find((c) => `cal:${c.id}` === workoutId) : undefined;
     const sw = workouts.find((w) => w.id === workoutId);
     const s = new RideSession({
       trainer,
       hrm,
       settings,
-      workout: sw?.workout,
+      workout: planned?.workout ?? sw?.workout,
       routePreset: route,
       routeSeed: 1,
     });
@@ -242,6 +278,9 @@ export function App() {
     if (rec.samples.length > 10) {
       await saveRide(rec);
       setSummary(rec);
+      // ridden from the calendar: link it to that workout
+      const planned = calendar.find((c) => `cal:${c.id}` === selected);
+      if (planned) await saveCalendar([{ ...planned, status: 'done', rideId: rec.id }]);
     }
     setSession(null);
     void refresh();
@@ -255,7 +294,9 @@ export function App() {
 
   if (session) return <RideScreen session={session} settings={settings} onEnd={endRide} onSettingsChange={updateSettings} />;
 
-  const sel = workouts.find((w) => w.id === selected);
+  const todays = calendar.filter((c) => c.date === today() && c.status === 'planned').sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
+  const selPlanned = calendar.find((c) => `cal:${c.id}` === selected);
+  const sel = selPlanned ? { id: selected, workout: selPlanned.workout } : workouts.find((w) => w.id === selected);
   const selIv = sel ? flatten(sel.workout) : [];
   const selStats = sel ? plannedStats(selIv, settings.ftp) : null;
 
@@ -348,6 +389,16 @@ export function App() {
           <div className="row">
             <select className="grow" value={selected} onChange={(e) => setSelected(e.target.value)}>
               <option value="free">Free ride (no workout, SIM mode)</option>
+              {(todays.length > 0 || (selPlanned && !todays.includes(selPlanned))) && (
+                <optgroup label="From your calendar">
+                  {[...todays, ...(selPlanned && !todays.includes(selPlanned) ? [selPlanned] : [])].map((c) => (
+                    <option key={c.id} value={`cal:${c.id}`}>
+                      {c.date === today() ? 'Today: ' : `${c.date}: `}
+                      {c.workout.name} ({formatDuration(plannedStats(flatten(c.workout), settings.ftp).duration)})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               {workouts.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.workout.name} ({formatDuration(plannedStats(flatten(w.workout), settings.ftp).duration)})
@@ -422,6 +473,25 @@ export function App() {
           onRide={(w) => {
             setSelected(w.id);
             setTab('ride');
+          }}
+        />
+      ) : tab === 'calendar' ? (
+        <Calendar
+          calendar={calendar}
+          plans={plans}
+          rides={rides}
+          acts={acts}
+          workouts={workouts}
+          settings={settings}
+          onSave={saveCalendar}
+          onDelete={deleteCalendar}
+          onRide={(p) => {
+            setSelected(`cal:${p.id}`);
+            setTab('ride');
+          }}
+          onOpenRide={(id) => {
+            const r = rides.find((x) => x.id === id);
+            if (r) setSummary(r);
           }}
         />
       ) : tab === 'fitness' ? (
