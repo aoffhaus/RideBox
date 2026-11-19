@@ -19,10 +19,13 @@ import { WorkoutChart } from './ui/WorkoutChart';
 import { distUnit, elevUnit, fmtDist, fmtElev } from './ui/format';
 import { DEFAULT_STRAVA, completeOAuth, isConnected, loadStrava, parseOAuthReturn, type StravaConfig } from './strava/strava';
 import { renameRide, uploadRide } from './strava/uploadRide';
+import { sync, type SyncStatus } from './storage/sync';
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
 let pendingOAuth = parseOAuthReturn(location.search);
 if (pendingOAuth) history.replaceState(null, '', location.pathname);
+
+const SYNC_LABEL: Record<SyncStatus, string> = { off: '', syncing: '⟳ Syncing', synced: '✓ Synced', offline: '⚠ Offline', error: '⚠ Sync error' };
 
 type Tab = 'ride' | 'workouts' | 'history' | 'settings';
 
@@ -70,14 +73,29 @@ export function App() {
   const [liveHr, setLiveHr] = useState<number | null>(null);
   const [strava, setStrava] = useState<StravaConfig>(DEFAULT_STRAVA);
   const [notice, setNotice] = useState('');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('off');
 
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
     setRides(await listRides());
   }, []);
 
+  useEffect(() => sync.onStatus(setSyncStatus), []);
+  useEffect(
+    () =>
+      sync.onRemoteChange(async () => {
+        // another browser changed something: reload what's on screen
+        setSettings(await loadSettings());
+        setStrava(await loadStrava());
+        await refresh();
+      }),
+    [refresh],
+  );
+
   useEffect(() => {
     (async () => {
+      // pull from the private backend first so this browser starts from the shared data
+      await sync.start();
       setSettings(await loadSettings());
       let sc = await loadStrava();
       setStrava(sc);
@@ -258,6 +276,11 @@ export function App() {
             <button onClick={() => connectHrm()} disabled={!bluetoothAvailable()}>{hrm && !(hrm instanceof SimulatedHrm) ? 'Reconnect' : 'Connect HRM'}</button>
           </span>
           <button className="ghost" onClick={useSimulator} title="Try the app without hardware">Simulator</button>
+          {syncStatus !== 'off' && (
+            <span className={`sync sync-${syncStatus}`} title={`Synced across browsers${sync.email ? ` as ${sync.email}` : ''}`} onClick={() => void sync.syncNow()}>
+              {SYNC_LABEL[syncStatus]}
+            </span>
+          )}
         </div>
       </header>
 

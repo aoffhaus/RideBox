@@ -22,7 +22,7 @@ h2 { font-size: 18px; margin: 22px 0 10px; }
 h3 { margin-top: 0; }
 a { color: var(--accent-2); }
 code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-button {
+button, .button-like {
   background: var(--panel-2);
   color: var(--text);
   border: 1px solid var(--border);
@@ -32,7 +32,7 @@ button {
   cursor: pointer;
   white-space: nowrap;
 }
-button:hover:not(:disabled) { border-color: #4a5566; background: #263040; }
+button:hover:not(:disabled), .button-like:hover { border-color: #4a5566; background: #263040; }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #111; font-weight: 600; }
 button.primary:hover:not(:disabled) { background: var(--accent-2); }
@@ -322,3 +322,9 @@ button.strava:disabled { opacity: 0.7; }
 .ride-name:focus { border-color: var(--accent); outline: none; background: var(--panel); }
 button.garmin { background: #0b3d66; border-color: #11609e; color: #e8f3ff; }
 button.garmin:hover:not(:disabled) { background: #11609e; }
+
+/* cross-browser sync indicator */
+.sync { font-size: 12px; padding: 2px 8px; border-radius: 10px; cursor: pointer; white-space: nowrap; background: rgba(255,255,255,0.06); }
+.sync-synced { color: #6fcf97; }
+.sync-syncing { color: #9ab; }
+.sync-offline, .sync-error { color: #f2c94c; }
