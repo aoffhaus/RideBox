@@ -4,8 +4,16 @@ import { deleteRide } from '../storage/db';
 import { downloadBlob, rideFileName, rideToFit } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { distUnit, fmtDist, r0 } from './format';
+import { StravaButton } from './StravaButton';
 
-export function History({ rides, settings, onOpen, onChange }: { rides: RideRecord[]; settings: Settings; onOpen: (r: RideRecord) => void; onChange: () => void }) {
+export function History({ rides, settings, stravaConnected, onStravaUpload, onOpen, onChange }: {
+  rides: RideRecord[];
+  settings: Settings;
+  stravaConnected: boolean;
+  onStravaUpload: (r: RideRecord) => void;
+  onOpen: (r: RideRecord) => void;
+  onChange: () => void;
+}) {
   if (!rides.length) return <div className="page"><h2>History</h2><p className="muted">No rides yet.</p></div>;
   return (
     <div className="page">
@@ -38,6 +46,7 @@ export function History({ rides, settings, onOpen, onChange }: { rides: RideReco
               <td>{r0(r.summary.tss)}</td>
               <td>{r0(r.summary.avgHr)}</td>
               <td className="row">
+                <StravaButton ride={r} connected={stravaConnected} onUpload={onStravaUpload} compact />
                 <button onClick={() => downloadBlob(rideToFit(r), rideFileName(r))}>.fit</button>
                 <button
                   className="danger-text"

@@ -4,6 +4,7 @@ import type { Settings } from '../storage/db';
 import { downloadBlob, rideFileName, rideToFit } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { distUnit, elevUnit, fmtDist, fmtElev, r0 } from './format';
+import { StravaButton } from './StravaButton';
 
 /** Power + HR trace for a finished ride. */
 function RideTrace({ ride, maxHr }: { ride: RideRecord; maxHr: number }) {
@@ -33,7 +34,13 @@ function RideTrace({ ride, maxHr }: { ride: RideRecord; maxHr: number }) {
   );
 }
 
-export function Summary({ ride, settings, onClose }: { ride: RideRecord; settings: Settings; onClose: () => void }) {
+export function Summary({ ride, settings, stravaConnected, onStravaUpload, onClose }: {
+  ride: RideRecord;
+  settings: Settings;
+  stravaConnected: boolean;
+  onStravaUpload: (r: RideRecord) => void;
+  onClose: () => void;
+}) {
   const s = ride.summary;
   return (
     <div className="page">
@@ -43,8 +50,10 @@ export function Summary({ ride, settings, onClose }: { ride: RideRecord; setting
           <div className="muted">
             {new Date(ride.startTime).toLocaleString()} · {ride.routeName}
           </div>
+          {ride.strava?.status === 'error' && <div className="small strava-status" style={{ color: '#ffb3b0' }}>Strava: {ride.strava.error}</div>}
         </div>
         <div className="row">
+          <StravaButton ride={ride} connected={stravaConnected} onUpload={onStravaUpload} />
           <button className="primary" onClick={() => downloadBlob(rideToFit(ride), rideFileName(ride))}>Download .fit</button>
           <button onClick={onClose}>Done</button>
         </div>
@@ -108,7 +117,7 @@ export function Summary({ ride, settings, onClose }: { ride: RideRecord; setting
         </table>
       )}
       <p className="muted small">
-        Upload the .fit to Strava (Upload activity → File), intervals.icu, TrainingPeaks, or TrainerRoad (Career → Upload ride). It records as a virtual ride with one lap per interval.
+        {stravaConnected ? 'Rides upload to Strava automatically when auto-upload is on (Settings → Strava). You can also upload the .fit to' : 'Connect Strava in Settings to upload rides automatically, or upload the .fit to Strava (Upload activity → File),'} intervals.icu, TrainingPeaks, or TrainerRoad (Career → Upload ride). It records as a virtual ride with one lap per interval.
       </p>
     </div>
   );

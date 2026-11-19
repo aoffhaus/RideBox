@@ -2,7 +2,7 @@
 
 A free, personal indoor-training app for **Chrome on macOS**. It connects to a **Wahoo KICKR Core** (or any FTMS smart trainer) and a **Bluetooth heart-rate strap**. You ride structured workouts in **ERG mode** on a generated 3D road, chasing **arches** that mark the end of each interval, or free-ride with the trainer simulating the hills.
 
-There are no accounts, servers, social features, or game mechanics. Everything runs in your browser.
+There are no accounts, servers, social features, or game mechanics. Everything runs in your browser. Finished rides can upload to Strava automatically.
 
 ## Using it
 
@@ -10,7 +10,7 @@ There are no accounts, servers, social features, or game mechanics. Everything r
 2. Click **Connect trainer** → pick your KICKR, then **Connect HRM** → pick your strap.
    macOS asks once whether Chrome can use Bluetooth (System Settings → Privacy & Security → Bluetooth).
 3. On **Ride**, pick a workout (or Free ride) and a route, then **Start ride**. The workout clock starts when you pedal.
-4. After the ride, download the **.fit** and upload it to Strava, intervals.icu, TrainingPeaks, or TrainerRoad.
+4. After the ride, it uploads to **Strava** automatically if you've connected it (see below). You can also download the **.fit** and upload it to intervals.icu, TrainingPeaks, or TrainerRoad.
 
 No trainer nearby? Click **Simulator** to try everything with a fake trainer and heart-rate strap.
 
@@ -31,6 +31,18 @@ No trainer nearby? Click **Simulator** to try everything with a fake trainer and
 The **mini map** (top right) turns with you so your direction is always up. The road from you to the next interval's start is drawn in your current interval's color, with a pulsing marker and countdown where the next one begins. Later intervals follow in their zone colors, and the bar underneath fills as the current interval progresses.
 
 The arch ahead of you sits where you'll be when the current interval ends. Its position is recalculated continuously from your speed, so you ride through it exactly as the interval finishes. The arch's color is the power zone of the next interval. A faint second arch marks the end of the interval after that.
+
+## Strava auto-upload
+
+RideBox has no server, so you connect Strava through your own free Strava API app (one-time setup):
+
+1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app (any name, category and website).
+2. Set **Authorization Callback Domain** to the host RideBox is served from, e.g. `yourname.github.io` (or `localhost` for `npm run dev`).
+3. In RideBox **Settings → Strava**, paste the app's **Client ID** and **Client Secret** and click **Connect Strava**. Allow uploads on Strava's page.
+
+Every finished ride then uploads as a virtual (trainer) ride with one lap per interval, and the History tab links to the Strava activity. Turn off auto-upload in Settings to upload rides by hand from History or the ride summary instead; failed uploads can be retried there. Re-uploading a ride that's already on Strava links the existing activity rather than creating a duplicate.
+
+The client secret and tokens stay in the browser's IndexedDB and are only sent to strava.com.
 
 ## Getting workouts in
 

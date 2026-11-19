@@ -16,6 +16,12 @@ import { History } from './ui/History';
 import { SettingsPage } from './ui/SettingsPage';
 import { WorkoutChart } from './ui/WorkoutChart';
 import { distUnit, elevUnit, fmtDist, fmtElev } from './ui/format';
+import { DEFAULT_STRAVA, completeOAuth, isConnected, loadStrava, parseOAuthReturn, type StravaConfig } from './strava/strava';
+import { uploadRide } from './strava/uploadRide';
+
+// Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
+let pendingOAuth = parseOAuthReturn(location.search);
+if (pendingOAuth) history.replaceState(null, '', location.pathname);
 
 type Tab = 'ride' | 'workouts' | 'history' | 'settings';
 
@@ -61,6 +67,8 @@ export function App() {
   const [pairHelp, setPairHelp] = useState<'trainer' | 'hrm' | null>(null);
   const [livePower, setLivePower] = useState<number | null>(null);
   const [liveHr, setLiveHr] = useState<number | null>(null);
+  const [strava, setStrava] = useState<StravaConfig>(DEFAULT_STRAVA);
+  const [notice, setNotice] = useState('');
 
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
@@ -70,6 +78,22 @@ export function App() {
   useEffect(() => {
     (async () => {
       setSettings(await loadSettings());
+      let sc = await loadStrava();
+      setStrava(sc);
+      // returning from Strava's authorization page?
+      const ret = pendingOAuth;
+      pendingOAuth = null;
+      if (ret) {
+        setTab('settings');
+        try {
+          if ('error' in ret) throw new Error(ret.error);
+          sc = await completeOAuth(sc, ret);
+          setStrava(sc);
+          setNotice(`Strava connected${sc.athleteName ? ` as ${sc.athleteName}` : ''}. Rides will upload automatically.`);
+        } catch (e) {
+          setError(`Strava: ${(e as Error).message}`);
+        }
+      }
       if (!(await getFlag('seeded-v1'))) {
         let t = Date.now() - BUILTIN_WORKOUTS.length;
         for (const w of BUILTIN_WORKOUTS) await saveWorkout({ id: uid(), workout: w, source: 'builtin', createdAt: t++ });
@@ -156,12 +180,24 @@ export function App() {
     setSession(s);
   }
 
+  /** Uploads in the background, keeping the History list and open Summary in sync. */
+  const sendToStrava = useCallback(
+    (ride: RideRecord) => {
+      void uploadRide(ride, (r) => {
+        setSummary((cur) => (cur && cur.id === r.id ? r : cur));
+        setRides((rs) => rs.map((x) => (x.id === r.id ? r : x)));
+      });
+    },
+    [],
+  );
+
   async function endRide() {
     if (!session) return;
     const rec = session.finish();
     if (rec.samples.length > 10) {
       await saveRide(rec);
       setSummary(rec);
+      if (isConnected(strava) && strava.autoUpload) sendToStrava(rec);
     }
     setSession(null);
     void refresh();
@@ -235,6 +271,11 @@ export function App() {
           <button className="ghost" onClick={() => setPairHelp(null)}>Dismiss</button>
         </div>
       )}
+      {notice && (
+        <div className="banner" onClick={() => setNotice('')}>
+          {notice}
+        </div>
+      )}
       {error && (
         <div className="banner err" onClick={() => setError('')}>
           {error}
@@ -242,7 +283,7 @@ export function App() {
       )}
 
       {summary ? (
-        <Summary ride={summary} settings={settings} onClose={() => setSummary(null)} />
+        <Summary ride={summary} settings={settings} stravaConnected={isConnected(strava)} onStravaUpload={sendToStrava} onClose={() => setSummary(null)} />
       ) : editing !== undefined ? (
         <Builder
           initial={editing}
@@ -310,11 +351,13 @@ export function App() {
           }}
         />
       ) : tab === 'history' ? (
-        <History rides={rides} settings={settings} onOpen={setSummary} onChange={refresh} />
+        <History rides={rides} settings={settings} stravaConnected={isConnected(strava)} onStravaUpload={sendToStrava} onOpen={setSummary} onChange={refresh} />
       ) : (
         <SettingsPage
           settings={settings}
           onSave={updateSettings}
+          strava={strava}
+          onStravaChange={setStrava}
         />
       )}
     </div>

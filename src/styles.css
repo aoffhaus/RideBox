@@ -268,3 +268,10 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .iv-stats { display: none; }
 }
 .pair-help { margin: 6px 0 10px; padding-left: 20px; line-height: 1.5; }
+
+/* Strava */
+button.strava { background: #fc4c02; border-color: #fc4c02; color: #fff; }
+button.strava:hover:not(:disabled) { background: #e34402; }
+button.strava:disabled { opacity: 0.7; }
+.strava-link { color: #fc4c02; font-weight: 600; white-space: nowrap; }
+.strava-status { margin-top: 6px; }

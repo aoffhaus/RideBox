@@ -2,8 +2,15 @@ import { useState } from 'react';
 import type { Settings } from '../storage/db';
 import { BOOKMARKLET } from './bookmarklet';
 import { CLAUDE_PROMPT } from './claudePrompt';
+import { StravaSettings } from './StravaSettings';
+import type { StravaConfig } from '../strava/strava';
 
-export function SettingsPage({ settings, onSave }: { settings: Settings; onSave: (s: Settings) => void }) {
+export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
+  settings: Settings;
+  onSave: (s: Settings) => void;
+  strava: StravaConfig;
+  onStravaChange: (c: StravaConfig) => void;
+}) {
   const [s, setS] = useState(settings);
   const [copied, setCopied] = useState('');
   const num = (k: keyof Settings, label: string, step = 1, hint?: string) => (
@@ -69,6 +76,8 @@ export function SettingsPage({ settings, onSave }: { settings: Settings; onSave:
         </label>
       </div>
       <button className="primary" onClick={() => onSave(s)}>Save settings</button>
+
+      <StravaSettings config={strava} onChange={onStravaChange} />
 
       <h2>TrainerRoad workouts</h2>
       <ol className="steps">
