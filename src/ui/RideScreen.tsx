@@ -44,6 +44,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   useEffect(() => {
     const view = new WorldView(viewRef.current!, session, settings.graphics, settings.gradeExaggeration);
     worldRef.current = view;
+    view.setEffortReactions(settings.effortReactions);
     session.start();
     const id = window.setInterval(() => setSnap(session.snapshot()), 200);
     return () => {
@@ -59,6 +60,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const applyRideSettings = useCallback(
     (patch: RideSettingsPatch) => {
       if (patch.gradeExaggeration != null) worldRef.current?.setGradeExaggeration(patch.gradeExaggeration);
+      if (patch.effortReactions != null) worldRef.current?.setEffortReactions(patch.effortReactions);
       onSettingsChange?.({ ...settingsRef.current, ...patch });
     },
     [onSettingsChange],

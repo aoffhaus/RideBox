@@ -6,7 +6,8 @@ import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
 import { themeFor } from './themes';
-import { applyWorldFx, fxTime, windy } from './fx';
+import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
+import { EffortMeter } from './effort';
 import { PostFX, DEFAULT_BLOOM } from './postfx';
 import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './sky';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
@@ -740,6 +741,9 @@ export class WorldView {
   private post: PostFX | null = null;
   private envMap: THREE.Texture | null = null;
   private t0 = performance.now();
+  /** live effort → world reactions (wind, clouds, grading, glow, camera) */
+  private effortMeter = new EffortMeter();
+  private reactivity = 1;
   private raf = 0;
   private ro: ResizeObserver;
   private camPos = new THREE.Vector3();
@@ -878,6 +882,11 @@ export class WorldView {
     this.buildWorld();
     // the camera eases its height toward the new road (see loop), so no pop
   }
+  /** How strongly the world reacts to effort: 0 = off, 1 = normal, up to 1.5 = dramatic. */
+  setEffortReactions(k: number) {
+    this.reactivity = Math.min(1.5, Math.max(0, k));
+  }
+
   get gradeExaggeration() {
     return this.exaggeration;
   }
@@ -962,7 +971,7 @@ export class WorldView {
     this.crankAngle -= (this.cadence / 60) * Math.PI * 2 * dt;
     this.rider.crank.rotation.z = this.crankAngle;
     // body: lean forward with effort & climbing, slight rock with each pedal stroke
-    const ftp = this.session.engine?.ftp ?? 200;
+    const ftp = this.session.engine?.ftp ?? this.session.ftp ?? 200;
     const effortTarget = Math.min(1.5, (s.power3s || 0) / ftp);
     this.effort += (effortTarget - this.effort) * (1 - Math.exp(-dt * 2));
     const climbing = Math.max(0, Math.min(1, (s.grade - 0.04) / 0.05)) * Math.min(1, this.effort); // true grade
@@ -985,8 +994,10 @@ export class WorldView {
     if (Math.abs(this.camPos.y - tgt.pos.y) > 30) this.camPos.y = tgt.pos.y; // after jumps
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
-    if (Math.abs(this.camera.fov - rig.fov) > 0.05) {
-      this.camera.fov += (rig.fov - this.camera.fov) * Math.min(1, dt * 6);
+    // a sprint widens the view for a rush of speed
+    const fovTarget = rig.fov + 7 * fxSurge.value;
+    if (Math.abs(this.camera.fov - fovTarget) > 0.05) {
+      this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, dt * 6);
       this.camera.updateProjectionMatrix();
     }
 
@@ -1027,13 +1038,19 @@ export class WorldView {
 
     const time = (now - this.t0) / 1000;
     fxTime.value = time;
-    this.theme.update?.(time);
+    // stopped or paused counts as zero power, so the world calms down
+    const effort = this.effortMeter.update(dt, s.paused ? 0 : s.power3s || 0, ftp);
+    const kR = this.reactivity;
+    fxBuild.value = Math.min(1, effort.build * kR);
+    fxSurge.value = Math.min(1, effort.surge * kR);
+    this.theme.update?.(time, { ...effort, build: fxBuild.value, surge: fxSurge.value, level: Math.max(fxBuild.value, fxSurge.value) });
     if (this.post) this.post.render(dt);
     else this.renderer.render(this.scene, this.camera);
     if (trace) {
       (window as unknown as { __rbInfo?: unknown }).__rbInfo = { ...this.renderer.info.render };
       (window as unknown as { __rbScene?: unknown }).__rbScene = this.scene;
       (window as unknown as { __rbSession?: unknown }).__rbSession = this.session;
+      (window as unknown as { __rbView?: unknown }).__rbView = this;
     }
   };
 

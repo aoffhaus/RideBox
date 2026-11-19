@@ -2,6 +2,7 @@
 import type * as THREE from 'three';
 import type { Route, ThemeId } from '../route';
 import type { SkyParams } from '../sky';
+import type { EffortState } from '../effort';
 import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
@@ -37,8 +38,13 @@ export interface Theme {
   bloom?: { strength: number; radius: number; threshold: number };
   /** false = keep the classic gradient sky dome instead of the physical (scattering) sky. Default true. */
   physicalSky?: boolean;
-  /** Per-frame animation hook for the theme's scenery (time in seconds). */
-  update?: (time: number) => void;
+  /**
+   * Per-frame animation hook for the theme's scenery (time in seconds). `effort` is the
+   * rider's live effort (already scaled by the reactivity setting): `build` creeps up over
+   * long hard efforts, `surge` spikes on sprints. Shaders can also bind `fxBuild` / `fxSurge`
+   * from fx.ts directly.
+   */
+  update?: (time: number, effort: EffortState) => void;
   /** Sun position in degrees (azimuth from +x towards +z). Default ≈ 56° up, 32° round. */
   sun?: { elevation: number; azimuth: number };
   /** Scattering parameters for the physical sky. */

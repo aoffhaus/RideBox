@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Settings } from '../storage/db';
+import { reactLabel, type Settings } from '../storage/db';
 
 /** Settings the rider can change mid-ride. Add more fields here as needed. */
-export type RideSettingsPatch = Partial<Pick<Settings, 'gradeExaggeration'>>;
+export type RideSettingsPatch = Partial<Pick<Settings, 'gradeExaggeration' | 'effortReactions'>>;
 
 interface Props {
   settings: Settings;
@@ -15,7 +15,7 @@ const DEBOUNCE_MS = 150;
 
 /** Small in-ride settings popover. Changes apply live without leaving the ride. */
 export function RideSettings({ settings, onChange, onClose }: Props) {
-  const [s, setS] = useState<RideSettingsPatch>({ gradeExaggeration: settings.gradeExaggeration });
+  const [s, setS] = useState<RideSettingsPatch>({ gradeExaggeration: settings.gradeExaggeration, effortReactions: settings.effortReactions });
   const pending = useRef<RideSettingsPatch>({});
   const timer = useRef<number | undefined>(undefined);
   const onChangeRef = useRef(onChange);
@@ -46,6 +46,7 @@ export function RideSettings({ settings, onChange, onClose }: Props) {
   }, [onClose]);
 
   const k = s.gradeExaggeration ?? settings.gradeExaggeration;
+  const react = s.effortReactions ?? settings.effortReactions;
   return (
     <div className="ride-settings panel" role="dialog" aria-label="Ride settings">
       <div className="ride-settings-head">
@@ -59,6 +60,11 @@ export function RideSettings({ settings, onChange, onClose }: Props) {
           <span>Grade exaggeration: {k.toFixed(1)}×</span>
           <input type="range" min={1} max={3} step={0.1} value={k} onChange={(e) => update({ gradeExaggeration: Number(e.target.value) })} />
           <small className="muted">Makes hills look steeper on screen, like Zwift. Visual only: resistance, speed and the grade readout stay true.</small>
+        </label>
+        <label className="field">
+          <span>Effort reactions: {reactLabel(react)}</span>
+          <input type="range" min={0} max={1.5} step={0.05} value={react} onChange={(e) => update({ effortReactions: Number(e.target.value) })} />
+          <small className="muted">Long hard efforts slowly build wind, cloud and colour; sprints hit instantly.</small>
         </label>
       </div>
     </div>
