@@ -1019,15 +1019,16 @@ export class WorldView {
     this.cadence += ((s.cadence || 0) - this.cadence) * (1 - Math.exp(-dt * 4));
     this.crankAngle -= (this.cadence / 60) * Math.PI * 2 * dt;
     this.rider.crank.rotation.z = this.crankAngle;
-    // body: lean forward with effort & climbing, slight rock with each pedal stroke
+    // body: lean forward with effort & climbing (torso stays steady, no side-to-side rock)
     const ftp = this.session.engine?.ftp ?? this.session.ftp ?? 200;
     const effortTarget = Math.min(1.5, (s.power3s || 0) / ftp);
     this.effort += (effortTarget - this.effort) * (1 - Math.exp(-dt * 2));
     const climbing = Math.max(0, Math.min(1, (s.grade - 0.04) / 0.05)) * Math.min(1, this.effort); // true grade
-    const rock = Math.sin(this.crankAngle * 2) * 0.03 * (0.4 + this.effort);
-    this.rider.torso.rotation.set(rock, 0, -0.08 * this.effort - 0.05 * climbing);
+    const bikeRock = Math.sin(this.crankAngle) * 0.06 * climbing; // bike rocks when climbing hard
+    this.rider.bike.rotation.x = bikeRock;
+    // the torso is parented to the bike, so cancel the bike's rock to keep it upright
+    this.rider.torso.rotation.set(-bikeRock, 0, -0.08 * this.effort - 0.05 * climbing);
     this.rider.torso.position.set(-0.17 + 0.12 * climbing, 0.98 + 0.08 * climbing, 0);
-    this.rider.bike.rotation.x = Math.sin(this.crankAngle) * 0.06 * climbing; // bike rocks when climbing hard
     this.updateLegs();
 
     // --- camera (Zwift-style rigs; see camera.ts). Sits in the road's frame so
