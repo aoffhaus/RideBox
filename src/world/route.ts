@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -67,6 +67,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [4, 16],
     bendiness: 0.6,
     theme: 'aurora',
+  },
+  {
+    id: 'alien',
+    name: 'Xenoworld',
+    description: 'Otherworldly rollers and one big climb across a glowing violet plain, under twin suns and a ringed giant planet',
+    lengthKm: 20,
+    maxGrade: 0.06,
+    harmonics: [2, 12],
+    bendiness: 0.6,
+    theme: 'alien',
   },
 ];
 
