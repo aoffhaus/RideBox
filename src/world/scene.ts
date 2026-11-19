@@ -9,6 +9,8 @@ import { themeFor } from './themes';
 import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
 import { EffortMeter } from './effort';
 import { PostFX, DEFAULT_BLOOM } from './postfx';
+import { AdaptiveQuality, qualityLevels } from './adaptive';
+import { ArchFollower } from './arches';
 import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './sky';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
@@ -743,6 +745,11 @@ export class WorldView {
   /** live effort → world reactions (wind, clouds, grading, glow, camera) */
   private effortMeter = new EffortMeter();
   private reactivity = 1;
+  private sprintK = 1;
+  private archFollow = new ArchFollower();
+  private nextArchFollow = new ArchFollower();
+  /** lowers resolution (then AO) when the frame rate drops; see adaptive.ts */
+  private adaptive: AdaptiveQuality;
   /** headlamp + rider fill (night themes); separate from the rider so it stays on in first person */
   private lampRig: THREE.Group | null = null;
   private raf = 0;
@@ -777,7 +784,8 @@ export class WorldView {
     this.route = exaggerateRoute(session.route, exaggeration);
     const high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio, 2) : 1);
+    this.adaptive = new AdaptiveQuality(qualityLevels(quality, window.devicePixelRatio));
+    this.renderer.setPixelRatio(this.adaptive.level.pixelRatio);
     this.renderer.shadowMap.enabled = high;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -896,6 +904,27 @@ export class WorldView {
     this.buildWorld();
     // the camera eases its height toward the new road (see loop), so no pop
   }
+  /** Sprint "rush" strength (speed blur, FOV kick, glow flare): 0 = off, 1 = normal, up to 1.5. */
+  setSprintEffect(k: number) {
+    this.sprintK = Math.min(1.5, Math.max(0, k));
+  }
+
+  /** Live render stats for the in-ride FPS readout. */
+  get stats() {
+    const l = this.adaptive.level;
+    return { fps: this.adaptive.fps, pixelRatio: l.pixelRatio, ao: !!this.post && l.ao, level: this.adaptive.index, levels: this.adaptive.levels.length };
+  }
+
+  private applyQuality() {
+    const l = this.adaptive.level;
+    this.renderer.setPixelRatio(l.pixelRatio);
+    if (this.post) {
+      this.post.composer.setPixelRatio(l.pixelRatio);
+      this.post.ao.enabled = l.ao;
+    }
+    this.resize();
+  }
+
   /** How strongly the world reacts to effort: 0 = off, 1 = normal, up to 1.5 = dramatic. */
   setEffortReactions(k: number) {
     this.reactivity = Math.min(1.5, Math.max(0, k));
@@ -962,8 +991,10 @@ export class WorldView {
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
     const now = performance.now();
-    const dt = Math.min(0.1, (now - this.last) / 1000);
+    const rawDt = (now - this.last) / 1000;
+    const dt = Math.min(0.1, rawDt);
     this.last = now;
+    if (this.adaptive.frame(rawDt)) this.applyQuality();
     const s = this.session.snapshot();
     const route = this.route;
 
@@ -1023,12 +1054,18 @@ export class WorldView {
     this.sun.position.set(p.x, p.y, p.z).addScaledVector(this.sunDir, 170);
     this.sun.target.position.set(p.x, p.y, p.z);
 
-    // --- arches (positions are relative to the smoothed rider distance)
+    // --- arches: placed from the smoothed rider distance and the workout clock run
+    // forward to this frame (it only ticks at 10 Hz), so they hold still in the world
+    // instead of creeping forward with you and snapping back every tick.
     const st = s.workout;
-    const shift = d - s.distance;
-    if (st && s.archDistance != null && st.interval) {
+    const vArch = this.session.arch.projectedSpeed;
+    const age = s.started && !s.paused ? Math.min(0.2, Math.max(0, (now - this.session.tickAt) / 1000)) : 0;
+    const archAt = (remaining: number) => d + vArch * Math.max(0, remaining - age);
+    const archD = this.archFollow.update(dt, st && s.archDistance != null && st.interval ? archAt(st.remaining) : undefined);
+    const nextD = this.nextArchFollow.update(dt, st && s.nextArchDistance != null && st.next ? archAt(st.remaining + st.next.duration) : undefined);
+    if (st && archD != null && st.interval) {
       this.arch.group.visible = true;
-      this.place(this.arch.group, s.archDistance + shift);
+      this.place(this.arch.group, archD);
       const next = st.next;
       const color = next ? (next.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(next, ftp)).color) : '#ffffff';
       this.arch.mat.color.set(color);
@@ -1040,9 +1077,9 @@ export class WorldView {
           : `Next: ${formatDuration(next.duration)} @ ${Math.round(toWatts((next.powerStart + next.powerEnd) / 2, next.unit, ftp) * intensity)} W`
         : 'Workout complete!';
       drawLabel(this.arch, formatDuration(Math.ceil(st.remaining)), nextTxt, color);
-      if (s.nextArchDistance != null && next) {
+      if (nextD != null && next) {
         this.nextArch.group.visible = true;
-        this.place(this.nextArch.group, s.nextArchDistance + shift);
+        this.place(this.nextArch.group, nextD);
         const nn = this.session.engine!.intervals[next.index + 1];
         const c2 = nn ? (nn.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(nn, ftp)).color) : '#ffffff';
         this.nextArch.mat.color.set(c2);
@@ -1060,7 +1097,7 @@ export class WorldView {
     const effort = this.effortMeter.update(dt, s.paused ? 0 : s.power3s || 0, ftp);
     const kR = this.reactivity;
     fxBuild.value = Math.min(1, effort.build * kR);
-    fxSurge.value = Math.min(1, effort.surge * kR);
+    fxSurge.value = Math.min(1, effort.surge * this.sprintK);
     this.theme.update?.(time, { ...effort, build: fxBuild.value, surge: fxSurge.value, level: Math.max(fxBuild.value, fxSurge.value) });
     if (this.post) this.post.render(dt);
     else this.renderer.render(this.scene, this.camera);

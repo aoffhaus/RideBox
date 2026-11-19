@@ -29,3 +29,20 @@ export class ArchTracker {
     return riderDistance + this.projectedSpeed * Math.max(0, remaining);
   }
 }
+
+/**
+ * Smooths an arch's rendered position. The ride clock ticks at 10 Hz but we draw
+ * every frame, so the caller extrapolates the target between ticks; this then eases
+ * out the small corrections left over (projected-speed drift, tick jitter), and
+ * snaps when the arch genuinely moves (a new interval, a skipped interval).
+ */
+export class ArchFollower {
+  pos: number | undefined;
+  constructor(private rate = 3, private snap = 40) {}
+  update(dt: number, target: number | undefined): number | undefined {
+    if (target == null) return (this.pos = undefined);
+    if (this.pos == null || Math.abs(target - this.pos) > this.snap) this.pos = target;
+    else this.pos += (target - this.pos) * (1 - Math.exp(-dt * this.rate));
+    return this.pos;
+  }
+}

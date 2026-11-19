@@ -69,7 +69,12 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
         <label className="field">
           <span>Effort reactions: {reactLabel(s.effortReactions)}</span>
           <input type="range" min={0} max={1.5} step={0.05} value={s.effortReactions} onChange={(e) => setS({ ...s, effortReactions: Number(e.target.value) })} />
-          <small className="muted">The world responds to how hard you ride: a long tempo or threshold block slowly builds wind, cloud and a richer, warmer picture; a sprint hits almost instantly with a rush of speed. Easy riding leaves it calm.</small>
+          <small className="muted">The world responds to how hard you ride: a long tempo or threshold block slowly builds wind, cloud and a richer, warmer picture. Easy riding leaves it calm.</small>
+        </label>
+        <label className="field">
+          <span>Sprint effect: {reactLabel(s.sprintEffect)}</span>
+          <input type="range" min={0} max={1.5} step={0.05} value={s.sprintEffect} onChange={(e) => setS({ ...s, sprintEffect: Number(e.target.value) })} />
+          <small className="muted">A sprint hits almost instantly with a rush of speed: motion blur, a wider view and a flare of glow.</small>
         </label>
         <label className="field">
           <span>Graphics</span>
@@ -77,7 +82,7 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
             <option value="high">High (shadows, full scenery)</option>
             <option value="low">Low (older or slower computers)</option>
           </select>
-          <small className="muted">Use Low if the ride looks choppy on this computer.</small>
+          <small className="muted">Resolution drops automatically if the frame rate dips. Use Low if the ride still looks choppy on this computer.</small>
         </label>
       </div>
       <button className="primary" onClick={() => onSave(s)}>Save settings</button>
