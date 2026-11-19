@@ -473,10 +473,9 @@ function buildMountains(route: Route): THREE.Group {
   for (let i = 0; i < route.x.length; i++) R = Math.max(R, Math.hypot(route.x[i] - cx, route.z[i] - cz));
   const r = rng(route.seed + 99);
   const g = new THREE.Group();
-  const tall = route.preset.id === 'mountain' || route.preset.id === 'hilly';
   for (const [ring, count, hMin, hMax, color] of [
-    [R + 1600, 46, tall ? 500 : 180, tall ? 1300 : 420, '#7f97ad'],
-    [R + 3000, 40, tall ? 900 : 300, tall ? 2000 : 700, '#a3b7c9'],
+    [R + 1600, 46, 180, 420, '#7f97ad'],
+    [R + 3000, 40, 300, 700, '#a3b7c9'],
   ] as const) {
     const mat = new THREE.MeshLambertMaterial({ color, flatShading: true, fog: false });
     const snow = new THREE.MeshLambertMaterial({ color: '#f4f7fb', flatShading: true, fog: false });

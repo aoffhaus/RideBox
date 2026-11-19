@@ -86,13 +86,13 @@ describe('routes', () => {
     }
   });
   it('is deterministic per seed', () => {
-    expect(generateRoute('hilly', 5).at(1234)).toEqual(generateRoute('hilly', 5).at(1234));
+    expect(generateRoute('rolling', 5).at(1234)).toEqual(generateRoute('rolling', 5).at(1234));
   });
 });
 
 describe('arches', () => {
   it('rider reaches the arch when the interval ends (varying speed on hills)', () => {
-    const route = generateRoute('hilly', 1);
+    const route = generateRoute('rolling', 1);
     const arch = new ArchTracker();
     let v = 0;
     let d = 0;
@@ -136,7 +136,7 @@ describe('recording + FIT', () => {
     const ride = {
       id: 'x',
       name: 'Test',
-      routeName: 'Hill Country',
+      routeName: 'Rolling Farmland',
       startTime: samples[0].t,
       ftp: 250,
       samples,
@@ -165,7 +165,7 @@ describe('recording + FIT', () => {
 describe('visual exaggeration', () => {
   it('scales elevation and grade for drawing only', async () => {
     const { exaggerateRoute } = await import('../src/world/route');
-    const r = generateRoute('hilly', 2);
+    const r = generateRoute('rolling', 2);
     const v = exaggerateRoute(r, 2);
     for (const d of [0, 1234.5, 5000, r.length - 1]) {
       const a = r.at(d);

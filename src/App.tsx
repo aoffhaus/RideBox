@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS, deleteRide, getFlag, listRides, listWorkouts, loadSet
 import { BUILTIN_WORKOUTS } from './workout/builtin';
 import { flatten, formatDuration, plannedStats } from './workout/model';
 import { ROUTE_PRESETS, generateRoute, type Route, type RoutePresetId } from './world/route';
+import { ROUTE_IMAGES } from './world/routeImages';
 import { RideScreen } from './ui/RideScreen';
 import { Library } from './ui/Library';
 import { Builder } from './ui/Builder';
@@ -333,6 +334,7 @@ export function App() {
             {routes.map(({ p, r }) => {
               return (
                 <button key={p.id} className={`route-card ${route === p.id ? 'selected' : ''}`} onClick={() => setRoute(p.id)}>
+                  <img className="route-thumb" src={ROUTE_IMAGES[p.id]} alt="" loading="lazy" />
                   <div className="card-title">{p.name}</div>
                   <div className="muted small">
                     {fmtDist(r.length, settings)} {distUnit(settings)} · {fmtElev(r.totalClimb, settings)} {elevUnit(settings)} · {p.description}
