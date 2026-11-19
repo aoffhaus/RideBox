@@ -88,6 +88,9 @@ nav button.active { background: var(--panel-2); border-color: var(--border); }
 .workout-chart-wrap { position: relative; }
 .chart-tooltip { position: absolute; bottom: calc(100% + 6px); z-index: 20; pointer-events: none; white-space: nowrap; padding: 6px 9px; border-radius: 6px; background: rgba(15,18,24,0.95); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 12px; line-height: 1.4; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
 .chart-tooltip-label { font-weight: 600; margin-bottom: 2px; }
+.workout-chart-legend { position: absolute; top: 4px; right: 6px; display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 4px; background: rgba(10, 13, 18, 0.6); color: #e6e9ef; pointer-events: none; }
+.workout-chart-legend .swatch { width: 12px; height: 2px; border-radius: 1px; }
+.workout-chart-legend .dim { opacity: 0.6; }
 
 .route-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .route-card { cursor: pointer; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-align: left; display: flex; flex-direction: column; justify-content: flex-start; padding: 0 12px 12px; overflow: hidden; white-space: normal; background: var(--panel); }
@@ -207,9 +210,28 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .badge-erg { background: #1f6feb; }
 .badge-sim { background: #2d7d46; }
 .badge-warn { background: #8a5a00; }
-.iv-now { border-left: 5px solid; padding: 4px 10px; margin-bottom: 8px; }
-.iv-label { font-weight: 600; font-size: 15px; }
-.iv-target { color: #c9d1d9; }
+/* workout interval list (left panel) */
+.ivl { margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.ivl-head { display: flex; justify-content: space-between; font-size: 11px; color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.ivl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ivl-row {
+  position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; align-items: center; gap: 6px;
+  padding: 3px 6px 3px 4px; border-left: 3px solid transparent; border-radius: 4px; font-size: 12px; overflow: hidden;
+}
+.ivl-row > span { position: relative; }
+.ivl-mark { display: grid; place-items: center; font-size: 10px; }
+.ivl-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ivl-dur { color: #c9d1d9; }
+.ivl-w { min-width: 48px; text-align: right; font-weight: 600; }
+.ivl-w small { font-weight: 400; color: #8a93a0; }
+.ivl-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.ivl-done { opacity: 0.5; }
+.ivl-done .ivl-mark { color: var(--ok, #4ade80); font-size: 12px; }
+.ivl-now { background: rgba(255, 255, 255, 0.1); font-size: 13px; padding-top: 5px; padding-bottom: 5px; }
+.ivl-now .ivl-name { font-weight: 700; }
+.ivl-now .ivl-dur { color: #fff; font-weight: 700; }
+.ivl-prog { position: absolute; left: 0; top: 0; bottom: 0; opacity: 0.22; transition: width 0.25s linear; }
+.ivl-more { font-size: 11px; color: #6e7681; padding: 1px 0 1px 23px; }
 .iv-stats { width: 100%; font-variant-numeric: tabular-nums; }
 .iv-stats td:last-child { text-align: right; font-weight: 600; }
 .iv-next { margin-top: 8px; color: #c9d1d9; }
@@ -239,6 +261,15 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .hud-elev { margin-top: auto; min-height: 0; }
 .elev { padding: 8px 10px 6px; }
 .elev svg { display: block; border-radius: 6px; background: rgba(0,0,0,0.25); }
+.elev-plot { position: relative; }
+.elev-grade {
+  position: absolute; top: 4px; margin-left: 6px; pointer-events: none;
+  display: flex; align-items: baseline; gap: 2px;
+  padding: 1px 7px 2px; border-radius: 6px; border-left: 3px solid;
+  background: rgba(10, 14, 20, 0.78);
+  font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.elev-grade small { font-size: 11px; font-weight: 600; color: #9aa4b2; }
 .elev-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; margin-bottom: 4px; letter-spacing: 0.04em; }
 .elev-head > span:first-child { color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; }
 
@@ -270,6 +301,7 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 /* short windows (typical laptop browser): keep everything clear of the chart */
 @media (max-height: 820px) {
   .elev svg { height: 60px; }
+  .ivl-far { display: none; }
 }
 @media (max-height: 700px) {
   .hud-elev { display: none; }

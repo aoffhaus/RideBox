@@ -790,6 +790,7 @@ export function buildKyoto(route: Route, opts: ThemeBuildOptions): THREE.Object3
       Math.cos(THREE.MathUtils.degToRad(KYOTO_SUN.elevation)) * Math.sin(THREE.MathUtils.degToRad(KYOTO_SUN.azimuth)),
     );
     const m = new THREE.Mesh(geo, waterMaterial(sunDir));
+    Object.assign(m.userData, { mapWater: true, mapColor: '#3f6f6a' }); // minimap
     m.frustumCulled = false; // one long ribbon around the lap
     out.push(m);
   }
@@ -896,8 +897,9 @@ export function buildKyoto(route: Route, opts: ThemeBuildOptions): THREE.Object3
   // Canopies are the bulk of Kyoto's triangles (21 lobes each), so they step down in detail
   // with distance: full detail up close, detail 1 in the middle distance, detail 0 far off
   // (a few pixels per lobe by then). Only near trees cast shadows: the sun's shadow box
-  // covers ~45 m round the rider, and a low sun throws a canopy's shadow ~30 m further.
-  const NEAR = 90;
+  // reaches ~75 m from the camera at its far corner (see SHADOW_HALF / SHADOW_AHEAD in
+  // scene.ts), and a low sun throws a canopy's shadow ~30 m further.
+  const NEAR = 100;
   const MID = 260;
   const FAR = 600;
   for (let v = 0; v < 3; v++) {

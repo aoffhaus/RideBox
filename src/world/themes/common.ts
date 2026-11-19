@@ -303,7 +303,7 @@ export interface LodLevel {
   geo: THREE.BufferGeometry | null;
   /** instances closer than this (m, from the camera) use this level; the last level takes the rest */
   upTo: number;
-  /** cast shadows (keep it to near levels: the sun's shadow box only covers ~45 m round the rider) */
+  /** cast shadows (keep it to near levels: the sun's shadow box only reaches a few tens of metres) */
   shadow?: boolean;
 }
 

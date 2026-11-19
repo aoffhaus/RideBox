@@ -770,6 +770,7 @@ function buildRiver(route: Route, prof: ProfFn, riverSide: number, height: (i: n
   const m = new THREE.Mesh(geo, mat);
   m.receiveShadow = true;
   m.renderOrder = 1;
+  m.userData.mapWater = true; // minimap: the braided river
   return m;
 }
 

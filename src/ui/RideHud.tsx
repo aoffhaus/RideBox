@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type { RideSession, Snapshot } from '../app/session';
 import type { Settings } from '../storage/db';
 import { formatDuration, toWatts, type Interval } from '../workout/model';
-import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, r0, speedUnit } from './format';
+import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, powerZoneColor, r0, speedUnit } from './format';
 import { ivColor } from './MiniMap';
 
 /** "5 min", "90 s", "2:30" */
@@ -12,7 +12,7 @@ function forDuration(sec: number) {
   return formatDuration(sec);
 }
 
-function targetText(iv: Interval, ftp: number, k: number) {
+export function targetText(iv: Interval, ftp: number, k: number) {
   if (iv.free) return null;
   const a = Math.round(toWatts(iv.powerStart, iv.unit, ftp) * k);
   const b = Math.round(toWatts(iv.powerEnd, iv.unit, ftp) * k);
@@ -71,6 +71,9 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
   const p3 = snap.power3s;
   const diff = target ? p3 - target : 0;
   const powerClass = !target ? '' : Math.abs(diff) <= target * 0.05 ? 'ok' : diff > 0 ? 'high' : 'low';
+  // Live power is coloured by the zone you're riding in right now; without
+  // usable power/FTP the class-based compliance colour applies as before.
+  const powerColor = powerZoneColor(p3, ftp);
 
   const lapFrac = (snap.distance % route.length) / route.length;
   const ivFrac = cur ? Math.min(1, Math.max(0, st!.timeInInterval / cur.duration)) : 0;
@@ -95,7 +98,6 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
       <div className="zh-chips">
         <span className={`zh-chip ${snap.mode === 'erg' ? 'erg' : 'sim'}`}>{snap.mode === 'erg' ? 'ERG ON' : 'SIM'}</span>
         {session.engine && <span className="zh-chip">{st?.intensity ?? 100}%</span>}
-        <span className="zh-chip">{(snap.grade * 100).toFixed(1)}%</span>
         <span className="zh-chip zh-chip-r">
           {route.preset.name} · lap {Math.floor(snap.distance / route.length) + 1}
         </span>
@@ -125,12 +127,12 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
           ) : (
             <>
               <span>{st?.finished ? 'done!' : 'free ride'}</span>
-              <b>{(snap.grade * 100).toFixed(1)}%</b>
-              <span>grade</span>
+              <b>{formatDuration(snap.elapsed)}</b>
+              <span>your pace</span>
             </>
           )}
         </div>
-        <div className={`zh-power ${powerClass}`}>
+        <div className={`zh-power ${powerClass}`} style={powerColor ? { color: powerColor } : undefined}>
           {r0(p3)}
           <small>w</small>
         </div>

@@ -246,6 +246,7 @@ export function buildBigSur(route: Route, opts: ThemeBuildOptions): THREE.Object
   ocean.rotation.x = -Math.PI / 2;
   ocean.position.set(L.cx, sea, L.cz);
   ocean.receiveShadow = false;
+  ocean.userData.mapWater = true; // minimap: the sea
   out.push(ocean);
 
   // --- shoreline: where the seaward profile crosses sea level, for each row
