@@ -15,6 +15,8 @@ export interface Settings {
   graphics: 'high' | 'low';
   /** visual-only vertical scale of the world (Zwift-style); 1 = true to life */
   gradeExaggeration: number;
+  /** how strongly the world reacts to effort (wind, sky, glow, sprint rush): 0 off … 1.5 dramatic */
+  effortReactions: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -27,7 +29,13 @@ export const DEFAULT_SETTINGS: Settings = {
   cda: 0.32,
   graphics: 'high',
   gradeExaggeration: 1.8,
+  effortReactions: 1,
 };
+
+/** Human label for the effort-reactions slider. */
+export function reactLabel(k: number) {
+  return k <= 0 ? 'Off' : k < 0.75 ? 'Subtle' : k <= 1.15 ? 'Normal' : 'Dramatic';
+}
 
 export interface StoredWorkout {
   id: string;
