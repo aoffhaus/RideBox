@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'flat' | 'rolling' | 'hilly' | 'mountain' | 'bigsur' | 'redwoods' | 'zion';
+export type RoutePresetId = 'flat' | 'rolling' | 'hilly' | 'mountain' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -50,6 +50,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [2, 8],
     bendiness: 0.5,
     theme: 'zion',
+  },
+  {
+    id: 'synthwave',
+    name: 'Neon Grid',
+    description: 'Fast rhythmic rollers across a glowing grid at night, racing a giant retro sun',
+    lengthKm: 18,
+    maxGrade: 0.03,
+    harmonics: [6, 24],
+    bendiness: 0.4,
+    theme: 'synthwave',
   },
 ];
 

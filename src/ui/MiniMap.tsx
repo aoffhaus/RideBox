@@ -38,6 +38,7 @@ const PALETTES: Record<string, Palette> = {
   redwoods: { ground: [88, 146, 66], light: [112, 166, 80], dark: [62, 116, 52], patch: 'rgba(42,92,40,0.45)', water: '#86c9e6', shore: '#c2e6f4' },
   bigsur: { ground: [160, 172, 88], light: [192, 186, 112], dark: [116, 146, 70], patch: 'rgba(98,130,60,0.5)', water: '#7cc6ec', shore: '#c4e8f8' },
   zion: { ground: [196, 128, 88], light: [214, 156, 112], dark: [170, 104, 72], patch: 'rgba(120,138,72,0.5)', water: '#8fd0e8', shore: '#cdeaf3' },
+  synthwave: { ground: [38, 14, 62], light: [58, 22, 88], dark: [22, 8, 40], patch: 'rgba(255,43,214,0.22)', water: '#12062a', shore: '#19f3ff' },
 };
 
 interface Blob {

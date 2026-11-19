@@ -3,6 +3,7 @@ import type * as THREE from 'three';
 import type { Route, ThemeId } from '../route';
 import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
+import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
 
 export interface ThemeBuildOptions {
@@ -31,6 +32,12 @@ export interface Theme {
    */
   build?: (route: Route, opts: ThemeBuildOptions) => THREE.Object3D[];
   roadTexture?: () => THREE.Texture;
+  /** Bloom post-processing for this theme (high quality only). Omitted = the engine default. */
+  bloom?: { strength: number; radius: number; threshold: number };
+  /** false = keep the classic gradient sky dome instead of the physical (scattering) sky. Default true. */
+  physicalSky?: boolean;
+  /** Per-frame animation hook for the theme's scenery (time in seconds). */
+  update?: (time: number) => void;
 }
 
 /** The original look (rolling green countryside, farms, distant mountains). */
@@ -108,7 +115,29 @@ const ZION: Theme = {
   roadTexture: zionRoad,
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION };
+const SYNTHWAVE: Theme = {
+  id: 'synthwave',
+  skyTop: SYNTH.skyTop,
+  skyHorizon: SYNTH.skyHorizon,
+  haze: SYNTH.haze,
+  fogNear: 80,
+  fogFar: 2400,
+  hemiSky: '#8a6cff',
+  hemiGround: '#ff3da0',
+  hemiIntensity: 0.75,
+  sunColor: '#ff86dc',
+  sunIntensity: 1.1,
+  exposure: 1.0,
+  groundColor: null, // the theme brings its own endless grid
+  clouds: false,
+  build: buildSynthwave,
+  roadTexture: synthwaveRoad,
+  bloom: { strength: 1.1, radius: 0.6, threshold: 0.85 },
+  physicalSky: false,
+  update: synthwaveUpdate,
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;
