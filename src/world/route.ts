@@ -1,6 +1,6 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'flat' | 'rolling' | 'hilly' | 'mountain' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
 export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
@@ -17,10 +17,7 @@ export interface RoutePreset {
 }
 
 export const ROUTE_PRESETS: RoutePreset[] = [
-  { id: 'flat', name: 'Coastal Flats', description: 'Fast and flat, gentle bends', lengthKm: 16, maxGrade: 0.012, harmonics: [4, 18], bendiness: 0.25 },
   { id: 'rolling', name: 'Rolling Farmland', description: 'Short punchy rollers', lengthKm: 20, maxGrade: 0.045, harmonics: [8, 30], bendiness: 0.45 },
-  { id: 'hilly', name: 'Hill Country', description: 'Longer climbs and descents', lengthKm: 18, maxGrade: 0.07, harmonics: [3, 12], bendiness: 0.55 },
-  { id: 'mountain', name: 'Alpine Pass', description: 'One big climb per lap', lengthKm: 26, maxGrade: 0.075, harmonics: [1, 4], bendiness: 0.7 },
   {
     id: 'bigsur',
     name: 'Big Sur Coast',

@@ -77,7 +77,7 @@ export function Library({ workouts, ftp, onChange, onRide, onEdit }: Props) {
         <textarea
           value={paste}
           onChange={(e) => setPaste(e.target.value)}
-          placeholder={'Paste RideBox JSON, .zwo XML, or shorthand like:\n# Threshold 2x20\n10m 45-70%\n2x(20m @95%, 5m @50%)\n10m 60-40%'}
+          placeholder={'Paste TrainerRoad JSON (from the bookmarklet), RideBox JSON, .zwo XML, or shorthand like:\n# Threshold 2x20\n10m 45-70%\n2x(20m @95%, 5m @50%)\n10m 60-40%'}
           rows={5}
         />
         <div className="row">

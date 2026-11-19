@@ -90,9 +90,10 @@ nav button.active { background: var(--panel-2); border-color: var(--border); }
 .chart-tooltip-label { font-weight: 600; margin-bottom: 2px; }
 
 .route-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.route-card { text-align: left; display: block; padding: 12px; white-space: normal; background: var(--panel); }
+.route-card { text-align: left; display: flex; flex-direction: column; justify-content: flex-start; padding: 0 12px 12px; overflow: hidden; white-space: normal; background: var(--panel); }
+.route-thumb { display: block; width: calc(100% + 24px); margin: 0 -12px 10px; aspect-ratio: 16 / 9; object-fit: cover; background: #111; }
 .route-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.route-profile { width: 100%; height: 40px; margin-top: 8px; display: block; }
+.route-profile { width: 100%; height: 40px; margin-top: auto; padding-top: 8px; display: block; }
 .start-row { margin-top: 24px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 
 /* library */
@@ -267,3 +268,18 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .hud-elev { display: none; }
   .iv-stats { display: none; }
 }
+.pair-help { margin: 6px 0 10px; padding-left: 20px; line-height: 1.5; }
+
+/* Strava */
+button.strava { background: #fc4c02; border-color: #fc4c02; color: #fff; }
+button.strava:hover:not(:disabled) { background: #e34402; }
+button.strava:disabled { opacity: 0.7; }
+.strava-link { color: #fc4c02; font-weight: 600; white-space: nowrap; }
+.strava-status { margin-top: 6px; }
+.strava-card { border-color: #5a2a14; }
+.strava-error { color: #ffb3b0; margin-top: 6px; }
+.ride-name { font-size: 22px; font-weight: 700; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 2px 6px; margin-left: -7px; color: inherit; width: min(520px, 100%); }
+.ride-name:hover { border-color: var(--border); }
+.ride-name:focus { border-color: var(--accent); outline: none; background: var(--panel); }
+button.garmin { background: #0b3d66; border-color: #11609e; color: #e8f3ff; }
+button.garmin:hover:not(:disabled) { background: #11609e; }

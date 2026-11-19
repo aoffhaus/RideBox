@@ -1,11 +1,18 @@
 import type { RideRecord } from '../app/recorder';
 import type { Settings } from '../storage/db';
 import { deleteRide } from '../storage/db';
-import { downloadBlob, rideFileName, rideToFit } from '../export/fit';
+import { downloadBlob, rideFileName, rideToFit, sendToGarmin } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { distUnit, fmtDist, r0 } from './format';
+import { StravaButton } from './StravaButton';
 
-export function History({ rides, settings, onOpen, onChange }: { rides: RideRecord[]; settings: Settings; onOpen: (r: RideRecord) => void; onChange: () => void }) {
+export function History({ rides, settings, stravaConnected, onOpen, onChange }: {
+  rides: RideRecord[];
+  settings: Settings;
+  stravaConnected: boolean;
+  onOpen: (r: RideRecord) => void;
+  onChange: () => void;
+}) {
   if (!rides.length) return <div className="page"><h2>History</h2><p className="muted">No rides yet.</p></div>;
   return (
     <div className="page">
@@ -38,7 +45,9 @@ export function History({ rides, settings, onOpen, onChange }: { rides: RideReco
               <td>{r0(r.summary.tss)}</td>
               <td>{r0(r.summary.avgHr)}</td>
               <td className="row">
+                <StravaButton ride={r} connected={stravaConnected} onUpload={onOpen} compact />
                 <button onClick={() => downloadBlob(rideToFit(r), rideFileName(r))}>.fit</button>
+                <button className="garmin" title="Download the .fit and open Garmin Connect's Import Data page" onClick={() => sendToGarmin(r)}>Garmin</button>
                 <button
                   className="danger-text"
                   onClick={async () => {

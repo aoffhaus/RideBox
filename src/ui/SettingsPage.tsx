@@ -2,8 +2,15 @@ import { useState } from 'react';
 import { reactLabel, type Settings } from '../storage/db';
 import { BOOKMARKLET } from './bookmarklet';
 import { CLAUDE_PROMPT } from './claudePrompt';
+import { StravaSettings } from './StravaSettings';
+import type { StravaConfig } from '../strava/strava';
 
-export function SettingsPage({ settings, onSave }: { settings: Settings; onSave: (s: Settings) => void }) {
+export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
+  settings: Settings;
+  onSave: (s: Settings) => void;
+  strava: StravaConfig;
+  onStravaChange: (c: StravaConfig) => void;
+}) {
   const [s, setS] = useState(settings);
   const [copied, setCopied] = useState('');
   const num = (k: keyof Settings, label: string, step = 1, hint?: string) => (
@@ -75,14 +82,16 @@ export function SettingsPage({ settings, onSave }: { settings: Settings; onSave:
       </div>
       <button className="primary" onClick={() => onSave(s)}>Save settings</button>
 
+      <StravaSettings config={strava} onChange={onStravaChange} />
+
       <h2>TrainerRoad workouts</h2>
       <ol className="steps">
         <li>
-          Drag this button to your bookmarks bar: <a className="bookmarklet" ref={(el) => el?.setAttribute('href', BOOKMARKLET)} onClick={(e) => e.preventDefault()}>⬇ TR → RideBox</a>
+          Drag this button to your bookmarks bar: <a className="bookmarklet" ref={(el) => el?.setAttribute('href', BOOKMARKLET)} onClick={(e) => e.preventDefault()}>📋 TR → RideBox</a>
         </li>
         <li>On trainerroad.com, while logged in, open a workout page (Workouts → pick one).</li>
-        <li>Click the bookmark. It downloads <code>TR - Name.json</code>.</li>
-        <li>Drop that file on the <b>Workouts</b> tab.</li>
+        <li>Click the bookmark. It copies the workout to your clipboard.</li>
+        <li>Paste it into the box on the <b>Workouts</b> tab and click <b>Add pasted workout</b>. (If your browser blocks clipboard access, it downloads <code>TR - Name.json</code> instead; drop that file on the Workouts tab.)</li>
       </ol>
       <p className="muted small">
         It uses the same (undocumented) data TrainerRoad&apos;s own page loads, so it may break if TrainerRoad changes their site. If it does, you can still import <code>.zwo</code>/<code>.mrc</code> files or type the workout in the builder.

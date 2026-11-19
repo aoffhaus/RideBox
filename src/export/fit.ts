@@ -132,3 +132,15 @@ export function rideFileName(ride: RideRecord) {
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
   return `RideBox_${stamp}_${ride.name.replace(/[^\w-]+/g, '_')}.fit`;
 }
+
+export const GARMIN_IMPORT_URL = 'https://connect.garmin.com/modern/import-data';
+
+/**
+ * Garmin has no upload API for personal apps, so: download the .fit and open
+ * Garmin Connect's Import Data page, where the file can be dropped in.
+ * The tab opens first, synchronously inside the click, so it isn't popup-blocked.
+ */
+export function sendToGarmin(ride: RideRecord) {
+  window.open(GARMIN_IMPORT_URL, '_blank', 'noopener');
+  downloadBlob(rideToFit(ride), rideFileName(ride));
+}
