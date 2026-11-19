@@ -156,6 +156,29 @@ export function clampOff(route: Route, i: number, off: number) {
   return o;
 }
 
+/**
+ * Fit one row of column offsets inside the fold limits (≈ the local turning radius on each
+ * side). Rather than clamping every column past the limit onto the same point, which leaves
+ * zero-width slivers that turn into spikes where the limit changes from row to row, the
+ * columns beyond the road edge are compressed proportionally so they stay evenly spread
+ * and in order. Rows already inside their limits are left untouched.
+ */
+export function squeezeRow(offs: ArrayLike<number> & { [k: number]: number }, cols: number, limNeg: number, limPos: number) {
+  for (const sign of [-1, 1]) {
+    const lim = sign > 0 ? limPos : limNeg;
+    let max = 0;
+    for (let c = 0; c < cols; c++) if (Math.sign(offs[c]) === sign) max = Math.max(max, Math.abs(offs[c]));
+    if (max <= lim) continue;
+    const base = Math.min(EDGE, lim);
+    const k = max > base ? (lim - base) / (max - base) : 0;
+    for (let c = 0; c < cols; c++) {
+      const a = Math.abs(offs[c]);
+      if (Math.sign(offs[c]) !== sign || a <= base) continue;
+      offs[c] = sign * (base + (a - base) * k);
+    }
+  }
+}
+
 /** Terrain ribbons beside the road, split into ~1 km chunks for frustum culling. */
 export function buildTerrainMesh(route: Route, model: TerrainModel, rowStep = 2): THREE.Group {
   const n = route.x.length;
@@ -168,6 +191,7 @@ export function buildTerrainMesh(route: Route, model: TerrainModel, rowStep = 2)
   const tmp = new THREE.Color();
   const uvo: [number, number] = [0, 0];
   const p = new THREE.Vector3();
+  const rowOffs = new Float64Array(cols);
   for (let r0 = 0; r0 < rows; r0 += chunkRows) {
     const r1 = Math.min(rows, r0 + chunkRows); // inclusive end row (row `rows` wraps to sample 0)
     const nr = r1 - r0 + 1;
@@ -177,10 +201,10 @@ export function buildTerrainMesh(route: Route, model: TerrainModel, rowStep = 2)
     const idx: number[] = [];
     for (let rr = 0; rr < nr; rr++) {
       const i = ((r0 + rr) * rowStep) % n;
+      for (let c = 0; c < cols; c++) rowOffs[c] = model.colOff(i, c);
+      squeezeRow(rowOffs, cols, limits[0][i], limits[1][i]);
       for (let c = 0; c < cols; c++) {
-        let off = model.colOff(i, c);
-        const lim = limits[off > 0 ? 1 : 0][i];
-        if (Math.abs(off) > lim) off = Math.sign(off) * lim;
+        const off = rowOffs[c];
         const dy = model.height(i, off);
         worldAt(route, i, off, dy, p);
         const o = (rr * cols + c) * 3;

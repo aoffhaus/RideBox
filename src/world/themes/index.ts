@@ -17,6 +17,8 @@ import { PATAGONIA_SUN, buildPatagonia, patagoniaRoad } from './patagonia';
 
 export interface ThemeBuildOptions {
   high: boolean;
+  /** Unit vector towards the sun (or moon): the same direction the engine lights and draws it from. */
+  sunDir: THREE.Vector3;
 }
 
 export interface Theme {
@@ -58,6 +60,8 @@ export interface Theme {
   sky?: Partial<SkyParams>;
   /** How much a passing cloud dims direct sunlight (0 = no cloud shadows). Default 0.45 when `clouds`. */
   cloudShadows?: number;
+  /** Height of the shared cumulus layer above the route's highest point, in m (default 500). Raise it for tall scenery. */
+  cloudHeight?: number;
   /** false = no white reflector posts along the road edge. Default true. */
   posts?: boolean;
   /** Night riding: a bike headlamp pool on the road ahead plus a soft fill light on the rider. */
