@@ -4,7 +4,7 @@ import { bluetoothAvailable, pairHeartRate, pairTrainer } from './ble/bluetooth'
 import { SimulatedHrm, SimulatedTrainer } from './ble/simulated';
 import { RideSession } from './app/session';
 import type { RideRecord } from './app/recorder';
-import { DEFAULT_SETTINGS, getFlag, listRides, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
+import { DEFAULT_SETTINGS, deleteRide, getFlag, listRides, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
 import { BUILTIN_WORKOUTS } from './workout/builtin';
 import { flatten, formatDuration, plannedStats } from './workout/model';
 import { ROUTE_PRESETS, generateRoute, type Route, type RoutePresetId } from './world/route';
@@ -16,6 +16,12 @@ import { History } from './ui/History';
 import { SettingsPage } from './ui/SettingsPage';
 import { WorkoutChart } from './ui/WorkoutChart';
 import { distUnit, elevUnit, fmtDist, fmtElev } from './ui/format';
+import { DEFAULT_STRAVA, completeOAuth, isConnected, loadStrava, parseOAuthReturn, type StravaConfig } from './strava/strava';
+import { renameRide, uploadRide } from './strava/uploadRide';
+
+// Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
+let pendingOAuth = parseOAuthReturn(location.search);
+if (pendingOAuth) history.replaceState(null, '', location.pathname);
 
 type Tab = 'ride' | 'workouts' | 'history' | 'settings';
 
@@ -61,6 +67,8 @@ export function App() {
   const [pairHelp, setPairHelp] = useState<'trainer' | 'hrm' | null>(null);
   const [livePower, setLivePower] = useState<number | null>(null);
   const [liveHr, setLiveHr] = useState<number | null>(null);
+  const [strava, setStrava] = useState<StravaConfig>(DEFAULT_STRAVA);
+  const [notice, setNotice] = useState('');
 
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
@@ -70,6 +78,22 @@ export function App() {
   useEffect(() => {
     (async () => {
       setSettings(await loadSettings());
+      let sc = await loadStrava();
+      setStrava(sc);
+      // returning from Strava's authorization page?
+      const ret = pendingOAuth;
+      pendingOAuth = null;
+      if (ret) {
+        setTab('settings');
+        try {
+          if ('error' in ret) throw new Error(ret.error);
+          sc = await completeOAuth(sc, ret);
+          setStrava(sc);
+          setNotice(`Strava connected${sc.athleteName ? ` as ${sc.athleteName}` : ''}. Upload rides from their summary page.`);
+        } catch (e) {
+          setError(`Strava: ${(e as Error).message}`);
+        }
+      }
       if (!(await getFlag('seeded-v1'))) {
         let t = Date.now() - BUILTIN_WORKOUTS.length;
         for (const w of BUILTIN_WORKOUTS) await saveWorkout({ id: uid(), workout: w, source: 'builtin', createdAt: t++ });
@@ -156,6 +180,29 @@ export function App() {
     setSession(s);
   }
 
+  /** Uploads in the background, keeping the History list and open Summary in sync. */
+  const showRide = useCallback((r: RideRecord) => {
+    setSummary((cur) => (cur && cur.id === r.id ? r : cur));
+    setRides((rs) => rs.map((x) => (x.id === r.id ? r : x)));
+  }, []);
+  const sendToStrava = useCallback((ride: RideRecord, opts: { hidden: boolean }) => void uploadRide(ride, opts, showRide), [showRide]);
+  const rename = useCallback(
+    async (ride: RideRecord, name: string) => {
+      const res = await renameRide(ride, name);
+      showRide(res.ride);
+      return res.stravaError;
+    },
+    [showRide],
+  );
+  const removeRide = useCallback(
+    async (ride: RideRecord) => {
+      await deleteRide(ride.id);
+      setSummary(null);
+      void refresh();
+    },
+    [refresh],
+  );
+
   async function endRide() {
     if (!session) return;
     const rec = session.finish();
@@ -235,6 +282,11 @@ export function App() {
           <button className="ghost" onClick={() => setPairHelp(null)}>Dismiss</button>
         </div>
       )}
+      {notice && (
+        <div className="banner" onClick={() => setNotice('')}>
+          {notice}
+        </div>
+      )}
       {error && (
         <div className="banner err" onClick={() => setError('')}>
           {error}
@@ -242,7 +294,7 @@ export function App() {
       )}
 
       {summary ? (
-        <Summary ride={summary} settings={settings} onClose={() => setSummary(null)} />
+        <Summary ride={summary} settings={settings} stravaConnected={isConnected(strava)} onStravaUpload={sendToStrava} onRename={rename} onDelete={removeRide} onClose={() => setSummary(null)} />
       ) : editing !== undefined ? (
         <Builder
           initial={editing}
@@ -310,11 +362,13 @@ export function App() {
           }}
         />
       ) : tab === 'history' ? (
-        <History rides={rides} settings={settings} onOpen={setSummary} onChange={refresh} />
+        <History rides={rides} settings={settings} stravaConnected={isConnected(strava)} onOpen={setSummary} onChange={refresh} />
       ) : (
         <SettingsPage
           settings={settings}
           onSave={updateSettings}
+          strava={strava}
+          onStravaChange={setStrava}
         />
       )}
     </div>
