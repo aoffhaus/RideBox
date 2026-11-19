@@ -109,6 +109,11 @@ export class RideSession {
     return this.opts.trainer;
   }
 
+  /** The rider's FTP from settings (used even in free rides, where there is no workout engine). */
+  get ftp() {
+    return this.opts.settings.ftp;
+  }
+
   start() {
     window.clearInterval(this.timer);
     this.lastTick = performance.now();

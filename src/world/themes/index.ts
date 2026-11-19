@@ -2,10 +2,12 @@
 import type * as THREE from 'three';
 import type { Route, ThemeId } from '../route';
 import type { SkyParams } from '../sky';
+import type { EffortState } from '../effort';
 import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
+import { AURORA, auroraRoad, buildAurora } from './aurora';
 import { ICELAND_SUN, buildIceland, icelandRoad } from './iceland';
 
 export interface ThemeBuildOptions {
@@ -38,8 +40,13 @@ export interface Theme {
   bloom?: { strength: number; radius: number; threshold: number };
   /** false = keep the classic gradient sky dome instead of the physical (scattering) sky. Default true. */
   physicalSky?: boolean;
-  /** Per-frame animation hook for the theme's scenery (time in seconds). */
-  update?: (time: number) => void;
+  /**
+   * Per-frame animation hook for the theme's scenery (time in seconds). `effort` is the
+   * rider's live effort (already scaled by the reactivity setting): `build` creeps up over
+   * long hard efforts, `surge` spikes on sprints. Shaders can also bind `fxBuild` / `fxSurge`
+   * from fx.ts directly.
+   */
+  update?: (time: number, effort: EffortState) => void;
   /** Sun position in degrees (azimuth from +x towards +z). Default ≈ 56° up, 32° round. */
   sun?: { elevation: number; azimuth: number };
   /** Scattering parameters for the physical sky. */
@@ -48,6 +55,8 @@ export interface Theme {
   cloudShadows?: number;
   /** false = no white reflector posts along the road edge. Default true. */
   posts?: boolean;
+  /** Night riding: a bike headlamp pool on the road ahead plus a soft fill light on the rider. */
+  headlamp?: boolean;
 }
 
 /** The original look (rolling green countryside, farms, distant mountains). */
@@ -151,6 +160,31 @@ const SYNTHWAVE: Theme = {
   posts: false, // the neon pylons replace them
 };
 
+const AURORA_NIGHT: Theme = {
+  id: 'aurora',
+  skyTop: AURORA.skyTop,
+  skyHorizon: AURORA.skyHorizon,
+  haze: AURORA.haze,
+  fogNear: 150,
+  fogFar: 6500,
+  hemiSky: '#6d8fbf',
+  hemiGround: '#1c2833',
+  hemiIntensity: 0.95,
+  sunColor: '#a9bfff', // moonlight
+  sunIntensity: 1.3,
+  exposure: 1.1,
+  groundColor: null, // the fjord water covers everything
+  clouds: false,
+  build: buildAurora,
+  roadTexture: auroraRoad,
+  bloom: { strength: 0.8, radius: 0.6, threshold: 0.9 },
+  physicalSky: false,
+  sun: AURORA.moon,
+  cloudShadows: 0,
+  posts: false, // the theme brings its own reflector posts and snow poles
+  headlamp: true,
+};
+
 const ICELAND: Theme = {
   id: 'iceland',
   skyTop: '#7f9db6',
@@ -174,7 +208,7 @@ const ICELAND: Theme = {
   cloudShadows: 0.55,
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, iceland: ICELAND };
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT, iceland: ICELAND };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;

@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'iceland';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'iceland';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'iceland';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'iceland';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -57,6 +57,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [6, 24],
     bendiness: 0.4,
     theme: 'synthwave',
+  },
+  {
+    id: 'aurora',
+    name: 'Aurora Fjords',
+    description: 'Arctic night along a snowy fjord road: red fishing cabins, jagged peaks and the northern lights dancing overhead',
+    lengthKm: 18,
+    maxGrade: 0.045,
+    harmonics: [4, 16],
+    bendiness: 0.6,
+    theme: 'aurora',
   },
   {
     id: 'iceland',

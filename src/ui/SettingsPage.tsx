@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Settings } from '../storage/db';
+import { reactLabel, type Settings } from '../storage/db';
 import { BOOKMARKLET } from './bookmarklet';
 import { CLAUDE_PROMPT } from './claudePrompt';
 import { StravaSettings } from './StravaSettings';
@@ -65,6 +65,11 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
           <span>Grade exaggeration: {s.gradeExaggeration.toFixed(1)}×</span>
           <input type="range" min={1} max={3} step={0.1} value={s.gradeExaggeration} onChange={(e) => setS({ ...s, gradeExaggeration: Number(e.target.value) })} />
           <small className="muted">Makes hills look steeper on screen, like Zwift. Visual only: resistance, speed and the grade readout stay true.</small>
+        </label>
+        <label className="field">
+          <span>Effort reactions: {reactLabel(s.effortReactions)}</span>
+          <input type="range" min={0} max={1.5} step={0.05} value={s.effortReactions} onChange={(e) => setS({ ...s, effortReactions: Number(e.target.value) })} />
+          <small className="muted">The world responds to how hard you ride: a long tempo or threshold block slowly builds wind, cloud and a richer, warmer picture; a sprint hits almost instantly with a rush of speed. Easy riding leaves it calm.</small>
         </label>
         <label className="field">
           <span>Graphics</span>

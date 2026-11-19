@@ -6,6 +6,59 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { fxBuild, fxSurge } from './fx';
+
+/**
+ * Effort grading, in HDR before tone mapping. As a sustained effort builds the picture
+ * gets richer, warmer and more focused (saturation, contrast, a closing vignette); a
+ * sprint adds a radial speed blur and colour fringing toward the edges. At rest it is
+ * an exact pass-through.
+ */
+const EffortShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    fxBuild,
+    fxSurge,
+    aspect: { value: 1 },
+  },
+  vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse; uniform float fxBuild; uniform float fxSurge; uniform float aspect;
+    varying vec2 vUv;
+    void main(){
+      vec2 fromC = vUv - 0.5;
+      float r = length(fromC * vec2(aspect, 1.0));
+      vec3 c;
+      if (fxSurge > 0.002) {
+        // radial zoom blur + chromatic split, both growing toward the edges
+        float k = fxSurge * smoothstep(0.15, 0.75, r);
+        vec2 dir = fromC * 0.06 * k;
+        vec3 acc = vec3(0.0);
+        for (int i = 0; i < 8; i++) {
+          float t = float(i) / 7.0;
+          vec2 uv = vUv - dir * t;
+          vec2 ca = fromC * 0.006 * k;
+          acc += vec3(texture2D(tDiffuse, uv + ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - ca).b);
+        }
+        c = acc / 8.0;
+      } else {
+        c = texture2D(tDiffuse, vUv).rgb;
+      }
+      float e = clamp(fxBuild + 0.6 * fxSurge, 0.0, 1.0);
+      // saturation and a little contrast
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, 1.0 + 0.35 * e);
+      c = mix(c, c * c / (c + 0.18) * 1.18, 0.35 * e);
+      // warm the highlights, deepen the shadows toward crimson as it really hurts
+      c *= mix(vec3(1.0), vec3(1.06, 0.98, 0.9), e);
+      // vignette closes in: tunnel focus
+      float vig = smoothstep(0.35, 0.95, r) * (0.18 * fxBuild + 0.35 * fxSurge);
+      c *= 1.0 - vig;
+      c = mix(c, c * vec3(1.0, 0.55, 0.5), vig * 0.6 * fxBuild);
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+};
 
 export interface BloomParams {
   strength: number;
@@ -36,6 +89,8 @@ export class PostFX {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
   readonly ao: SceneAOPass;
+  readonly effort: ShaderPass;
+  private baseBloom: number;
 
   constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera, bloom: BloomParams) {
     const size = renderer.getSize(new THREE.Vector2());
@@ -56,14 +111,22 @@ export class PostFX {
 
     this.bloom = new UnrealBloomPass(size, bloom.strength, bloom.radius, bloom.threshold);
     this.composer.addPass(this.bloom);
+    this.baseBloom = bloom.strength;
+    this.effort = new ShaderPass(EffortShader);
+    this.effort.uniforms.fxBuild = fxBuild; // ShaderPass clones uniforms: re-share the globals
+    this.effort.uniforms.fxSurge = fxSurge;
+    this.composer.addPass(this.effort);
     this.composer.addPass(new OutputPass());
   }
 
   setSize(w: number, h: number) {
     this.composer.setSize(w, h);
+    this.effort.uniforms.aspect.value = w / Math.max(1, h);
   }
 
   render(dt: number) {
+    // glow swells with sustained effort and flares on a sprint
+    this.bloom.strength = this.baseBloom * (1 + 0.6 * fxBuild.value + 0.7 * fxSurge.value);
     this.composer.render(dt);
   }
 
