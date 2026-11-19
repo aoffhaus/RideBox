@@ -8,6 +8,7 @@ import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
 import { AURORA, auroraRoad, buildAurora } from './aurora';
+import { KYOTO_SUN, buildKyoto, kyotoRoad } from './kyoto';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -184,7 +185,32 @@ const AURORA_NIGHT: Theme = {
   headlamp: true,
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT };
+const KYOTO: Theme = {
+  id: 'kyoto',
+  skyTop: '#8fb3dc',
+  skyHorizon: '#f2d9cf',
+  haze: '#efd3c6',
+  fogNear: 140,
+  fogFar: 1900,
+  hemiSky: '#f4e6ee',
+  hemiGround: '#6e7a48',
+  hemiIntensity: 1.15,
+  sunColor: '#ffc994',
+  sunIntensity: 2.4,
+  exposure: 1.05,
+  groundColor: '#5f7c45',
+  clouds: true,
+  build: buildKyoto,
+  roadTexture: kyotoRoad,
+  // soft spring golden hour: low sun, light haze, pastel blue-peach sky
+  sun: KYOTO_SUN,
+  sky: { turbidity: 6, rayleigh: 1.3, mieCoefficient: 0.008, mieDirectionalG: 0.84, exposure: 0.34 },
+  cloudShadows: 0.25,
+  bloom: { strength: 0.5, radius: 0.55, threshold: 1.35 },
+  posts: false, // stone lanterns line the path instead
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT, kyoto: KYOTO };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;

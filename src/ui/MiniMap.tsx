@@ -40,6 +40,7 @@ const PALETTES: Record<string, Palette> = {
   zion: { ground: [196, 128, 88], light: [214, 156, 112], dark: [170, 104, 72], patch: 'rgba(120,138,72,0.5)', water: '#8fd0e8', shore: '#cdeaf3' },
   synthwave: { ground: [38, 14, 62], light: [58, 22, 88], dark: [22, 8, 40], patch: 'rgba(255,43,214,0.22)', water: '#12062a', shore: '#19f3ff' },
   aurora: { ground: [196, 210, 222], light: [226, 236, 244], dark: [150, 168, 186], patch: 'rgba(60,72,90,0.35)', water: '#0e2438', shore: '#5fe0a8' },
+  kyoto: { ground: [132, 168, 92], light: [238, 196, 208], dark: [74, 112, 64], patch: 'rgba(232,150,182,0.45)', water: '#86c4d6', shore: '#d4ecf0' },
 };
 
 interface Blob {
