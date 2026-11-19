@@ -6,6 +6,7 @@ import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
+import { AURORA, auroraRoad, buildAurora } from './aurora';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -150,7 +151,31 @@ const SYNTHWAVE: Theme = {
   posts: false, // the neon pylons replace them
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };
+const AURORA_NIGHT: Theme = {
+  id: 'aurora',
+  skyTop: AURORA.skyTop,
+  skyHorizon: AURORA.skyHorizon,
+  haze: AURORA.haze,
+  fogNear: 150,
+  fogFar: 6500,
+  hemiSky: '#6d8fbf',
+  hemiGround: '#1c2833',
+  hemiIntensity: 0.95,
+  sunColor: '#a9bfff', // moonlight
+  sunIntensity: 1.3,
+  exposure: 1.1,
+  groundColor: null, // the fjord water covers everything
+  clouds: false,
+  build: buildAurora,
+  roadTexture: auroraRoad,
+  bloom: { strength: 0.8, radius: 0.6, threshold: 0.9 },
+  physicalSky: false,
+  sun: AURORA.moon,
+  cloudShadows: 0,
+  posts: false, // the theme brings its own reflector posts and snow poles
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;
