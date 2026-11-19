@@ -69,25 +69,98 @@ export interface BloomParams {
 export const DEFAULT_BLOOM: BloomParams = { strength: 0.5, radius: 0.4, threshold: 1.8 };
 
 /**
- * GTAO that ignores everything that shouldn't occlude: sprites (clouds, mist), any
- * transparent material (light shafts, foam, signs) and objects tagged `userData.noAO`.
- * Their quads would otherwise write into the normal/depth buffer and cast dark halos.
+ * GTAO tuned for this scene:
+ *  - ignores everything that shouldn't occlude: sprites (clouds, mist), points, lines, any
+ *    transparent material (light shafts, foam, signs) and objects tagged `userData.noAO`.
+ *    Their quads would otherwise write into the normal/depth buffer and cast dark halos.
+ *    Which objects those are is worked out once (and again after `invalidate()`), not by
+ *    walking the whole scene twice every frame.
+ *  - runs at half resolution (the occlusion is soft, so a bilinear upsample hides it), which
+ *    makes the normal/depth render, the AO and the denoise roughly 4x cheaper.
+ *  - multiplies straight onto the frame instead of copying it to the other buffer first.
  */
 class SceneAOPass extends GTAOPass {
+  /** objects hidden while rendering normals/depth (null = rebuild on next frame) */
+  private hidden: THREE.Object3D[] | null = null;
+  private wasVisible: boolean[] = [];
+  /** 1 = full resolution, 0.5 = half */
+  scale = 0.5;
+
+  constructor(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number) {
+    super(scene, camera, width, height);
+    this.needsSwap = false;
+  }
+
+  /** Call when objects are added to or removed from the scene. */
+  invalidate() {
+    this.hidden = null;
+  }
+
+  setSize(width: number, height: number) {
+    super.setSize(Math.max(1, Math.round(width * this.scale)), Math.max(1, Math.round(height * this.scale)));
+  }
+
   overrideVisibility() {
-    const cache = (this as unknown as { _visibilityCache: Map<THREE.Object3D, boolean> })._visibilityCache;
-    this.scene.traverse((o) => {
-      cache.set(o, o.visible);
-      const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-      const transparent = Array.isArray(m) ? m.some((x) => x.transparent) : !!m?.transparent;
-      if ((o as THREE.Points).isPoints || (o as THREE.Line).isLine || (o as THREE.Sprite).isSprite || transparent || o.userData.noAO) o.visible = false;
-    });
+    if (!this.hidden) {
+      const list: THREE.Object3D[] = [];
+      this.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        const transparent = Array.isArray(m) ? m.some((x) => x.transparent) : !!m?.transparent;
+        if ((o as THREE.Points).isPoints || (o as THREE.Line).isLine || (o as THREE.Sprite).isSprite || transparent || o.userData.noAO) list.push(o);
+      });
+      this.hidden = list;
+    }
+    const h = this.hidden;
+    this.wasVisible.length = h.length;
+    for (let k = 0; k < h.length; k++) {
+      this.wasVisible[k] = h[k].visible;
+      h[k].visible = false;
+    }
+  }
+
+  restoreVisibility() {
+    const h = this.hidden!;
+    for (let k = 0; k < h.length; k++) h[k].visible = this.wasVisible[k];
+  }
+
+  render(renderer: THREE.WebGLRenderer, _writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget) {
+    // same as GTAOPass's default output, except the AO is multiplied onto readBuffer in place
+    const self = this as unknown as { _renderGBuffer: boolean; normalMaterial: THREE.MeshNormalMaterial; normalRenderTarget: THREE.WebGLRenderTarget };
+    if (self._renderGBuffer) {
+      this.overrideVisibility();
+      this.renderOverride(renderer, self.normalMaterial, self.normalRenderTarget, 0x7777ff, 1.0);
+      this.restoreVisibility();
+    }
+    const cam = this.camera as THREE.PerspectiveCamera;
+    const u = this.gtaoMaterial.uniforms;
+    u.cameraNear.value = cam.near;
+    u.cameraFar.value = cam.far;
+    u.cameraProjectionMatrix.value.copy(cam.projectionMatrix);
+    u.cameraProjectionMatrixInverse.value.copy(cam.projectionMatrixInverse);
+    u.cameraWorldMatrix.value.copy(cam.matrixWorld);
+    this.renderPass(renderer, this.gtaoMaterial, this.gtaoRenderTarget, 0xffffff, 1.0);
+    this.pdMaterial.uniforms.cameraProjectionMatrixInverse.value.copy(cam.projectionMatrixInverse);
+    this.renderPass(renderer, this.pdMaterial, this.pdRenderTarget, 0xffffff, 1.0);
+    this.blendMaterial.uniforms.intensity.value = this.blendIntensity;
+    this.blendMaterial.uniforms.tDiffuse.value = this.pdRenderTarget.texture;
+    this.renderPass(renderer, this.blendMaterial, this.renderToScreen ? null : readBuffer);
   }
 }
 
+/** Unreal bloom whose buffers can be shrunk further when the frame rate needs it. */
+class ScaledBloomPass extends UnrealBloomPass {
+  scale = 1;
+  setSize(width: number, height: number) {
+    super.setSize(Math.max(2, Math.round(width * this.scale)), Math.max(2, Math.round(height * this.scale)));
+  }
+}
+
+const AO_FULL = { samples: 12, pd: 8 };
+const AO_LITE = { samples: 8, pd: 6 };
+
 export class PostFX {
   readonly composer: EffectComposer;
-  readonly bloom: UnrealBloomPass;
+  readonly bloom: ScaledBloomPass;
   readonly ao: SceneAOPass;
   readonly effort: ShaderPass;
   private baseBloom: number;
@@ -104,12 +177,13 @@ export class PostFX {
     this.ao = new SceneAOPass(scene, camera, size.x, size.y);
     // Radius in metres: big enough to darken tree bases, creases in rock and the ground
     // under the bike, small enough that distant hills don't pick up halos.
-    this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 2.5, scale: 1.0, samples: 16, distanceFallOff: 1.0 });
-    this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+    this.ao.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 2.5, scale: 1.0, samples: AO_FULL.samples, distanceFallOff: 1.0 });
+    // denoise radius is in AO-buffer pixels: 3 at half resolution covers what 6 did at full
+    this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 3, rings: 2, samples: AO_FULL.pd });
     this.ao.blendIntensity = 0.85;
     this.composer.addPass(this.ao);
 
-    this.bloom = new UnrealBloomPass(size, bloom.strength, bloom.radius, bloom.threshold);
+    this.bloom = new ScaledBloomPass(size, bloom.strength, bloom.radius, bloom.threshold);
     this.composer.addPass(this.bloom);
     this.baseBloom = bloom.strength;
     this.effort = new ShaderPass(EffortShader);
@@ -117,6 +191,27 @@ export class PostFX {
     this.effort.uniforms.fxSurge = fxSurge;
     this.composer.addPass(this.effort);
     this.composer.addPass(new OutputPass());
+  }
+
+  private aoLite = false;
+  /**
+   * Adaptive-quality knobs. AO sample counts are shader defines, so only the two small AO
+   * shaders recompile when they change; the bloom size applies on the next setSize.
+   */
+  setQuality(q: { ao: boolean; aoLite: boolean; bloomScale: number }) {
+    this.ao.enabled = q.ao;
+    if (q.aoLite !== this.aoLite) {
+      this.aoLite = q.aoLite;
+      const s = q.aoLite ? AO_LITE : AO_FULL;
+      this.ao.updateGtaoMaterial({ samples: s.samples });
+      this.ao.updatePdMaterial({ samples: s.pd });
+    }
+    this.bloom.scale = q.bloomScale;
+  }
+
+  /** Objects were added to or removed from the scene (refreshes what the AO pass ignores). */
+  invalidateScene() {
+    this.ao.invalidate();
   }
 
   setSize(w: number, h: number) {

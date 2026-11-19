@@ -26,18 +26,18 @@ export const CAMERA_RIGS: Record<CameraMode, CameraRig> = {
   first: { back: -0.25, height: 1.55, lookAhead: 22, lookHeight: 1.3, fov: 70, showRider: false },
 };
 
-export function cameraTargets(route: Route, d: number, lateral: number, rig: CameraRig) {
-  const at = (dist: number, up: number) => {
+export function cameraTargets(route: Route, d: number, lateral: number, rig: CameraRig, out = { pos: new THREE.Vector3(), look: new THREE.Vector3() }) {
+  const at = (dist: number, up: number, v: THREE.Vector3) => {
     const p = route.at(dist);
-    return new THREE.Vector3(p.x - Math.sin(p.heading) * lateral, p.y + up, p.z + Math.cos(p.heading) * lateral);
+    return v.set(p.x - Math.sin(p.heading) * lateral, p.y + up, p.z + Math.cos(p.heading) * lateral);
   };
   // Follow half of the road's height change between rider and camera/look points:
   // enough that climbs look like climbs and descents like descents, while the
   // rider stays framed in the same place on screen.
   const riderY = route.at(d).y;
-  const pos = at(d - rig.back, rig.height);
+  const pos = at(d - rig.back, rig.height, out.pos);
   pos.y = riderY + rig.height + (pos.y - rig.height - riderY) * 0.5;
-  const look = at(d + rig.lookAhead, rig.lookHeight);
+  const look = at(d + rig.lookAhead, rig.lookHeight, out.look);
   look.y = riderY + rig.lookHeight + (look.y - rig.lookHeight - riderY) * 0.6;
-  return { pos, look };
+  return out;
 }

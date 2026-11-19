@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { RideSession } from '../app/session';
 import type { Route } from './route';
 import { rng } from './route';
+import { chunkedInstances, type Inst } from './themes/common';
 import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
@@ -15,6 +16,9 @@ import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
 const ROAD_HALF = 4.5;
+/** Half-size (m) of the sun's shadow box, and how far up the road from the rider it is centred. */
+const SHADOW_HALF = 32;
+const SHADOW_AHEAD = 22;
 const SKY_TOP = new THREE.Color('#3f86d6');
 const SKY_HORIZON = new THREE.Color('#cfe5f5');
 const HAZE = new THREE.Color('#b9d3e6');
@@ -221,28 +225,15 @@ function spotPos(route: Route, s: Spot, jitter = 0, r?: () => number) {
   return new THREE.Vector3(route.x[s.i] - Math.sin(h) * s.off + jx, route.y[s.i] + terrainBump(s.i, s.off) - 0.2, route.z[s.i] + Math.cos(h) * s.off + jz);
 }
 
-function instanced(geo: THREE.BufferGeometry, mat: THREE.Material, mats: THREE.Matrix4[], colors?: THREE.Color[], shadow = true) {
-  const m = new THREE.InstancedMesh(geo, mat, Math.max(1, mats.length));
-  m.count = mats.length;
-  mats.forEach((x, k) => m.setMatrixAt(k, x));
-  colors?.forEach((c, k) => m.setColorAt(k, c));
-  m.castShadow = shadow;
-  m.receiveShadow = false;
-  return m;
-}
-
 function buildVegetation(route: Route, density = 1): THREE.Group {
   const n = route.x.length;
   const r = rng(route.seed * 31 + 7);
   const g = new THREE.Group();
-  const pines: THREE.Matrix4[] = [];
-  const pineCol: THREE.Color[] = [];
-  const broad: THREE.Matrix4[] = [];
-  const broadCol: THREE.Color[] = [];
-  const trunksP: THREE.Matrix4[] = [];
-  const trunksB: THREE.Matrix4[] = [];
-  const rocks: THREE.Matrix4[] = [];
-  const bushes: THREE.Matrix4[] = [];
+  const pines: Inst[] = [];
+  const broad: Inst[] = [];
+  const trunks: Inst[] = [];
+  const rocks: Inst[] = [];
+  const bushes: Inst[] = [];
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < n; i += 2) {
@@ -255,26 +246,20 @@ function buildVegetation(route: Route, density = 1): THREE.Group {
         const s = 0.7 + r() * 1.0;
         q.setFromAxisAngle(up, r() * Math.PI * 2);
         const m = new THREE.Matrix4().compose(p, q, new THREE.Vector3(s, s * (0.85 + r() * 0.4), s));
-        if (r() < 0.55 + 0.3 * forest) {
-          pines.push(m);
-          trunksP.push(m);
-          pineCol.push(new THREE.Color().setHSL(0.31 + r() * 0.05, 0.45, 0.17 + r() * 0.08));
-        } else {
-          broad.push(m);
-          trunksB.push(m);
-          broadCol.push(new THREE.Color().setHSL(0.2 + r() * 0.1, 0.5, 0.25 + r() * 0.12));
-        }
+        trunks.push({ i, m });
+        if (r() < 0.55 + 0.3 * forest) pines.push({ i, m, c: new THREE.Color().setHSL(0.31 + r() * 0.05, 0.45, 0.17 + r() * 0.08) });
+        else broad.push({ i, m, c: new THREE.Color().setHSL(0.2 + r() * 0.1, 0.5, 0.25 + r() * 0.12) });
       }
       if (r() < 0.08) {
         const p = spotPos(route, { i, off: side * (ROAD_HALF + 3 + r() * 40) }, 4, r);
         const s = 0.4 + r() * 1.6;
         q.setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3));
-        rocks.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(s, s * 0.7, s)));
+        rocks.push({ i, m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(s, s * 0.7, s)) });
       }
       if (r() < 0.25) {
         const p = spotPos(route, { i, off: side * (ROAD_HALF + 2.5 + r() * 12) }, 3, r);
         const s = 0.4 + r() * 0.7;
-        bushes.push(new THREE.Matrix4().compose(p, q.identity(), new THREE.Vector3(s * 1.4, s, s * 1.4)));
+        bushes.push({ i, m: new THREE.Matrix4().compose(p, q.identity(), new THREE.Vector3(s * 1.4, s, s * 1.4)) });
       }
     }
   }
@@ -289,11 +274,12 @@ function buildVegetation(route: Route, density = 1): THREE.Group {
   const pineGeo = mergeGeos(pineParts);
   const broadGeo = new THREE.IcosahedronGeometry(2.1, 0).scale(1, 0.9, 1).translate(0, 3.6, 0);
   const leafMat = windy(new THREE.MeshLambertMaterial({ flatShading: true }), 7, 0.22);
-  g.add(instanced(trunkGeo, trunkMat, [...trunksP, ...trunksB]));
-  g.add(instanced(pineGeo, leafMat, pines, pineCol));
-  g.add(instanced(broadGeo, windy(leafMat.clone(), 6, 0.26), broad, broadCol));
-  g.add(instanced(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#8e8c84', flatShading: true }), rocks));
-  g.add(instanced(new THREE.IcosahedronGeometry(1, 0).translate(0, 0.5, 0), windy(new THREE.MeshLambertMaterial({ color: '#4f7f36', flatShading: true }), 1.1, 0.07), bushes, undefined, false));
+  // split into ~800 m chunks so trees out of view (or out of the shadow frustum) are culled
+  g.add(chunkedInstances(route, trunkGeo, trunkMat, trunks));
+  g.add(chunkedInstances(route, pineGeo, leafMat, pines));
+  g.add(chunkedInstances(route, broadGeo, windy(leafMat.clone(), 6, 0.26), broad));
+  g.add(chunkedInstances(route, new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#8e8c84', flatShading: true }), rocks));
+  g.add(chunkedInstances(route, new THREE.IcosahedronGeometry(1, 0).translate(0, 0.5, 0), windy(new THREE.MeshLambertMaterial({ color: '#4f7f36', flatShading: true }), 1.1, 0.07), bushes, { shadow: false }));
   return g;
 }
 
@@ -317,10 +303,8 @@ function mergeGeos(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
 function buildBuildings(route: Route): THREE.Group {
   const n = route.x.length;
   const r = rng(route.seed * 97 + 11);
-  const bodies: THREE.Matrix4[] = [];
-  const bodyCol: THREE.Color[] = [];
-  const roofs: THREE.Matrix4[] = [];
-  const roofCol: THREE.Color[] = [];
+  const bodies: Inst[] = [];
+  const roofs: Inst[] = [];
   const every = Math.round(350 / route.step);
   for (let i = 0; i < n; i += every) {
     if (r() < 0.35) continue;
@@ -335,25 +319,23 @@ function buildBuildings(route: Route): THREE.Group {
       const d = barn ? 8 : 6 + r() * 2;
       const h = barn ? 6 : 3.2 + r() * 1.5;
       const p = base.clone().add(new THREE.Vector3((r() - 0.5) * 30, 0, (r() - 0.5) * 30));
-      bodies.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(w, h, d)));
-      bodyCol.push(new THREE.Color(barn ? '#9c2f24' : ['#efe6d2', '#e4d3b0', '#d9dfe4', '#c9b79a'][Math.floor(r() * 4)]));
-      roofs.push(new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, h, 0)), q, new THREE.Vector3(w * 1.05, h * 0.55, d * 1.1)));
-      roofCol.push(new THREE.Color(barn ? '#5b5b5b' : ['#7a3a2a', '#45484f', '#6b4b33'][Math.floor(r() * 3)]));
+      bodies.push({ i, m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(w, h, d)), c: new THREE.Color(barn ? '#9c2f24' : ['#efe6d2', '#e4d3b0', '#d9dfe4', '#c9b79a'][Math.floor(r() * 4)]) });
+      roofs.push({ i, m: new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, h, 0)), q, new THREE.Vector3(w * 1.05, h * 0.55, d * 1.1)), c: new THREE.Color(barn ? '#5b5b5b' : ['#7a3a2a', '#45484f', '#6b4b33'][Math.floor(r() * 3)]) });
     }
   }
   const g = new THREE.Group();
   const body = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
   // triangular prism roof: ridge along local x
   const roof = new THREE.CylinderGeometry(0.5, 0.5, 1, 3, 1).rotateZ(Math.PI / 2).rotateX(Math.PI / 6 + Math.PI / 2).scale(1, 1.15, 1.15).translate(0, 0.28, 0);
-  g.add(instanced(body, new THREE.MeshLambertMaterial(), bodies, bodyCol));
-  g.add(instanced(roof, new THREE.MeshLambertMaterial({ flatShading: true }), roofs, roofCol));
+  g.add(chunkedInstances(route, body, new THREE.MeshLambertMaterial(), bodies));
+  g.add(chunkedInstances(route, roof, new THREE.MeshLambertMaterial({ flatShading: true }), roofs));
   return g;
 }
 
 /** White roadside posts with reflectors every 25 m — they stream past and sell speed. */
 function buildPosts(route: Route): THREE.Group {
-  const posts: THREE.Matrix4[] = [];
-  const refl: THREE.Matrix4[] = [];
+  const posts: Inst[] = [];
+  const refl: Inst[] = [];
   const every = Math.max(1, Math.round(25 / route.step));
   const q = new THREE.Quaternion();
   for (let i = 0; i < route.x.length; i += every) {
@@ -362,13 +344,13 @@ function buildPosts(route: Route): THREE.Group {
       const h = route.heading[i];
       const p = new THREE.Vector3(route.x[i] - Math.sin(h) * off, route.y[i], route.z[i] + Math.cos(h) * off);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -h);
-      posts.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)));
-      refl.push(new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, 0.85, 0)), q, new THREE.Vector3(1, 1, 1)));
+      posts.push({ i, m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)) });
+      refl.push({ i, m: new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, 0.85, 0)), q, new THREE.Vector3(1, 1, 1)) });
     }
   }
   const g = new THREE.Group();
-  g.add(instanced(new THREE.BoxGeometry(0.12, 1.1, 0.12).translate(0, 0.55, 0), new THREE.MeshLambertMaterial({ color: '#f4f4f4' }), posts, undefined, false));
-  g.add(instanced(new THREE.BoxGeometry(0.14, 0.14, 0.14), new THREE.MeshBasicMaterial({ color: '#ff3b2f' }), refl, undefined, false));
+  g.add(chunkedInstances(route, new THREE.BoxGeometry(0.12, 1.1, 0.12).translate(0, 0.55, 0), new THREE.MeshLambertMaterial({ color: '#f4f4f4' }), posts, { shadow: false, chunkM: 3000 }));
+  g.add(chunkedInstances(route, new THREE.BoxGeometry(0.14, 0.14, 0.14), new THREE.MeshBasicMaterial({ color: '#ff3b2f' }), refl, { shadow: false, chunkM: 3000 }));
   return g;
 }
 
@@ -505,10 +487,13 @@ function buildMountains(route: Route): THREE.Group {
   return g;
 }
 
-function buildClouds(route: Route, height = 500): THREE.Group {
+/**
+ * Cumulus layer: 40 camera-facing quads in ONE draw call (40 sprites were 40 draws).
+ * All clouds are the same white, so blending them unsorted gives the same result.
+ */
+function buildClouds(route: Route, height = 500): THREE.Mesh {
   const r = rng(route.seed + 5);
   const tex = cloudTexture();
-  const g = new THREE.Group();
   let cx = 0;
   let cz = 0;
   let maxY = -Infinity;
@@ -519,17 +504,67 @@ function buildClouds(route: Route, height = 500): THREE.Group {
   }
   cx /= route.x.length;
   cz /= route.x.length;
-  for (let k = 0; k < 40; k++) {
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.75 + r() * 0.2, fog: false, depthWrite: false });
-    const s = new THREE.Sprite(mat);
+  const N = 40;
+  const corner = new Float32Array(N * 4 * 3);
+  const uv = new Float32Array(N * 4 * 2);
+  const center = new Float32Array(N * 4 * 3);
+  const size = new Float32Array(N * 4 * 2);
+  const alpha = new Float32Array(N * 4);
+  const idx: number[] = [];
+  const CORNERS = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
+  for (let k = 0; k < N; k++) {
+    const op = 0.75 + r() * 0.2;
     const a = r() * Math.PI * 2;
     const d = 800 + r() * 4500;
-    s.position.set(cx + Math.cos(a) * d, maxY + height + r() * 700, cz + Math.sin(a) * d);
+    const px = cx + Math.cos(a) * d;
+    const py = maxY + height + r() * 700;
+    const pz = cz + Math.sin(a) * d;
     const sc = 500 + r() * 900;
-    s.scale.set(sc * 1.8, sc * 0.7, 1);
-    g.add(s);
+    for (let v = 0; v < 4; v++) {
+      const o = k * 4 + v;
+      corner.set([CORNERS[v * 2], CORNERS[v * 2 + 1], 0], o * 3);
+      uv.set([CORNERS[v * 2] + 0.5, CORNERS[v * 2 + 1] + 0.5], o * 2);
+      center.set([px, py, pz], o * 3);
+      size.set([sc * 1.8, sc * 0.7], o * 2);
+      alpha[o] = op;
+    }
+    const b = k * 4;
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
   }
-  return g;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(corner, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('center', new THREE.BufferAttribute(center, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(size, 2));
+  geo.setAttribute('alpha', new THREE.BufferAttribute(alpha, 1));
+  geo.setIndex(idx);
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    uniforms: { map: { value: tex } },
+    vertexShader: /* glsl */ `
+      attribute vec3 center; attribute vec2 size; attribute float alpha;
+      varying vec2 vUv; varying float vAlpha;
+      void main(){
+        vUv = uv; vAlpha = alpha;
+        vec4 mv = modelViewMatrix * vec4(center, 1.0);
+        mv.xy += position.xy * size; // billboard: offset in view space, like a sprite
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      varying vec2 vUv; varying float vAlpha;
+      void main(){
+        vec4 t = texture2D(map, vUv);
+        gl_FragColor = vec4(t.rgb, t.a * vAlpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.frustumCulled = false; // one draw for the whole sky; bounds would only be approximate anyway
+  return m;
 }
 
 // ---------------------------------------------------------------------------
@@ -564,6 +599,7 @@ function buildRider(): RiderModel {
     return m;
   };
   const V = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
+  const small = <T extends THREE.Object3D>(o: T) => ((o.userData.noShadow = true), o);
 
   // wheels with visible spokes so rotation reads clearly
   const wheels: THREE.Group[] = [];
@@ -572,13 +608,13 @@ function buildRider(): RiderModel {
     w.position.set(x, 0.34, 0);
     const tyre = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.025, 8, 32), black);
     tyre.castShadow = true;
-    w.add(tyre, new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 32), silver));
+    w.add(tyre, small(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 32), silver)));
     for (let k = 0; k < 6; k++) {
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.6, 0.008), silver);
+      const s = small(new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.6, 0.008), silver));
       s.rotation.z = (k / 6) * Math.PI;
       w.add(s);
     }
-    w.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.08, 10).rotateX(Math.PI / 2), silver));
+    w.add(small(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.08, 10).rotateX(Math.PI / 2), silver)));
     bike.add(w);
     wheels.push(w);
   }
@@ -596,22 +632,22 @@ function buildRider(): RiderModel {
     [headBot, V(0.5, 0.34), 0.016],
     [headTop, headBot, 0.026],
   ].forEach(([a, b, r]) => bike.add(bar(a as THREE.Vector3, b as THREE.Vector3, r as number, frameMat)));
-  bike.add(bar(V(-0.17, 0.82), V(-0.2, 0.92), 0.012, silver)); // seatpost
+  bike.add(small(bar(V(-0.17, 0.82), V(-0.2, 0.92), 0.012, silver))); // seatpost
   const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.12), black);
   saddle.position.set(-0.19, 0.94, 0);
   bike.add(saddle);
-  bike.add(bar(V(0.36, 0.8), V(0.42, 0.95), 0.014, silver)); // stem
-  bike.add(bar(V(0.42, 0.95, -0.21), V(0.42, 0.95, 0.21), 0.012, black)); // bars
-  for (const z of [-0.21, 0.21]) bike.add(bar(V(0.42, 0.95, z), V(0.5, 0.83, z), 0.012, black)); // drops
+  bike.add(small(bar(V(0.36, 0.8), V(0.42, 0.95), 0.014, silver))); // stem
+  bike.add(small(bar(V(0.42, 0.95, -0.21), V(0.42, 0.95, 0.21), 0.012, black))); // bars
+  for (const z of [-0.21, 0.21]) bike.add(small(bar(V(0.42, 0.95, z), V(0.5, 0.83, z), 0.012, black))); // drops
 
   // crank + pedals
   const crank = new THREE.Group();
   crank.position.copy(bb);
   bike.add(crank);
-  crank.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 20).rotateX(Math.PI / 2).translate(0, 0, 0.06), silver));
+  crank.add(small(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 20).rotateX(Math.PI / 2).translate(0, 0, 0.06), silver)));
   const pedals: THREE.Object3D[] = [];
   for (const side of [1, -1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.17, 0.015), silver);
+    const arm = small(new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.17, 0.015), silver));
     arm.position.set(0, (0.17 / 2) * side, 0.08 * side);
     crank.add(arm);
     const pedal = new THREE.Object3D();
@@ -644,7 +680,8 @@ function buildRider(): RiderModel {
     bike.add(m);
     legs.push(m);
   }
-  group.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+  // only the parts big enough to read in a shadow cast one (spokes, cockpit and crank don't)
+  group.traverse((o) => ((o as THREE.Mesh).castShadow = !o.userData.noShadow));
   return { group, bike, wheels, crank, pedals, legs, torso };
 }
 
@@ -826,10 +863,24 @@ function disposeTree(root: THREE.Object3D) {
     const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
     mats.forEach((x) => {
       (x as THREE.MeshBasicMaterial).map?.dispose();
+      // custom shaders hold their textures in uniforms
+      const u = (x as THREE.ShaderMaterial).uniforms;
+      if (u) for (const k in u) (u[k]?.value as THREE.Texture | undefined)?.isTexture && (u[k].value as THREE.Texture).dispose();
       x.dispose();
     });
     if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
   });
+}
+
+// scratch objects for the per-frame rider animation (no garbage per frame)
+const LEG_TMP = { hip: new THREE.Vector3(), foot: new THREE.Vector3(), knee: new THREE.Vector3(), dir: new THREE.Vector3(), fwd: new THREE.Vector3(), inv: new THREE.Matrix4() };
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const _limbDir = new THREE.Vector3();
+/** Stretch a unit-length, y-aligned cylinder between a and b. */
+function setLimb(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
+  m.position.addVectors(a, b).multiplyScalar(0.5);
+  m.scale.set(1, a.distanceTo(b), 1);
+  m.quaternion.setFromUnitVectors(Y_AXIS, _limbDir.subVectors(b, a).normalize());
 }
 
 /** The 3D world view. Reads the session each frame; never changes it. */
@@ -861,6 +912,8 @@ export class WorldView {
   private ro: ResizeObserver;
   private camPos = new THREE.Vector3();
   private camLook = new THREE.Vector3();
+  /** reused output of cameraTargets */
+  private camTgt = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
   private crankAngle = 0;
   private wheelAngle = 0;
   private last = performance.now();
@@ -888,7 +941,9 @@ export class WorldView {
     this.exaggeration = exaggeration;
     this.route = exaggerateRoute(session.route, exaggeration);
     const high = quality === 'high';
-    this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: 'high-performance' });
+    // High quality renders through the post chain, whose multisampled HDR target does the
+    // antialiasing; a multisampled canvas would just be an unused buffer (and Low never had one).
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.adaptive = new AdaptiveQuality(qualityLevels(quality, window.devicePixelRatio));
     this.renderer.setPixelRatio(this.adaptive.level.pixelRatio);
     this.renderer.shadowMap.enabled = high;
@@ -916,13 +971,16 @@ export class WorldView {
     this.scene.add(new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiIntensity));
     this.sun = new THREE.DirectionalLight(theme.sunColor, theme.sunIntensity);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    // The shadow box is centred SHADOW_AHEAD metres up the road (see loop): the camera looks
+    // forward, so a box centred on the rider spent almost half its texels behind the lens.
+    const sm = this.adaptive.level.shadowMap;
+    this.sun.shadow.mapSize.set(sm, sm);
     this.sun.shadow.bias = -0.0005;
     const sc = this.sun.shadow.camera;
-    sc.left = -45;
-    sc.right = 45;
-    sc.top = 45;
-    sc.bottom = -45;
+    sc.left = -SHADOW_HALF;
+    sc.right = SHADOW_HALF;
+    sc.top = SHADOW_HALF;
+    sc.bottom = -SHADOW_HALF;
     sc.far = 400;
     this.scene.add(this.sun, this.sun.target);
 
@@ -1007,6 +1065,7 @@ export class WorldView {
       disposeTree(child);
     }
     this.buildWorld();
+    this.post?.invalidateScene();
     // the camera eases its height toward the new road (see loop), so no pop
   }
   /** Sprint "rush" strength (speed blur, FOV kick, glow flare): 0 = off, 1 = normal, up to 1.5. */
@@ -1025,7 +1084,13 @@ export class WorldView {
     this.renderer.setPixelRatio(l.pixelRatio);
     if (this.post) {
       this.post.composer.setPixelRatio(l.pixelRatio);
-      this.post.ao.enabled = l.ao;
+      this.post.setQuality(l);
+    }
+    if (this.sun.shadow.mapSize.x !== l.shadowMap) {
+      this.sun.shadow.mapSize.set(l.shadowMap, l.shadowMap);
+      // drop the old map; the renderer allocates one at the new size next frame
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
     }
     this.resize();
   }
@@ -1065,31 +1130,25 @@ export class WorldView {
 
   private updateLegs() {
     const r = this.rider;
-    const set = (m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) => {
-      m.position.copy(a).add(b).multiplyScalar(0.5);
-      m.scale.set(1, a.distanceTo(b), 1);
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-    };
+    const { hip, foot, knee, dir, fwd, inv } = LEG_TMP;
     r.bike.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(r.bike.matrixWorld).invert();
+    inv.copy(r.bike.matrixWorld).invert();
     r.pedals.forEach((pd, k) => {
       const side = k === 0 ? 1 : -1;
-      const foot = new THREE.Vector3();
       pd.getWorldPosition(foot);
       foot.applyMatrix4(inv);
       foot.z = 0.11 * side;
       // hip follows the torso (which moves forward when standing / pushing)
-      const hip = new THREE.Vector3(-0.17 + r.torso.position.x + 0.17, r.torso.position.y - 0.02, 0.09 * side);
+      hip.set(-0.17 + r.torso.position.x + 0.17, r.torso.position.y - 0.02, 0.09 * side);
       const L = 0.45;
       const d = Math.min(hip.distanceTo(foot), 2 * L - 0.002);
-      const mid = hip.clone().add(foot).multiplyScalar(0.5);
       const hgt = Math.sqrt(Math.max(0, L * L - (d / 2) * (d / 2)));
-      const dir = foot.clone().sub(hip).normalize();
-      const fwd = new THREE.Vector3(-dir.y, dir.x, 0); // knee points forward/up
+      dir.subVectors(foot, hip).normalize();
+      fwd.set(-dir.y, dir.x, 0); // knee points forward/up
       if (fwd.x < 0) fwd.negate();
-      const knee = mid.add(fwd.multiplyScalar(hgt));
-      set(r.legs[k], hip, knee);
-      set(r.legs[k + 2], knee, foot);
+      knee.addVectors(hip, foot).multiplyScalar(0.5).addScaledVector(fwd, hgt);
+      setLimb(r.legs[k], hip, knee);
+      setLimb(r.legs[k + 2], knee, foot);
     });
   }
 
@@ -1110,7 +1169,7 @@ export class WorldView {
     if (trace) trace.push(d, now);
 
     // --- rider
-    const p = this.place(this.rider.group, d, 1.7);
+    this.place(this.rider.group, d, 1.7);
     if (this.lampRig) {
       this.lampRig.position.copy(this.rider.group.position);
       this.lampRig.rotation.copy(this.rider.group.rotation);
@@ -1140,7 +1199,7 @@ export class WorldView {
     // climbs look like climbs; smoothed so it glides rather than snaps.
     const rig = CAMERA_RIGS[this.camMode];
     this.rider.group.visible = rig.showRider;
-    const tgt = cameraTargets(route, d, 1.7, rig);
+    const tgt = cameraTargets(route, d, 1.7, rig, this.camTgt);
     // Follow exactly along the road (d is already smooth, so no lag at speed);
     // only ease the heights so bumps in the terrain don't jolt the view.
     const k = 1 - Math.exp(-dt * (this.camMode === 'first' ? 12 : 5));
@@ -1157,8 +1216,10 @@ export class WorldView {
     }
 
     this.sky.position.copy(this.camera.position);
-    this.sun.position.set(p.x, p.y, p.z).addScaledVector(this.sunDir, 170);
-    this.sun.target.position.set(p.x, p.y, p.z);
+    // shadow box centred up the road, where the camera is looking
+    const ahead = route.at(d + SHADOW_AHEAD);
+    this.sun.target.position.set(ahead.x, ahead.y, ahead.z);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 170);
 
     // --- arches: placed from the smoothed rider distance and the workout clock run
     // forward to this frame (it only ticks at 10 Hz), so they hold still in the world
