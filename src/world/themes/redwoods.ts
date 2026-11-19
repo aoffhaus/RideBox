@@ -23,6 +23,7 @@ import {
   jitterAlong,
 } from './common';
 import type { ThemeBuildOptions } from './index';
+import { breathingShafts, buildDustMotes, windy } from '../fx';
 
 export function redwoodsRoad() {
   return roadTex({
@@ -212,7 +213,8 @@ export function buildRedwoods(route: Route, opts: ThemeBuildOptions): THREE.Obje
   };
   const crownA = crownGeo(101);
   const crownB = crownGeo(202);
-  const crownMat = new THREE.MeshLambertMaterial({ flatShading: true, side: THREE.DoubleSide });
+  // crowns start ~30 m up on 60 m trees: only the tops sway, slowly
+  const crownMat = windy(new THREE.MeshLambertMaterial({ flatShading: true, side: THREE.DoubleSide }), 64, 0.9);
   out.push(chunkedInstances(route, crownA, crownMat, crowns, { chunkM: 500 }));
   out.push(chunkedInstances(route, crownB, crownMat, crownsB, { chunkM: 500 }));
 
@@ -222,7 +224,7 @@ export function buildRedwoods(route: Route, opts: ThemeBuildOptions): THREE.Obje
     chunkedInstances(
       route,
       merge([new THREE.IcosahedronGeometry(2.4, 0).scale(1.2, 0.8, 1).translate(0, 6.5, 0), new THREE.IcosahedronGeometry(1.8, 0).translate(1.4, 5.2, 0.8)]),
-      new THREE.MeshLambertMaterial({ flatShading: true }),
+      windy(new THREE.MeshLambertMaterial({ flatShading: true }), 8, 0.2),
       tanoaks,
       { shadow: false },
     ),
@@ -242,7 +244,7 @@ export function buildRedwoods(route: Route, opts: ThemeBuildOptions): THREE.Obje
   };
   const fernGeo = merge([0, 1, 2, 3, 4, 5, 6].map((k) => frond((k / 7) * Math.PI * 2 + k * 0.3, 0.1 + (k % 3) * 0.15)));
   fernGeo.computeVertexNormals();
-  out.push(chunkedInstances(route, fernGeo, new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), ferns, { shadow: false }));
+  out.push(chunkedInstances(route, fernGeo, windy(new THREE.MeshLambertMaterial({ side: THREE.DoubleSide }), 1.4, 0.12), ferns, { shadow: false }));
 
   // fallen logs (moss-tinged)
   out.push(chunkedInstances(route, new THREE.CylinderGeometry(1, 1.2, 1, 8), new THREE.MeshLambertMaterial({ color: '#6a4a36', map: barkTex }), logs, { shadow: true, receive: true }));
@@ -282,8 +284,14 @@ export function buildRedwoods(route: Route, opts: ThemeBuildOptions): THREE.Obje
     false,
   );
   const shaftGeo = merge([new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0).rotateY(Math.PI / 2)]);
-  const shaftMat = new THREE.MeshBasicMaterial({ map: shaftTex, color: '#ffe9b0', transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+  // shafts slowly brighten and fade (breathingShafts) and are bright enough to catch the bloom
+  const shaftMat = breathingShafts(
+    new THREE.MeshBasicMaterial({ map: shaftTex, color: new THREE.Color('#ffe2a0').multiplyScalar(1.6), transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+  );
   out.push(chunkedInstances(route, shaftGeo, shaftMat, shafts, { shadow: false, chunkM: 400 }));
+
+  // dust and pollen hanging in the light around the rider
+  out.push(buildDustMotes({ count: opts.high ? 1800 : 600, box: 60, color: '#ffe6b0', size: 1.8, opacity: 1.2 }));
 
   // --- low mist banks drifting between the trunks
   const mistTex = canvasTex(

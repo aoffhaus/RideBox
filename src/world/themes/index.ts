@@ -1,6 +1,7 @@
 // Theme registry: per-route sky, light and scenery.
 import type * as THREE from 'three';
 import type { Route, ThemeId } from '../route';
+import type { SkyParams } from '../sky';
 import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
@@ -38,6 +39,14 @@ export interface Theme {
   physicalSky?: boolean;
   /** Per-frame animation hook for the theme's scenery (time in seconds). */
   update?: (time: number) => void;
+  /** Sun position in degrees (azimuth from +x towards +z). Default ≈ 56° up, 32° round. */
+  sun?: { elevation: number; azimuth: number };
+  /** Scattering parameters for the physical sky. */
+  sky?: Partial<SkyParams>;
+  /** How much a passing cloud dims direct sunlight (0 = no cloud shadows). Default 0.45 when `clouds`. */
+  cloudShadows?: number;
+  /** false = no white reflector posts along the road edge. Default true. */
+  posts?: boolean;
 }
 
 /** The original look (rolling green countryside, farms, distant mountains). */
@@ -68,13 +77,16 @@ const BIGSUR: Theme = {
   hemiSky: '#e8f1ff',
   hemiGround: '#8a7b4c',
   hemiIntensity: 1.1,
-  sunColor: '#fff0d2',
-  sunIntensity: 2.4,
+  sunColor: '#ffe4bf',
+  sunIntensity: 2.5,
   exposure: 1.05,
   groundColor: null,
   clouds: true,
   build: buildBigSur,
   roadTexture: bigSurRoad,
+  // late-afternoon sun low over the Pacific: it swings into view on parts of the lap
+  sun: { elevation: 21, azimuth: 35 },
+  sky: { turbidity: 3.2, rayleigh: 2.4, mieCoefficient: 0.006, mieDirectionalG: 0.86 },
 };
 
 const REDWOODS: Theme = {
@@ -132,9 +144,10 @@ const SYNTHWAVE: Theme = {
   clouds: false,
   build: buildSynthwave,
   roadTexture: synthwaveRoad,
-  bloom: { strength: 1.1, radius: 0.6, threshold: 0.85 },
+  bloom: { strength: 0.6, radius: 0.5, threshold: 1.1 },
   physicalSky: false,
   update: synthwaveUpdate,
+  posts: false, // the neon pylons replace them
 };
 
 const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };

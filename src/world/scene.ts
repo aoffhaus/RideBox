@@ -6,6 +6,9 @@ import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
 import { themeFor } from './themes';
+import { applyWorldFx, fxTime, windy } from './fx';
+import { PostFX, DEFAULT_BLOOM } from './postfx';
+import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './sky';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
 const ROAD_HALF = 4.5;
@@ -282,12 +285,12 @@ function buildVegetation(route: Route, density = 1): THREE.Group {
   ];
   const pineGeo = mergeGeos(pineParts);
   const broadGeo = new THREE.IcosahedronGeometry(2.1, 0).scale(1, 0.9, 1).translate(0, 3.6, 0);
-  const leafMat = new THREE.MeshLambertMaterial({ flatShading: true });
+  const leafMat = windy(new THREE.MeshLambertMaterial({ flatShading: true }), 7, 0.22);
   g.add(instanced(trunkGeo, trunkMat, [...trunksP, ...trunksB]));
   g.add(instanced(pineGeo, leafMat, pines, pineCol));
-  g.add(instanced(broadGeo, leafMat.clone(), broad, broadCol));
+  g.add(instanced(broadGeo, windy(leafMat.clone(), 6, 0.26), broad, broadCol));
   g.add(instanced(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#8e8c84', flatShading: true }), rocks));
-  g.add(instanced(new THREE.IcosahedronGeometry(1, 0).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: '#4f7f36', flatShading: true }), bushes, undefined, false));
+  g.add(instanced(new THREE.IcosahedronGeometry(1, 0).translate(0, 0.5, 0), windy(new THREE.MeshLambertMaterial({ color: '#4f7f36', flatShading: true }), 1.1, 0.07), bushes, undefined, false));
   return g;
 }
 
@@ -731,7 +734,12 @@ export class WorldView {
   private arch: ArchObj;
   private nextArch: ArchObj;
   private sun: THREE.DirectionalLight;
+  /** unit vector towards the sun (the light and the physical sky share it) */
+  private sunDir = new THREE.Vector3(80, 140, 50).normalize();
   private sky: THREE.Mesh;
+  private post: PostFX | null = null;
+  private envMap: THREE.Texture | null = null;
+  private t0 = performance.now();
   private raf = 0;
   private ro: ResizeObserver;
   private camPos = new THREE.Vector3();
@@ -774,7 +782,18 @@ export class WorldView {
     const theme = themeFor(session.route);
     this.renderer.toneMappingExposure = theme.exposure;
     this.scene.fog = new THREE.Fog(theme.id === 'countryside' ? HAZE : new THREE.Color(theme.haze), theme.fogNear, theme.fogFar);
-    this.sky = theme.id === 'countryside' ? buildSky() : buildSky(new THREE.Color(theme.skyTop), new THREE.Color(theme.skyHorizon));
+    if (theme.sun) sunDirection(theme.sun.elevation, theme.sun.azimuth, this.sunDir);
+    const haze = theme.id === 'countryside' ? HAZE : new THREE.Color(theme.haze);
+    if (theme.physicalSky !== false) {
+      const sky = buildPhysicalSky({ ...DEFAULT_SKY, ...theme.sky }, this.sunDir, haze);
+      this.sky = sky;
+      // image-based lighting from the sky for the PBR materials (rider, arches)
+      this.envMap = bakeEnvironment(this.renderer, sky);
+      this.scene.environment = this.envMap;
+      this.scene.environmentIntensity = 0.55;
+    } else {
+      this.sky = theme.id === 'countryside' ? buildSky() : buildSky(new THREE.Color(theme.skyTop), new THREE.Color(theme.skyHorizon));
+    }
     this.scene.add(this.sky);
     this.scene.add(new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiIntensity));
     this.sun = new THREE.DirectionalLight(theme.sunColor, theme.sunIntensity);
@@ -793,6 +812,7 @@ export class WorldView {
     this.high = high;
     this.scene.add(this.world);
     this.buildWorld();
+    if (high) this.post = new PostFX(this.renderer, this.scene, this.camera, theme.bloom ?? DEFAULT_BLOOM);
 
     this.rider = buildRider();
     this.scene.add(this.rider.group);
@@ -822,7 +842,8 @@ export class WorldView {
     const w = this.world;
     if (theme.build) {
       // themed landscape: the theme supplies terrain & scenery; road furniture is shared
-      w.add(...theme.build(route, { high }), buildRoad(route, theme.roadTexture?.()), buildPosts(route), buildClimbSigns(route));
+      w.add(...theme.build(route, { high }), buildRoad(route, theme.roadTexture?.()), buildClimbSigns(route));
+      if (theme.posts !== false) w.add(buildPosts(route));
       if (theme.clouds) w.add(buildClouds(route));
     } else {
       w.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
@@ -835,6 +856,8 @@ export class WorldView {
       ground.position.y = minY - 30;
       w.add(ground);
     }
+    // shader-level life: drifting cloud shadows over everything, wind in the foliage
+    applyWorldFx(w, { cloudShadows: theme.cloudShadows ?? (theme.clouds ? 0.45 : 0), wind: true });
   }
 
   /**
@@ -863,6 +886,7 @@ export class WorldView {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
     this.renderer.setSize(w, h);
+    this.post?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -967,7 +991,7 @@ export class WorldView {
     }
 
     this.sky.position.copy(this.camera.position);
-    this.sun.position.set(p.x + 80, p.y + 140, p.z + 50);
+    this.sun.position.set(p.x, p.y, p.z).addScaledVector(this.sunDir, 170);
     this.sun.target.position.set(p.x, p.y, p.z);
 
     // --- arches (positions are relative to the smoothed rider distance)
@@ -1001,7 +1025,11 @@ export class WorldView {
       this.nextArch.group.visible = false;
     }
 
-    this.renderer.render(this.scene, this.camera);
+    const time = (now - this.t0) / 1000;
+    fxTime.value = time;
+    this.theme.update?.(time);
+    if (this.post) this.post.render(dt);
+    else this.renderer.render(this.scene, this.camera);
     if (trace) {
       (window as unknown as { __rbInfo?: unknown }).__rbInfo = { ...this.renderer.info.render };
       (window as unknown as { __rbScene?: unknown }).__rbScene = this.scene;
@@ -1013,6 +1041,8 @@ export class WorldView {
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
     disposeTree(this.scene);
+    this.post?.dispose();
+    this.envMap?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

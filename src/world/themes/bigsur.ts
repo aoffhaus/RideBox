@@ -27,6 +27,7 @@ import {
   type TerrainModel,
 } from './common';
 import type { ThemeBuildOptions } from './index';
+import { windy } from '../fx';
 
 export function bigSurRoad() {
   return roadTex({
@@ -465,9 +466,10 @@ export function buildBigSur(route: Route, opts: ThemeBuildOptions): THREE.Object
   const trunkGeo = new THREE.CylinderGeometry(0.22, 0.38, 4.6, 6, 1, true).translate(0, 2.3, 0);
   const leaf = new THREE.MeshLambertMaterial({ flatShading: true });
   out.push(chunkedInstances(route, trunkGeo, new THREE.MeshLambertMaterial({ color: '#5b4632' }), trunks));
-  out.push(chunkedInstances(route, cypressGeo, leaf, cypress));
-  out.push(chunkedInstances(route, oakGeo, leaf.clone(), oaks));
-  out.push(chunkedInstances(route, new THREE.IcosahedronGeometry(1, 0).translate(0, 0.45, 0), new THREE.MeshLambertMaterial({ flatShading: true }), bushes, { shadow: false }));
+  // coastal wind: the cypress canopies rock more than the sheltered oaks
+  out.push(chunkedInstances(route, cypressGeo, windy(leaf, 8, 0.3), cypress));
+  out.push(chunkedInstances(route, oakGeo, windy(leaf.clone(), 6, 0.18), oaks));
+  out.push(chunkedInstances(route, new THREE.IcosahedronGeometry(1, 0).translate(0, 0.45, 0), windy(new THREE.MeshLambertMaterial({ flatShading: true }), 1, 0.08), bushes, { shadow: false }));
 
   // --- concrete arch bridges over the bridged gullies
   const beams: Inst[] = [];
