@@ -224,7 +224,6 @@ export function App() {
   if (session) return <RideScreen session={session} settings={settings} onEnd={endRide} onSettingsChange={updateSettings} />;
 
   const sel = workouts.find((w) => w.id === selected);
-  const selRoute = ROUTE_PRESETS.find((p) => p.id === route);
   const selIv = sel ? flatten(sel.workout) : [];
   const selStats = sel ? plannedStats(selIv, settings.ftp) : null;
 
@@ -334,14 +333,38 @@ export function App() {
           <div className="route-grid">
             {routes.map(({ p, r }) => {
               return (
-                <button key={p.id} className={`route-card ${route === p.id ? 'selected' : ''}`} onClick={() => setRoute(p.id)}>
+                <div
+                  key={p.id}
+                  role="button"
+                  tabIndex={0}
+                  className={`route-card ${route === p.id ? 'selected' : ''}`}
+                  onClick={() => setRoute(p.id)}
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      setRoute(p.id);
+                    }
+                  }}
+                >
                   <img className="route-thumb" src={ROUTE_IMAGES[p.id]} alt="" loading="lazy" />
                   <div className="card-title">{p.name}</div>
                   <div className="muted small">
                     {fmtDist(r.length, settings)} {distUnit(settings)} · {fmtElev(r.totalClimb, settings)} {elevUnit(settings)} · {p.description}
                   </div>
                   <RouteProfile r={r} />
-                </button>
+                  {route === p.id && (
+                    <button
+                      className="primary route-ride"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startRide();
+                      }}
+                      disabled={!trainer}
+                    >
+                      {trainer ? 'Ride ▶' : 'Connect a trainer to ride'}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -350,7 +373,6 @@ export function App() {
             <button className="primary big" onClick={() => startRide()} disabled={!trainer}>
               {trainer ? 'Start ride ▶' : 'Connect a trainer to start'}
             </button>
-            {selRoute && <span className="start-route">{selRoute.name}</span>}
             {!trainer && <span className="muted small">No hardware handy? Click <b>Simulator</b> at the top right to try it.</span>}
           </div>
         </div>
