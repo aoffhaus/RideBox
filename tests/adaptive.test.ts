@@ -8,16 +8,36 @@ const run = (q: AdaptiveQuality, fps: number, seconds: number) => {
 };
 
 describe('qualityLevels', () => {
-  it('starts at the display resolution (capped at 2x) and ends with AO off', () => {
+  it('starts at full detail and display resolution (capped at 2x)', () => {
     const l = qualityLevels('high', 2);
-    expect(l[0]).toEqual({ pixelRatio: 2, ao: true });
-    expect(l.map((x) => x.pixelRatio)).toEqual([2, 1.75, 1.5, 1.25, 1, 1, 0.75]);
-    expect(l.at(-2)).toEqual({ pixelRatio: 1, ao: false });
+    expect(l[0]).toEqual({ pixelRatio: 2, ao: true, aoLite: false, shadowMap: 1536, bloomScale: 1 });
+  });
+  it('gives up AO quality and shadow resolution before any pixels', () => {
+    const l = qualityLevels('high', 2);
+    expect(l.slice(0, 3).map((x) => [x.pixelRatio, x.aoLite, x.shadowMap])).toEqual([
+      [2, false, 1536],
+      [2, true, 1024],
+      [2, true, 768],
+    ]);
+    expect(l.map((x) => x.pixelRatio)).toEqual([2, 2, 2, 1.75, 1.5, 1.25, 1, 1, 0.75]);
+  });
+  it('ends with AO off, then lower resolution and half-size bloom', () => {
+    const l = qualityLevels('high', 2);
+    expect(l.at(-2)).toMatchObject({ pixelRatio: 1, ao: false, bloomScale: 1 });
+    expect(l.at(-1)).toMatchObject({ pixelRatio: 0.75, ao: false, bloomScale: 0.5 });
+    // never gets better on the way down
+    for (let k = 1; k < l.length; k++) {
+      expect(l[k].pixelRatio).toBeLessThanOrEqual(l[k - 1].pixelRatio);
+      expect(l[k].shadowMap).toBeLessThanOrEqual(l[k - 1].shadowMap);
+    }
+  });
+  it('a 1x display still has the detail steps', () => {
+    expect(qualityLevels('high', 1).map((x) => x.pixelRatio)).toEqual([1, 1, 1, 1, 0.75]);
   });
   it('low graphics has no AO and starts at 1x', () => {
-    expect(qualityLevels('low', 2)).toEqual([
-      { pixelRatio: 1, ao: false },
-      { pixelRatio: 0.75, ao: false },
+    expect(qualityLevels('low', 2).map((x) => [x.pixelRatio, x.ao])).toEqual([
+      [1, false],
+      [0.75, false],
     ]);
   });
 });

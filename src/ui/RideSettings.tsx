@@ -73,7 +73,7 @@ export function RideSettings({ settings, onChange, onClose, getStats }: Props) {
   const graphics = s.graphics ?? settings.graphics;
   const fps = stats && stats.fps > 0 ? Math.round(stats.fps) : null;
   const fpsClass = fps == null ? 'muted' : fps >= 55 ? 'fps-good' : fps >= 40 ? 'fps-ok' : 'fps-bad';
-  const res = stats ? `${Math.round(stats.pixelRatio * 100)}% resolution${stats.level > 0 ? ' (lowered to keep it smooth)' : ''}${graphics === 'high' && !stats.ao ? ', ambient occlusion off' : ''}` : '';
+  const res = stats ? `${Math.round(stats.pixelRatio * 100)}% resolution${graphics === 'high' && !stats.ao ? ', ambient occlusion off' : ''}${stats.level > 0 ? ' (detail lowered to keep it smooth)' : ''}` : '';
   return (
     <div className="ride-settings panel" role="dialog" aria-label="Ride settings">
       <div className="ride-settings-head">
