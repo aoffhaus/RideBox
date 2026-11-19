@@ -6,11 +6,10 @@ import { formatDuration } from '../workout/model';
 import { distUnit, fmtDist, r0 } from './format';
 import { StravaButton } from './StravaButton';
 
-export function History({ rides, settings, stravaConnected, onStravaUpload, onOpen, onChange }: {
+export function History({ rides, settings, stravaConnected, onOpen, onChange }: {
   rides: RideRecord[];
   settings: Settings;
   stravaConnected: boolean;
-  onStravaUpload: (r: RideRecord) => void;
   onOpen: (r: RideRecord) => void;
   onChange: () => void;
 }) {
@@ -46,7 +45,7 @@ export function History({ rides, settings, stravaConnected, onStravaUpload, onOp
               <td>{r0(r.summary.tss)}</td>
               <td>{r0(r.summary.avgHr)}</td>
               <td className="row">
-                <StravaButton ride={r} connected={stravaConnected} onUpload={onStravaUpload} compact />
+                <StravaButton ride={r} connected={stravaConnected} onUpload={onOpen} compact />
                 <button onClick={() => downloadBlob(rideToFit(r), rideFileName(r))}>.fit</button>
                 <button
                   className="danger-text"

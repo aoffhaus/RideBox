@@ -6,7 +6,7 @@ vi.mock('../src/storage/db', () => ({
   setFlag: async (k: string, v: unknown) => void kv.set(k, v),
 }));
 
-import { authorizeUrl, completeOAuth, interpretUpload, loadStrava, parseOAuthReturn, redirectUri, uploadFit, DEFAULT_STRAVA } from '../src/strava/strava';
+import { updateActivity, authorizeUrl, completeOAuth, interpretUpload, loadStrava, parseOAuthReturn, redirectUri, uploadFit, DEFAULT_STRAVA } from '../src/strava/strava';
 
 afterEach(() => {
   kv.clear();
@@ -90,5 +90,25 @@ describe('strava upload', () => {
 
   it('fails clearly when not connected', async () => {
     await expect(uploadFit(new Uint8Array(), { name: 'x', externalId: 'y', fileName: 'z' })).rejects.toThrow(/Settings/);
+  });
+});
+
+describe('strava activity update', () => {
+  it('renames / mutes an activity with a JSON PUT', async () => {
+    kv.set('strava', { ...DEFAULT_STRAVA, clientId: '1', clientSecret: 's', accessToken: 'A', refreshToken: 'R', expiresAt: 2e9 });
+    const fetchMock = vi.fn(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+    await updateActivity(99, { name: 'New name', hide_from_home: true });
+    const [url, init] = fetchMock.mock.calls[0] as any;
+    expect(url).toBe('https://www.strava.com/api/v3/activities/99');
+    expect(init.method).toBe('PUT');
+    expect(init.headers.Authorization).toBe('Bearer A');
+    expect(JSON.parse(init.body)).toEqual({ name: 'New name', hide_from_home: true });
+  });
+
+  it('reports a deleted activity', async () => {
+    kv.set('strava', { ...DEFAULT_STRAVA, clientId: '1', clientSecret: 's', accessToken: 'A', refreshToken: 'R', expiresAt: 2e9 });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
+    await expect(updateActivity(1, { name: 'x' })).rejects.toThrow(/no longer on Strava/);
   });
 });

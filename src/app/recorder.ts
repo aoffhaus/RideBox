@@ -45,7 +45,7 @@ export interface RideRecord {
   laps: Lap[];
   summary: RideSummary;
   /** set once the ride has been sent to Strava */
-  strava?: { status: 'uploading' | 'done' | 'error'; activityId?: number; error?: string };
+  strava?: { status: 'uploading' | 'done' | 'error'; activityId?: number; error?: string; hidden?: boolean };
 }
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);

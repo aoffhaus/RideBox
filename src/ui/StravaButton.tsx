@@ -15,10 +15,10 @@ export function StravaButton({ ride, connected, onUpload, compact }: { ride: Rid
   if (!connected) return null;
   if (st?.status === 'error') {
     return (
-      <button className="strava" title={st.error} onClick={() => onUpload(ride)}>
+      <button className="strava" title={`${st.error} (click to retry)`} onClick={() => onUpload(ride)}>
         {compact ? 'Retry Strava' : 'Retry Strava upload'}
       </button>
     );
   }
-  return <button className="strava" onClick={() => onUpload(ride)}>{compact ? 'Strava' : 'Upload to Strava'}</button>;
+  return <button className="strava" title="Choose upload options" onClick={() => onUpload(ride)}>{compact ? 'Strava…' : 'Upload to Strava…'}</button>;
 }

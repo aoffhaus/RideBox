@@ -17,8 +17,6 @@ export const OAUTH_STATE = 'ridebox-strava';
 export interface StravaConfig {
   clientId: string;
   clientSecret: string;
-  /** upload every finished ride automatically */
-  autoUpload: boolean;
   accessToken?: string;
   refreshToken?: string;
   /** seconds since epoch */
@@ -30,9 +28,11 @@ export interface StravaUploadState {
   status: 'uploading' | 'done' | 'error';
   activityId?: number;
   error?: string;
+  /** muted: kept out of followers' feeds (Strava's hide_from_home) */
+  hidden?: boolean;
 }
 
-export const DEFAULT_STRAVA: StravaConfig = { clientId: '', clientSecret: '', autoUpload: true };
+export const DEFAULT_STRAVA: StravaConfig = { clientId: '', clientSecret: '' };
 
 export async function loadStrava(): Promise<StravaConfig> {
   try {
@@ -134,7 +134,7 @@ export async function disconnect(): Promise<StravaConfig> {
     // best effort: revoke on Strava's side too
     await fetch(DEAUTH_URL, { method: 'POST', body: new URLSearchParams({ access_token: c.accessToken }) }).catch(() => {});
   }
-  const next: StravaConfig = { clientId: c.clientId, clientSecret: c.clientSecret, autoUpload: c.autoUpload };
+  const next: StravaConfig = { clientId: c.clientId, clientSecret: c.clientSecret };
   await saveStrava(next);
   return next;
 }
@@ -199,4 +199,23 @@ export async function uploadFit(
     u = (await p.json()) as UploadResponse;
   }
   return { status: 'error', error: 'Strava is still processing the upload. Check your Strava feed in a few minutes.' };
+}
+
+/**
+ * Changes an uploaded activity. Strava's API can rename an activity and mute it
+ * (hide_from_home: kept out of followers' feeds), but it can't set "Only You"
+ * visibility or delete it; those are only possible on strava.com.
+ */
+export async function updateActivity(id: number, changes: { name?: string; hide_from_home?: boolean }): Promise<void> {
+  const token = await accessToken();
+  const res = await fetch(`${API}/activities/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(changes),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    if (res.status === 404) throw new Error('That activity is no longer on Strava.');
+    throw new Error(`Strava update failed (${res.status}): ${describeError(json)}`);
+  }
 }

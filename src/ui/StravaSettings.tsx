@@ -30,13 +30,9 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
             </div>
             <button className="ghost" onClick={async () => onChange(await disconnect())}>Disconnect</button>
           </div>
-          <label className="row" style={{ marginTop: 10 }}>
-            <input type="checkbox" checked={config.autoUpload} onChange={(e) => update({ ...config, autoUpload: e.target.checked })} />
-            Upload every ride to Strava automatically when it ends
-          </label>
           <p className="muted small">
-            Rides upload as virtual rides with one lap per interval. You can upload or retry any ride from History. A ride that&apos;s already on Strava is
-            detected and linked instead of duplicated.
+            Nothing uploads automatically. After a ride, choose <b>Upload to Strava</b> on its summary (or <b>Strava…</b> in History). Rides upload as
+            virtual rides with one lap per interval, and a ride that&apos;s already on Strava is linked instead of duplicated.
           </p>
         </div>
       ) : (
