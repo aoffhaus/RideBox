@@ -292,6 +292,146 @@ export function chunkedInstances(
   return g;
 }
 
+/**
+ * Per-frame view hook: `WorldView` calls `object.userData.onView(camera)` once per frame
+ * (before any render pass) for every object in the world that carries one.
+ */
+export type ViewHook = (camera: THREE.Camera) => void;
+
+export interface LodLevel {
+  /** null: not drawn at all at this distance */
+  geo: THREE.BufferGeometry | null;
+  /** instances closer than this (m, from the camera) use this level; the last level takes the rest */
+  upTo: number;
+  /** cast shadows (keep it to near levels: the sun's shadow box only reaches a few tens of metres) */
+  shadow?: boolean;
+}
+
+/**
+ * Like `chunkedInstances`, but each instance picks a detail level by its distance from the
+ * camera. Chunks stay put (so whole chunks are still frustum-culled); each chunk holds one
+ * InstancedMesh per level, and instances are moved between them as the camera passes. The split
+ * is recomputed every few metres of camera travel, with a little hysteresis so trees on a
+ * boundary don't flicker between levels.
+ */
+export function lodInstances(
+  route: Route,
+  levels: LodLevel[],
+  mat: THREE.Material,
+  items: Inst[],
+  opts: { receive?: boolean; chunkM?: number } = {},
+): THREE.Group {
+  const g = new THREE.Group();
+  const per = Math.max(1, Math.round((opts.chunkM ?? 800) / route.step));
+  const buckets = new Map<number, Inst[]>();
+  for (const it of items) {
+    const k = Math.floor(it.i / per);
+    let b = buckets.get(k);
+    if (!b) buckets.set(k, (b = []));
+    b.push(it);
+  }
+  const withColor = items.some((it) => it.c);
+  const last = levels.length - 1;
+  const HYST = 1.08;
+  const STEP = 4; // m of camera travel between re-splits
+  const geos = levels.flatMap((l) => (l.geo ? [l.geo] : []));
+  for (const geo of geos) if (!geo.boundingSphere) geo.computeBoundingSphere();
+  const geoR = Math.max(...geos.map((geo) => geo.boundingSphere!.radius));
+  const c0 = geos[0].boundingSphere!.center;
+
+  interface Chunk {
+    items: Inst[];
+    pos: Float32Array; // instance centres (world)
+    level: Int8Array; // current level per instance (-1 = unassigned)
+    meshes: (THREE.InstancedMesh | null)[];
+    centre: THREE.Vector3;
+    radius: number;
+    allLast: boolean;
+  }
+  const chunks: Chunk[] = [];
+  const v = new THREE.Vector3();
+  for (const b of buckets.values()) {
+    const pos = new Float32Array(b.length * 3);
+    const box = new THREE.Box3();
+    b.forEach((it, k) => {
+      v.copy(c0).applyMatrix4(it.m);
+      v.toArray(pos, k * 3);
+      box.expandByPoint(v);
+    });
+    const centre = box.getCenter(new THREE.Vector3());
+    let radius = 0;
+    for (let k = 0; k < b.length; k++) radius = Math.max(radius, v.fromArray(pos, k * 3).distanceTo(centre));
+    const meshes = levels.map((l) => {
+      if (!l.geo) return null;
+      const m = new THREE.InstancedMesh(l.geo, mat, b.length);
+      m.count = 0;
+      m.visible = false;
+      m.castShadow = !!l.shadow;
+      m.receiveShadow = opts.receive ?? false;
+      g.add(m);
+      return m;
+    });
+    chunks.push({ items: b, pos, level: new Int8Array(b.length).fill(-1), meshes, centre, radius: radius + geoR, allLast: false });
+  }
+
+  const fill = (ch: Chunk) => {
+    const n = ch.meshes.map(() => 0);
+    ch.items.forEach((it, k) => {
+      const L = ch.level[k];
+      const m = ch.meshes[L];
+      if (!m) return;
+      m.setMatrixAt(n[L], it.m);
+      if (withColor) m.setColorAt(n[L], it.c ?? new THREE.Color(1, 1, 1));
+      n[L]++;
+    });
+    ch.meshes.forEach((m, L) => {
+      if (!m) return;
+      m.count = n[L];
+      m.visible = n[L] > 0;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      if (n[L] > 0) m.computeBoundingSphere();
+    });
+  };
+
+  const lastCam = new THREE.Vector3(Infinity, 0, 0);
+  const cam = new THREE.Vector3();
+  const farEdge = levels[Math.max(0, last - 1)].upTo * HYST;
+  const onView: ViewHook = (camera) => {
+    camera.getWorldPosition(cam);
+    if (cam.distanceToSquared(lastCam) < STEP * STEP) return;
+    lastCam.copy(cam);
+    for (const ch of chunks) {
+      if (last === 0 || ch.centre.distanceTo(cam) - ch.radius > farEdge) {
+        // the whole chunk is beyond every boundary: everything at the last level
+        if (ch.allLast) continue;
+        ch.level.fill(last);
+        ch.allLast = true;
+        fill(ch);
+        continue;
+      }
+      let changed = false;
+      let allLast = true;
+      for (let k = 0; k < ch.items.length; k++) {
+        const d = v.fromArray(ch.pos, k * 3).distanceTo(cam);
+        let L = 0;
+        while (L < last && d >= levels[L].upTo) L++;
+        const cur = ch.level[k];
+        if (cur >= 0 && L > cur && d < levels[cur].upTo * HYST) L = cur; // hold a finer level a little longer
+        if (L !== cur) {
+          ch.level[k] = L;
+          changed = true;
+        }
+        if (L !== last) allLast = false;
+      }
+      ch.allLast = allLast;
+      if (changed) fill(ch);
+    }
+  };
+  g.userData.onView = onView;
+  return g;
+}
+
 /** Merge built-in geometries (position/normal/uv); mixes of indexed and non-indexed are flattened. */
 export function merge(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const mixed = geos.some((g) => !g.index);

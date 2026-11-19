@@ -11,6 +11,8 @@ import {
   buildTerrainMesh,
   canvasTex,
   chunkedInstances,
+  lodInstances,
+  type LodLevel,
   clampOff,
   detailTex,
   lapWave,
@@ -114,12 +116,17 @@ function taperTube(pts: THREE.Vector3[], r0: number, r1: number, seg = 8, rad = 
 
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
-/** Dark, twisted cherry trunk leaning towards +x, forking into branches that reach into the canopy. */
-function sakuraTrunk(seed: number) {
+/**
+ * Dark, twisted cherry trunk leaning towards +x, forking into branches that reach into the canopy.
+ * `far`: just a coarse main stem (the branches are hidden in the canopy at a distance).
+ */
+function sakuraTrunk(seed: number, far = false) {
   const r = rng(seed);
   const j = () => (r() - 0.5) * 0.5;
+  const stem = [V(0, -0.3, 0), V(0.25 + j(), 1.1, 0.15), V(0.8, 2.2, -0.2 + j()), V(1.5, 3.2, 0.1)];
+  if (far) return taperTube(stem, 0.34, 0.22, 3, 4);
   const parts = [
-    taperTube([V(0, -0.3, 0), V(0.25 + j(), 1.1, 0.15), V(0.8, 2.2, -0.2 + j()), V(1.5, 3.2, 0.1)], 0.34, 0.22, 10, 7),
+    taperTube(stem, 0.34, 0.22, 10, 7),
     taperTube([V(1.5, 3.1, 0.1), V(2.6, 4.0, 0.8 + j()), V(3.8, 5.2, 1.4)], 0.2, 0.06, 6, 5),
     taperTube([V(1.4, 3.1, 0.0), V(1.9 + j(), 4.3, -1.0), V(2.4, 5.7, -1.8)], 0.19, 0.06, 6, 5),
     taperTube([V(1.3, 3.0, 0.1), V(0.9, 4.2, 0.9 + j()), V(0.4, 5.4, 1.1)], 0.17, 0.05, 6, 5),
@@ -128,17 +135,24 @@ function sakuraTrunk(seed: number) {
   return merge(parts);
 }
 
+/** Radius boost per icosahedron detail so coarse lobes cover about as much as fine ones. */
+const COARSE_GROW: Record<number, number> = { 0: 1.12 };
+
 const PALE = new THREE.Color('#fff1f5');
 const MID = new THREE.Color('#f8c9d7');
 const DEEP = new THREE.Color('#dc8aa6');
 
-/** Billowy canopy: soft, lumpy lobes in an umbrella-shaped cloud, pale on top, deeper rose beneath. */
-function sakuraCanopy(seed: number, detail: number) {
+/**
+ * Billowy canopy: soft, lumpy lobes in an umbrella-shaped cloud, pale on top, deeper rose beneath.
+ * `N` outer lobes (plus a crown); fewer, fatter lobes fill the same umbrella for distant trees.
+ */
+function sakuraCanopy(seed: number, detail: number, N = 20) {
   const r = rng(seed);
   const cx = 2.3;
   const cy = 6.0;
   const lobes: THREE.BufferGeometry[] = [];
-  const N = 20;
+  const fat = Math.pow(20 / N, 0.3); // fewer lobes: fatter ones, pulled in so the outline stays put
+  const grow = COARSE_GROW[detail] ?? 1; // a coarse icosahedron sits inside its sphere
   for (let k = 0; k <= N; k++) {
     let x: number, y: number, z: number, rad: number;
     if (k === N) {
@@ -149,11 +163,15 @@ function sakuraCanopy(seed: number, detail: number) {
     } else {
       const th = (k / N) * Math.PI * 2 * 1.9 + r() * 0.6;
       const rf = 0.25 + 0.75 * Math.sqrt(r());
-      x = cx + Math.cos(th) * 4.6 * rf;
-      z = Math.sin(th) * 4.1 * rf;
       y = cy + (1 - rf) * 1.4 + (r() - 0.5) * 0.8 - rf * rf * 0.8;
       rad = 1.95 - rf * 0.55 + r() * 0.3;
+      const pull = Math.max(0.3, 1 - (rad * (fat - 1)) / (4.6 * rf));
+      x = cx + Math.cos(th) * 4.6 * rf * pull;
+      z = Math.sin(th) * 4.1 * rf * pull;
+      rad *= fat;
     }
+    rad *= grow;
+    const squash = k === N ? 1 : fat; // fat lobes widen, but keep the canopy's height
     const g = new THREE.IcosahedronGeometry(1, detail);
     const pos = g.attributes.position;
     const nor = g.attributes.normal;
@@ -166,7 +184,7 @@ function sakuraCanopy(seed: number, detail: number) {
       d.fromBufferAttribute(pos, v).normalize();
       // lumpy surface (a function of direction only, so shared corners stay welded)
       const bump = 1 + 0.09 * Math.sin(d.x * 6.1 + ph) * Math.sin(d.y * 5.3 + ph * 0.7) * Math.sin(d.z * 6.7 + ph * 1.3) + 0.06 * Math.sin(d.x * 13 + d.z * 11 + ph);
-      let py = d.y * rad * bump;
+      let py = (d.y * rad * bump) / squash;
       if (d.y < 0) py *= 0.72; // flatter underside
       pos.setXYZ(v, x + d.x * rad * bump, y + py, z + d.z * rad * bump);
       // soft normals: bent upwards so the canopy reads as one luminous mass
@@ -876,19 +894,58 @@ export function buildKyoto(route: Route, opts: ThemeBuildOptions): THREE.Object3
 
   const trunkMat = new THREE.MeshLambertMaterial({ color: '#3b2c27' });
   const canopyMat = canopyMaterial();
-  const detail = high ? 2 : 1;
+  // Canopies are the bulk of Kyoto's triangles (21 lobes each), so they step down in detail
+  // with distance: full detail up close, detail 1 in the middle distance, detail 0 far off
+  // (a few pixels per lobe by then). Only near trees cast shadows: the sun's shadow box
+  // reaches ~75 m from the camera at its far corner (see SHADOW_HALF / SHADOW_AHEAD in
+  // scene.ts), and a low sun throws a canopy's shadow ~30 m further.
+  const NEAR = 100;
+  const MID = 260;
+  const FAR = 600;
   for (let v = 0; v < 3; v++) {
-    out.push(chunkedInstances(route, sakuraTrunk(300 + v), trunkMat, trunks[v], { chunkM: 500 }));
-    out.push(chunkedInstances(route, sakuraCanopy(400 + v * 17, v === 2 ? 1 : detail), canopyMat, canopies[v], { chunkM: 500, shadow: high }));
+    const seed = 400 + v * 17;
+    const trunk = sakuraTrunk(300 + v);
+    out.push(
+      lodInstances(
+        route,
+        [
+          { geo: trunk, upTo: NEAR, shadow: true },
+          { geo: trunk, upTo: MID },
+          { geo: sakuraTrunk(300 + v, true), upTo: Infinity },
+        ],
+        trunkMat,
+        trunks[v],
+        { chunkM: 500 },
+      ),
+    );
+    // detail 2 up close on High (the far-row variant 2 is already detail 1 at its nearest)
+    const mid = sakuraCanopy(seed, 1);
+    const levels: LodLevel[] = [
+      { geo: high && v !== 2 ? sakuraCanopy(seed, 2) : mid, upTo: NEAR, shadow: high },
+      { geo: mid, upTo: MID },
+      { geo: sakuraCanopy(seed, 0), upTo: FAR },
+      { geo: sakuraCanopy(seed, 0, 8), upTo: Infinity },
+    ];
+    out.push(lodInstances(route, levels, canopyMat, canopies[v], { chunkM: 500 }));
   }
 
+  // garden shrubs: about a metre tall, so a couple of pixels by 300 m: drop them there
+  const shrubGeo = (detail: number) =>
+    merge([
+      new THREE.IcosahedronGeometry(1 * (COARSE_GROW[detail] ?? 1), detail).scale(1.2, 0.75, 1.1).translate(0, 0.55, 0),
+      new THREE.IcosahedronGeometry(0.75 * (COARSE_GROW[detail] ?? 1), detail).translate(0.8, 0.45, 0.3),
+    ]);
   out.push(
-    chunkedInstances(
+    lodInstances(
       route,
-      merge([new THREE.IcosahedronGeometry(1, 1).scale(1.2, 0.75, 1.1).translate(0, 0.55, 0), new THREE.IcosahedronGeometry(0.75, 1).translate(0.8, 0.45, 0.3)]),
+      [
+        { geo: shrubGeo(1), upTo: NEAR, shadow: high },
+        { geo: shrubGeo(0), upTo: 300 },
+        { geo: null, upTo: Infinity },
+      ],
       windy(new THREE.MeshLambertMaterial({}), 1.2, 0.03),
       shrubs,
-      { shadow: high, chunkM: 500 },
+      { chunkM: 500 },
     ),
   );
 
@@ -905,7 +962,20 @@ export function buildKyoto(route: Route, opts: ThemeBuildOptions): THREE.Object3
   // ---- stone lanterns + their warm glow
   {
     const lg = lanternGeos();
-    out.push(chunkedInstances(route, lg.stone, new THREE.MeshLambertMaterial({ color: '#9d998e' }), lanterns, { shadow: true, chunkM: 600 }));
+    // ~1.7 m tall: a couple of pixels by 500 m (the glow sprites still carry them further)
+    out.push(
+      lodInstances(
+        route,
+        [
+          { geo: lg.stone, upTo: NEAR, shadow: true },
+          { geo: lg.stone, upTo: 500 },
+          { geo: null, upTo: Infinity },
+        ],
+        new THREE.MeshLambertMaterial({ color: '#9d998e' }),
+        lanterns,
+        { chunkM: 600 },
+      ),
+    );
     out.push(chunkedInstances(route, lg.light, new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb466').multiplyScalar(2.6) }), lanterns, { shadow: false, chunkM: 600 }));
     const gg = new THREE.BufferGeometry();
     gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(glowPos), 3));
@@ -1027,12 +1097,37 @@ export function buildKyoto(route: Route, opts: ThemeBuildOptions): THREE.Object3
       }
     }
     const cedarGeo = merge([new THREE.CylinderGeometry(0.25, 0.35, 3, 5).translate(0, 1.5, 0), new THREE.ConeGeometry(2.3, 10, 8).translate(0, 7.5, 0), new THREE.ConeGeometry(1.7, 7, 8).translate(0, 12.5, 0), new THREE.ConeGeometry(1.0, 4, 8).translate(0, 16.5, 0)]);
+    // far off (thousands of them on the hills): the same stacked tiers, six-sided, no trunk or bases
+    const cedarFar = merge([new THREE.ConeGeometry(2.3, 10, 6, 1, true).translate(0, 7.5, 0), new THREE.ConeGeometry(1.7, 7, 6, 1, true).translate(0, 12.5, 0), new THREE.ConeGeometry(1.0, 4, 6, 1, true).translate(0, 16.5, 0)]);
     const pineGeo = merge([new THREE.IcosahedronGeometry(3.2, 0).scale(1.3, 0.8, 1.2).translate(0, 8, 0), new THREE.IcosahedronGeometry(2.4, 0).scale(1.2, 0.7, 1.1).translate(2.2, 6, 1)]);
-    const wildGeo = merge([new THREE.IcosahedronGeometry(3.4, 1).scale(1.3, 0.85, 1.2).translate(0, 6.5, 0), new THREE.IcosahedronGeometry(2.6, 1).translate(2.4, 5.6, -1)]);
+    const wildGeo = (detail: number) => {
+      const k = COARSE_GROW[detail] ?? 1;
+      return merge([new THREE.IcosahedronGeometry(3.4 * k, detail).scale(1.3, 0.85, 1.2).translate(0, 6.5, 0), new THREE.IcosahedronGeometry(2.6 * k, detail).translate(2.4, 5.6, -1)]);
+    };
     const fMat = new THREE.MeshLambertMaterial({ flatShading: true });
-    out.push(chunkedInstances(route, cedarGeo, fMat, cedars, { shadow: false }));
+    out.push(
+      lodInstances(
+        route,
+        [
+          { geo: cedarGeo, upTo: 300 },
+          { geo: cedarFar, upTo: Infinity },
+        ],
+        fMat,
+        cedars,
+      ),
+    );
     out.push(chunkedInstances(route, pineGeo, fMat, pines, { shadow: false }));
-    out.push(chunkedInstances(route, wildGeo, new THREE.MeshLambertMaterial({}), wild, { shadow: false }));
+    out.push(
+      lodInstances(
+        route,
+        [
+          { geo: wildGeo(1), upTo: 250 },
+          { geo: wildGeo(0), upTo: Infinity },
+        ],
+        new THREE.MeshLambertMaterial({}),
+        wild,
+      ),
+    );
   }
 
   // ---- pagodas on hilltops

@@ -7,6 +7,7 @@ import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
 import { themeFor } from './themes';
+import type { ViewHook } from './themes/common';
 import { registerWorld, releaseWorld } from './worldMap';
 import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
 import { EffortMeter } from './effort';
@@ -932,6 +933,7 @@ export class WorldView {
   private high = true;
   /** everything built from the (exaggerated) route: terrain, road, scenery, ground */
   private world = Object.assign(new THREE.Group(), { name: 'route-world' });
+  private viewHooks: ViewHook[] = [];
 
   constructor(
     private container: HTMLElement,
@@ -1054,6 +1056,11 @@ export class WorldView {
     registerWorld(this.session.route, route, land);
     // shader-level life: drifting cloud shadows over everything, wind in the foliage
     applyWorldFx(w, { cloudShadows: theme.cloudShadows ?? (theme.clouds ? 0.45 : 0), wind: true });
+    // per-frame camera hooks (e.g. distance LOD for instanced scenery)
+    this.viewHooks = [];
+    w.traverse((o) => {
+      if (o.userData.onView) this.viewHooks.push(o.userData.onView as ViewHook);
+    });
   }
 
   /**
@@ -1273,6 +1280,7 @@ export class WorldView {
     fxBuild.value = Math.min(1, effort.build * kR);
     fxSurge.value = Math.min(1, effort.surge * this.sprintK);
     this.theme.update?.(time, { ...effort, build: fxBuild.value, surge: fxSurge.value, level: Math.max(fxBuild.value, fxSurge.value) });
+    for (const h of this.viewHooks) h(this.camera);
     if (this.post) this.post.render(dt);
     else this.renderer.render(this.scene, this.camera);
     if (trace) {
