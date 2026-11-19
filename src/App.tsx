@@ -224,6 +224,7 @@ export function App() {
   if (session) return <RideScreen session={session} settings={settings} onEnd={endRide} onSettingsChange={updateSettings} />;
 
   const sel = workouts.find((w) => w.id === selected);
+  const selRoute = ROUTE_PRESETS.find((p) => p.id === route);
   const selIv = sel ? flatten(sel.workout) : [];
   const selStats = sel ? plannedStats(selIv, settings.ftp) : null;
 
@@ -349,6 +350,7 @@ export function App() {
             <button className="primary big" onClick={() => startRide()} disabled={!trainer}>
               {trainer ? 'Start ride ▶' : 'Connect a trainer to start'}
             </button>
+            {selRoute && <span className="start-route">{selRoute.name}</span>}
             {!trainer && <span className="muted small">No hardware handy? Click <b>Simulator</b> at the top right to try it.</span>}
           </div>
         </div>
