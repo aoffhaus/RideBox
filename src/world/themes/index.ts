@@ -6,6 +6,7 @@ import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
+import { ALIEN, alienRoad, alienUpdate, buildAlien } from './alien';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -150,7 +151,32 @@ const SYNTHWAVE: Theme = {
   posts: false, // the neon pylons replace them
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };
+const ALIEN_WORLD: Theme = {
+  id: 'alien',
+  skyTop: ALIEN.skyTop,
+  skyHorizon: ALIEN.skyHorizon,
+  haze: ALIEN.haze,
+  fogNear: 220,
+  fogFar: 5000,
+  hemiSky: '#7fd8d4',
+  hemiGround: '#5a2f7e',
+  hemiIntensity: 1.0,
+  sunColor: '#ffb27a',
+  sunIntensity: 2.3,
+  exposure: 1.05,
+  groundColor: null, // the theme brings its own far plain
+  clouds: false,
+  build: buildAlien,
+  roadTexture: alienRoad,
+  bloom: { strength: 0.75, radius: 0.55, threshold: 1.0 },
+  physicalSky: false, // custom dome: twin suns, ringed gas giant, moons
+  sun: ALIEN.sun,
+  cloudShadows: 0,
+  update: alienUpdate,
+  posts: false, // glowing alien beacons replace them
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, alien: ALIEN_WORLD };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;
