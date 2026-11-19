@@ -1,5 +1,5 @@
-import { memo, useMemo } from 'react';
-import { intervalFtpFraction, toWatts, totalDuration, zoneFor, type Interval } from '../workout/model';
+import { memo, useMemo, useState, type MouseEvent } from 'react';
+import { formatDuration, intervalFtpFraction, toWatts, totalDuration, zoneFor, type Interval } from '../workout/model';
 import type { Sample } from '../app/recorder';
 
 interface Props {
@@ -34,6 +34,16 @@ export const WorkoutChart = memo(function WorkoutChart({
   const yMax = maxTarget * 1.08;
   const x = (t: number) => (t / total) * W;
   const y = (w: number) => H - (Math.max(0, w) / yMax) * (H - 4);
+
+  const [hover, setHover] = useState<number | null>(null);
+
+  const onMove = (e: MouseEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    if (r.width <= 0) return;
+    const t = ((e.clientX - r.left) / r.width) * total;
+    const i = intervals.findIndex((iv) => t >= iv.start && t < iv.start + iv.duration);
+    setHover(i >= 0 ? i : null);
+  };
 
   const blocks = useMemo(
     () =>
@@ -83,24 +93,61 @@ export const WorkoutChart = memo(function WorkoutChart({
   }, [samples?.length, total, maxHr]);
 
   return (
-    <svg className="workout-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height }}>
-      <line x1={0} x2={W} y1={y(ftp)} y2={y(ftp)} stroke="rgba(255,255,255,0.35)" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
-      {blocks.map((b, i) => (
-        <path
-          key={i}
-          d={b.d}
-          fill={b.color}
-          opacity={currentIndex == null ? 0.9 : i === currentIndex ? 1 : elapsed != null && b.iv.start + b.iv.duration <= elapsed ? 0.35 : 0.7}
-          stroke="rgba(0,0,0,0.35)"
-          strokeWidth={compact ? 0 : 1}
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
-      {hrPath && <path d={hrPath} fill="none" stroke="#ff6b81" strokeWidth={1.5} vectorEffect="non-scaling-stroke" opacity={0.9} />}
-      {powerPath && <path d={powerPath} fill="none" stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />}
-      {elapsed != null && (
-        <line x1={x(elapsed)} x2={x(elapsed)} y1={0} y2={H} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+    <div className="workout-chart-wrap">
+      <svg
+        className="workout-chart"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ height }}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+      >
+        <line x1={0} x2={W} y1={y(ftp)} y2={y(ftp)} stroke="rgba(255,255,255,0.35)" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
+        {blocks.map((b, i) => (
+          <path
+            key={i}
+            d={b.d}
+            fill={b.color}
+            opacity={currentIndex == null ? 0.9 : i === currentIndex ? 1 : elapsed != null && b.iv.start + b.iv.duration <= elapsed ? 0.35 : 0.7}
+            stroke={i === hover ? '#fff' : 'rgba(0,0,0,0.35)'}
+            strokeWidth={i === hover ? 2 : compact ? 0 : 1}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {hrPath && <path d={hrPath} fill="none" stroke="#ff6b81" strokeWidth={1.5} vectorEffect="non-scaling-stroke" opacity={0.9} />}
+        {powerPath && <path d={powerPath} fill="none" stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />}
+        {elapsed != null && (
+          <line x1={x(elapsed)} x2={x(elapsed)} y1={0} y2={H} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        )}
+      </svg>
+      {hover != null && intervals[hover] && (
+        <IntervalTooltip iv={intervals[hover]} ftp={ftp} k={k} leftPct={((intervals[hover].start + intervals[hover].duration / 2) / total) * 100} />
       )}
-    </svg>
+    </div>
   );
 });
+
+function IntervalTooltip({ iv, ftp, k, leftPct }: { iv: Interval; ftp: number; k: number; leftPct: number }) {
+  let power: string;
+  if (iv.free) {
+    power = 'Free ride';
+  } else {
+    const w0 = Math.round(toWatts(iv.powerStart, iv.unit, ftp) * k);
+    const w1 = Math.round(toWatts(iv.powerEnd, iv.unit, ftp) * k);
+    const p0 = Math.round((w0 / ftp) * 100);
+    const p1 = Math.round((w1 / ftp) * 100);
+    power = w0 === w1 ? `${w0} W · ${p0}% FTP` : `${w0} → ${w1} W · ${p0} → ${p1}% FTP`;
+  }
+  const shift = leftPct < 15 ? '0%' : leftPct > 85 ? '-100%' : '-50%';
+  return (
+    <div className="chart-tooltip" style={{ left: `${leftPct}%`, transform: `translateX(${shift})` }}>
+      {iv.label && <div className="chart-tooltip-label">{iv.label}</div>}
+      <div>
+        <strong>{power}</strong>
+      </div>
+      <div className="muted">
+        {formatDuration(iv.duration)} · starts at {formatDuration(iv.start)}
+      </div>
+    </div>
+  );
+}
