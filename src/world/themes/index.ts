@@ -6,6 +6,7 @@ import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
+import { CRYSTAL, buildCrystal, crystalRoad } from './crystal';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -150,7 +151,31 @@ const SYNTHWAVE: Theme = {
   posts: false, // the neon pylons replace them
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };
+const CRYSTAL_CANYON: Theme = {
+  id: 'crystal',
+  skyTop: CRYSTAL.skyTop,
+  skyHorizon: CRYSTAL.skyHorizon,
+  haze: CRYSTAL.haze,
+  fogNear: 120,
+  fogFar: 1700,
+  hemiSky: '#c4b2ff',
+  hemiGround: '#3b2c52',
+  hemiIntensity: 2.6,
+  sunColor: '#ffc9a3',
+  sunIntensity: 2.2,
+  exposure: 1.0,
+  groundColor: '#3a2f4a',
+  clouds: false, // the theme brings its own faceted clouds
+  build: buildCrystal,
+  roadTexture: crystalRoad,
+  bloom: { strength: 0.55, radius: 0.55, threshold: 1.0 },
+  physicalSky: false, // stylised dusk gradient dome
+  sun: CRYSTAL.sun,
+  cloudShadows: 0,
+  posts: false, // glowing crystal markers replace them
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, crystal: CRYSTAL_CANYON };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;

@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'crystal';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'crystal';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -57,6 +57,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [6, 24],
     bendiness: 0.4,
     theme: 'synthwave',
+  },
+  {
+    id: 'crystal',
+    name: 'Crystal Canyon',
+    description: 'A winding gorge walled with colossal glowing gemstones, crystal arches overhead and a few punchy climbs',
+    lengthKm: 16,
+    maxGrade: 0.055,
+    harmonics: [3, 14],
+    bendiness: 0.65,
+    theme: 'crystal',
   },
 ];
 
