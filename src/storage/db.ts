@@ -164,7 +164,7 @@ export async function listAll<T>(store: SyncedStore): Promise<T[]> {
 export async function getOne<T>(store: SyncedStore, id: string): Promise<T | undefined> {
   return (await (await db()).get(store, id)) as T | undefined;
 }
-export async function putOne(store: SyncedStore, value: { id: string }) {
+export async function putOne<T extends { id: string }>(store: SyncedStore, value: T) {
   await put(store, value);
 }
 export async function deleteOne(store: SyncedStore, id: string) {

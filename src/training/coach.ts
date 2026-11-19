@@ -163,6 +163,7 @@ export function planFromOutput(out: PlanOutput, input: PlanInput, library: Worko
     notes: [out.summary, ...out.weeks.map((w) => `${w.start}: ${w.focus} (${w.target_tss} TSS, ${w.target_hours} h)${w.notes ? ` · ${w.notes}` : ''}`)].join('\n'),
     createdAt: Date.now(),
     active: true,
+    input,
   };
   const items: PlannedWorkout[] = [];
   const problems: string[] = [];
@@ -249,3 +250,37 @@ export function todayOptions(out: TodayOutput, library: Workout[]): { options: T
   return { options, problems };
 }
 
+
+export interface AdaptSuggestion {
+  reason: 'missed' | 'extend';
+  from: DayKey;
+  to: DayKey;
+  text: string;
+}
+
+/**
+ * When the coach should be offered without being asked: workouts were missed
+ * since the last review, or the plan's detailed workouts are about to run out.
+ */
+export function adaptSuggestion(plan: TrainingPlan | undefined, calendar: PlannedWorkout[], today: DayKey, lastReview?: DayKey): AdaptSuggestion | null {
+  if (!plan || today > plan.end) return null;
+  const since = lastReview ?? addDays(today, -7);
+  const missed = calendar.filter((p) => p.status === 'missed' && p.date >= since && p.date < today);
+  if (missed.length) {
+    return {
+      reason: 'missed',
+      from: today,
+      to: addDays(today, 13),
+      text: missed.length === 1 ? `You missed ${missed[0].workout.name}. Want the coach to rearrange the next two weeks?` : `You missed ${missed.length} workouts. Want the coach to rearrange the next two weeks?`,
+    };
+  }
+  const start = today < plan.start ? plan.start : today;
+  const last = calendar.filter((p) => p.planId === plan.id || p.origin === 'adapt').reduce((m, p) => (p.date > m ? p.date : m), '');
+  const horizon = addDays(start, 7) < plan.end ? addDays(start, 7) : plan.end;
+  if (last < horizon) {
+    const from = last && last >= start ? addDays(last, 1) : start;
+    const to = addDays(from, 13) < plan.end ? addDays(from, 13) : plan.end;
+    return { reason: 'extend', from, to, text: `Your plan has workouts through ${last || 'nothing yet'}. Let the coach plan the next two weeks from how training is going.` };
+  }
+  return null;
+}

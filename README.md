@@ -50,6 +50,17 @@ Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads 
 
 The client secret and tokens are stored in the browser's IndexedDB and in your private, Access-protected Cloudflare database (so every browser stays connected). They are only ever sent to strava.com.
 
+## Calendar, plans and the Claude coach
+
+- **Calendar** (month and week views): drag workouts to move them (hold Alt/⌥ to copy), **+** on a day adds one from your library, and clicking a workout lets you ride it, make it easier or harder, move, skip, add a note or remove it. Rides (RideBox and Strava) link to that day's workout automatically; unridden past workouts show as missed. The right-hand column shows each week's planned vs. done TSS and hours.
+- **Fitness**: fitness (CTL), fatigue (ATL) and form (TSB) from your RideBox rides and imported Strava activities, with a projection from your calendar, weekly TSS, an FTP estimate (95% of your best 20 minutes), and **progression levels**: how hard a workout you can handle in each zone (1–10). Every workout shows its zone, level and how it compares with yours (Easy / Productive / Challenging / Very hard).
+- **Claude coach** (on your private Cloudflare site, using your `ANTHROPIC_API_KEY`):
+  - **Build a plan** (Calendar): goal, event date, hours per week and minutes per day. The coach writes the first three weeks in detail, and offers to plan the following weeks as you go so they match how training is going.
+  - **Adjust with coach**: after missed workouts or a hard ride, the coach proposes swaps, moves and additions with a reason for each. Nothing changes until you accept (all or some).
+  - **What should I ride today?** (Ride tab): time available plus how you feel gives one to three options.
+  - After each ride, **How did it feel?** on the summary feeds levels and adaptations.
+  - Requests stream the coach's reasoning while it works. A daily cap (`COACH_DAILY_LIMIT` in `wrangler.jsonc`, default 40) guards against runaway cost; a new plan typically costs well under a dollar with Claude Opus, and a daily pick a few cents.
+
 ## Getting workouts in
 
 - **TrainerRoad:** in **Settings**, drag the **TR → RideBox** bookmarklet to your bookmarks bar. Open any workout on trainerroad.com while logged in and click it. It copies the workout JSON to your clipboard; paste it into the box on the **Workouts** tab. (If the browser blocks clipboard access, it downloads `TR - <name>.json` instead; drop that file on the Workouts tab.) It uses the undocumented endpoint TrainerRoad's own page uses (the same one the open-source *trzwo* extension uses), so it could break if TrainerRoad changes its site.

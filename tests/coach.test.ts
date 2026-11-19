@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/storage/db';
-import { buildContext, planFromOutput, readEvents, resolveChoice, reviewAdaptation, todayOptions } from '../src/training/coach';
+import { adaptSuggestion, buildContext, planFromOutput, readEvents, resolveChoice, reviewAdaptation, todayOptions } from '../src/training/coach';
 import type { CoachWorkout, PlanInput, PlanOutput } from '../src/training/coachSchema';
 import type { PlannedWorkout } from '../src/training/model';
 import { BUILTIN_WORKOUTS } from '../src/workout/builtin';
@@ -132,3 +132,22 @@ describe('SSE parsing', () => {
   });
 });
 
+
+describe('adaptSuggestion', () => {
+  const plan = { id: 'p', name: 'P', goal: 'g', start: '2026-11-01', end: '2027-02-01', phases: [], createdAt: 0, active: true };
+  const item = (id: string, date: string, status: PlannedWorkout['status'] = 'planned') => ({ ...pw(id, date, status), planId: 'p' });
+  it('offers a review after missed workouts, once', () => {
+    const cal = [item('a', '2026-11-17', 'missed'), item('b', '2026-12-10')];
+    expect(adaptSuggestion(plan, cal, '2026-11-19')?.reason).toBe('missed');
+    expect(adaptSuggestion(plan, cal, '2026-11-19', '2026-11-18')).toBeNull();
+  });
+  it('offers to extend when detailed workouts run out within a week', () => {
+    const s = adaptSuggestion(plan, [item('a', '2026-11-22')], '2026-11-19');
+    expect(s).toMatchObject({ reason: 'extend', from: '2026-11-23', to: '2026-12-06' });
+    expect(adaptSuggestion(plan, [], '2026-11-19')).toMatchObject({ reason: 'extend', from: '2026-11-19' });
+  });
+  it('stays quiet without an active plan or after it ends', () => {
+    expect(adaptSuggestion(undefined, [], '2026-11-19')).toBeNull();
+    expect(adaptSuggestion(plan, [], '2027-03-01')).toBeNull();
+  });
+});

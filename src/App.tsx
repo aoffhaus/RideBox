@@ -27,6 +27,12 @@ import { today } from './training/load';
 import { Calendar } from './ui/Calendar';
 import { computeLevels, ZONE_NAMES } from './training/levels';
 import { LevelsCard } from './ui/Levels';
+import { adaptSuggestion, type CoachState, type PlanResult } from './training/coach';
+import type { AdaptInput } from './training/coachSchema';
+import { addDays } from './training/load';
+import { newPlanned } from './training/calendar';
+import { AdaptReview, PlanBuilder, TodayCard } from './ui/Coach';
+import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
@@ -86,6 +92,9 @@ export function App() {
   const [strava, setStrava] = useState<StravaConfig>(DEFAULT_STRAVA);
   const [notice, setNotice] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('off');
+  const [planBuilder, setPlanBuilder] = useState(false);
+  const [adapt, setAdapt] = useState<AdaptInput | null>(null);
+  const [lastReview, setLastReview] = useState<string | undefined>();
 
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
@@ -104,6 +113,7 @@ export function App() {
     setActs(as);
     setCalendar(cal);
     setPlans(await listAll<TrainingPlan>('plans'));
+    setLastReview((await getFlag('coach-last-review')) as string | undefined);
   }, []);
 
   // today's planned workout is the default pick on the Ride tab
@@ -195,6 +205,43 @@ export function App() {
     () => computeLevels(rides, acts, calendar, workouts.map((w) => w.workout), settings.ftp),
     [rides, acts, calendar, workouts, settings.ftp],
   );
+  // the coach runs in the private Worker, so it's only offered when the site is served from there
+  const coachOn = syncStatus !== 'off';
+  const coachState: CoachState = useMemo(
+    () => ({ settings, rides, acts, calendar, plans, library: workouts.map((w) => w.workout), levels, today: today() }),
+    [settings, rides, acts, calendar, plans, workouts, levels],
+  );
+  const activePlan = plans.find((p) => p.active);
+  const suggestion = coachOn ? adaptSuggestion(activePlan, calendar, today(), lastReview) : null;
+
+  async function applyPlan(res: PlanResult, replace?: TrainingPlan) {
+    if (replace) {
+      await putOne('plans', { ...replace, active: false });
+      const stale = calendar.filter((c) => c.planId === replace.id && c.status === 'planned' && c.date >= res.plan.start).map((c) => c.id);
+      await deleteCalendar(stale);
+    }
+    await putOne('plans', res.plan);
+    setPlans((ps) => [...ps.filter((p) => p.id !== replace?.id && p.id !== res.plan.id), ...(replace ? [{ ...replace, active: false }] : []), res.plan]);
+    await saveCalendar(res.items);
+    await markReviewed();
+    setNotice(`Added “${res.plan.name}” to your calendar.`);
+    setTab('calendar');
+  }
+  async function markReviewed() {
+    await setFlag('coach-last-review', today());
+    setLastReview(today());
+  }
+  async function applyAdapt(save: PlannedWorkout[], remove: string[]) {
+    if (save.length) await saveCalendar(save);
+    if (remove.length) await deleteCalendar(remove);
+    await markReviewed();
+  }
+  async function addToday(w: Workout, reason: string) {
+    const item = newPlanned(w, today(), calendar, { origin: 'recommend', rationale: reason });
+    await saveCalendar([item]);
+    return item;
+  }
+
   const routes = useMemo(() => ROUTE_PRESETS.map((p) => ({ p, r: generateRoute(p.id, 1) })), []);
 
   /** Closing the picker without choosing a device: Chrome reports "User cancelled". */
@@ -402,6 +449,12 @@ export function App() {
               </div>
             ) : null;
           })()}
+          {coachOn && activePlan && summary.startTime > Date.now() - 2 * 86_400_000 && (
+            <div className="card row space">
+              <span className="muted small">Let the coach adjust your next two weeks based on this ride.</span>
+              <button onClick={() => setAdapt({ reason: 'after_ride', from: today(), to: addDays(today(), 13) })}>Review my plan</button>
+            </div>
+          )}
         </Summary>
       ) : editing !== undefined ? (
         <Builder
@@ -414,6 +467,19 @@ export function App() {
         />
       ) : tab === 'ride' ? (
         <div className="page">
+          {coachOn && (
+            <TodayCard
+              state={coachState}
+              onRide={async (w, reason) => {
+                const item = await addToday(w, reason);
+                setSelected(`cal:${item.id}`);
+              }}
+              onAdd={async (w, reason) => {
+                await addToday(w, reason);
+                setNotice(`Added ${w.name} to today.`);
+              }}
+            />
+          )}
           <h2>Workout</h2>
           <div className="row">
             <select className="grow" value={selected} onChange={(e) => setSelected(e.target.value)}>
@@ -523,6 +589,42 @@ export function App() {
             const r = rides.find((x) => x.id === id);
             if (r) setSummary(r);
           }}
+          toolbar={
+            coachOn ? (
+              <>
+                <button onClick={() => setPlanBuilder(true)}>{activePlan ? 'New plan' : 'Build a plan'}</button>
+                <button onClick={() => setAdapt({ reason: 'manual', from: today(), to: activePlan && addDays(today(), 13) > activePlan.end ? activePlan.end : addDays(today(), 13) })}>
+                  Adjust with coach
+                </button>
+              </>
+            ) : (
+              <span className="muted small" title="The Claude coach runs on your private Cloudflare site">Coach: available on your private site</span>
+            )
+          }
+          banner={
+            <>
+              {activePlan && (
+                <div className="plan-bar">
+                  <b>{activePlan.name}</b>
+                  <span className="muted small">
+                    {activePlan.goal}
+                    {activePlan.eventDate ? ` · event ${activePlan.eventDate}` : ''} · until {activePlan.end}
+                  </span>
+                </div>
+              )}
+              {suggestion && (
+                <div className="banner row space">
+                  <span>{suggestion.text}</span>
+                  <span className="row">
+                    <button className="primary" onClick={() => setAdapt({ reason: suggestion.reason, from: suggestion.from, to: suggestion.to })}>
+                      {suggestion.reason === 'extend' ? 'Plan next weeks' : 'Rearrange'}
+                    </button>
+                    <button className="ghost" onClick={() => void markReviewed()}>Not now</button>
+                  </span>
+                </div>
+              )}
+            </>
+          }
         />
       ) : tab === 'fitness' ? (
         <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} strava={strava} onSettingsChange={updateSettings} onImported={refresh}>
@@ -538,6 +640,8 @@ export function App() {
           onStravaChange={setStrava}
         />
       )}
+      {planBuilder && <PlanBuilder state={coachState} onApply={applyPlan} onClose={() => setPlanBuilder(false)} />}
+      {adapt && <AdaptReview state={coachState} input={adapt} onApply={applyAdapt} onClose={() => setAdapt(null)} />}
     </div>
   );
 }

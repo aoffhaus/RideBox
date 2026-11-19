@@ -1,6 +1,7 @@
 // Training data: the calendar, plans, and activities imported from Strava.
 
 import type { Workout } from '../workout/model';
+import type { PlanInput } from './coachSchema';
 
 /** Local calendar day, "YYYY-MM-DD". */
 export type DayKey = string;
@@ -49,6 +50,8 @@ export interface TrainingPlan {
   notes?: string;
   createdAt: number;
   active: boolean;
+  /** what the rider asked for (availability is reused when the plan is extended) */
+  input?: PlanInput;
 }
 
 /** An activity imported from Strava (stored in the synced `strava_acts` store). */
