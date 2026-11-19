@@ -18,7 +18,18 @@ const AHEAD = 2500;
 const STEP = 25;
 
 /** Upcoming road profile (next 2.5 km), coloured by gradient, with the rider marker. */
-export const ElevationProfile = memo(function ElevationProfile({ route, distance, settings }: { route: Route; distance: number; settings: Settings }) {
+export const ElevationProfile = memo(function ElevationProfile({
+  route,
+  distance,
+  grade,
+  settings,
+}: {
+  route: Route;
+  distance: number;
+  /** current road grade (fraction), shown as the live readout at the rider marker */
+  grade: number;
+  settings: Settings;
+}) {
   // quantize so we re-render ~every 5 m, not every frame
   const d0 = Math.round(distance / 5) * 5;
   const pts: { x: number; y: number }[] = [];
@@ -62,11 +73,17 @@ export const ElevationProfile = memo(function ElevationProfile({ route, distance
           {fmtElev(ahead1k, settings)} {elevUnit(settings)}
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
-        {polys}
-        <line x1={X(0)} x2={X(0)} y1={0} y2={H} stroke="#fff" strokeWidth={2} />
-        <circle cx={X(0)} cy={Y(here.y)} r={4.5} fill="#fff" stroke="#111" strokeWidth={1.5} />
-      </svg>
+      <div className="elev-plot">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+          {polys}
+          <line x1={X(0)} x2={X(0)} y1={0} y2={H} stroke="#fff" strokeWidth={2} />
+          <circle cx={X(0)} cy={Y(here.y)} r={4.5} fill="#fff" stroke="#111" strokeWidth={1.5} />
+        </svg>
+        <div className="elev-grade" title="Current grade" style={{ left: `${(X(0) / W) * 100}%`, borderColor: gradeColor(grade) }}>
+          <span style={{ color: gradeColor(grade) }}>{(grade * 100).toFixed(1)}</span>
+          <small>%</small>
+        </div>
+      </div>
     </div>
   );
 });

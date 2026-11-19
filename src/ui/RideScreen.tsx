@@ -218,7 +218,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
         </div>
 
         <div className="hud-elev">
-          <ElevationProfile route={session.route} distance={snap.distance} settings={settings} />
+          <ElevationProfile route={session.route} distance={snap.distance} grade={Math.round(snap.grade * 1000) / 1000} settings={settings} />
         </div>
       </div>
 

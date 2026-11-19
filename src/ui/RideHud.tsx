@@ -95,7 +95,6 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
       <div className="zh-chips">
         <span className={`zh-chip ${snap.mode === 'erg' ? 'erg' : 'sim'}`}>{snap.mode === 'erg' ? 'ERG ON' : 'SIM'}</span>
         {session.engine && <span className="zh-chip">{st?.intensity ?? 100}%</span>}
-        <span className="zh-chip">{(snap.grade * 100).toFixed(1)}%</span>
         <span className="zh-chip zh-chip-r">
           {route.preset.name} · lap {Math.floor(snap.distance / route.length) + 1}
         </span>
@@ -125,8 +124,8 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
           ) : (
             <>
               <span>{st?.finished ? 'done!' : 'free ride'}</span>
-              <b>{(snap.grade * 100).toFixed(1)}%</b>
-              <span>grade</span>
+              <b>{formatDuration(snap.elapsed)}</b>
+              <span>your pace</span>
             </>
           )}
         </div>

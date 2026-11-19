@@ -239,6 +239,15 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
 .hud-elev { margin-top: auto; min-height: 0; }
 .elev { padding: 8px 10px 6px; }
 .elev svg { display: block; border-radius: 6px; background: rgba(0,0,0,0.25); }
+.elev-plot { position: relative; }
+.elev-grade {
+  position: absolute; top: 4px; margin-left: 6px; pointer-events: none;
+  display: flex; align-items: baseline; gap: 2px;
+  padding: 1px 7px 2px; border-radius: 6px; border-left: 3px solid;
+  background: rgba(10, 14, 20, 0.78);
+  font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.elev-grade small { font-size: 11px; font-weight: 600; color: #9aa4b2; }
 .elev-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; margin-bottom: 4px; letter-spacing: 0.04em; }
 .elev-head > span:first-child { color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.08em; }
 
