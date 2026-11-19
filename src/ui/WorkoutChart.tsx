@@ -16,6 +16,51 @@ interface Props {
   highlight?: number | null;
 }
 
+/** Cadence line colour: violet, distinct from the zone palette, HR pink and the white power trace. */
+export const CADENCE_COLOR = '#b98cff';
+/** Cadence is drawn on its own fixed scale: 0..CADENCE_MAX rpm maps to the chart height. */
+export const CADENCE_MAX = 150;
+
+/**
+ * SVG path for the cadence history. Samples are bucketed so at most
+ * ~`maxPoints` vertices are emitted; each bucket plots the mean of its valid
+ * (>0) readings at the bucket's middle sample. Buckets with no valid reading
+ * (no sensor, coasting) break the line into separate segments rather than
+ * dropping to zero.
+ */
+export function cadencePath(
+  samples: readonly { cadence?: number }[],
+  x: (i: number) => number,
+  y: (rpm: number) => number,
+  maxPoints = 1500,
+): string {
+  const n = samples.length;
+  if (!n) return '';
+  const step = Math.max(1, Math.ceil(n / maxPoints));
+  let d = '';
+  let penDown = false;
+  for (let i = 0; i < n; i += step) {
+    const end = Math.min(n, i + step);
+    let sum = 0;
+    let cnt = 0;
+    for (let j = i; j < end; j++) {
+      const c = samples[j].cadence;
+      if (c != null && Number.isFinite(c) && c > 0) {
+        sum += c;
+        cnt++;
+      }
+    }
+    if (!cnt) {
+      penDown = false;
+      continue;
+    }
+    const rpm = Math.min(CADENCE_MAX, sum / cnt);
+    d += `${penDown ? 'L' : 'M'}${x((i + end - 1) / 2).toFixed(1)},${y(rpm).toFixed(1)}`;
+    penDown = true;
+  }
+  return d;
+}
+
 /** Workout profile: zone-coloured intervals, progress marker, live power + HR lines. */
 export const WorkoutChart = memo(function WorkoutChart({
   intervals,
@@ -97,6 +142,12 @@ export const WorkoutChart = memo(function WorkoutChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [samples?.length, total, maxHr]);
 
+  const cadPath = useMemo(() => {
+    if (!samples?.length) return '';
+    return cadencePath(samples, x, (rpm) => H - (rpm / CADENCE_MAX) * (H - 4));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [samples?.length, total, H]);
+
   return (
     <div className="workout-chart-wrap">
       <svg
@@ -120,11 +171,19 @@ export const WorkoutChart = memo(function WorkoutChart({
           />
         ))}
         {hrPath && <path d={hrPath} fill="none" stroke="#ff6b81" strokeWidth={1.5} vectorEffect="non-scaling-stroke" opacity={0.9} />}
+        {cadPath && <path d={cadPath} fill="none" stroke={CADENCE_COLOR} strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.95} />}
         {powerPath && <path d={powerPath} fill="none" stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />}
         {elapsed != null && (
           <line x1={x(elapsed)} x2={x(elapsed)} y1={0} y2={H} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" />
         )}
       </svg>
+      {cadPath && (
+        // HTML overlay legend (SVG text would be stretched by preserveAspectRatio="none").
+        <div className="workout-chart-legend" title={`Cadence, scaled 0–${CADENCE_MAX} rpm to chart height`}>
+          <span className="swatch" style={{ background: CADENCE_COLOR }} />
+          Cadence <span className="dim">rpm (0–{CADENCE_MAX})</span>
+        </div>
+      )}
       {active != null && intervals[active] && (
         <IntervalTooltip iv={intervals[active]} ftp={ftp} k={k} leftPct={((intervals[active].start + intervals[active].duration / 2) / total) * 100} />
       )}

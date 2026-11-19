@@ -88,6 +88,9 @@ nav button.active { background: var(--panel-2); border-color: var(--border); }
 .workout-chart-wrap { position: relative; }
 .chart-tooltip { position: absolute; bottom: calc(100% + 6px); z-index: 20; pointer-events: none; white-space: nowrap; padding: 6px 9px; border-radius: 6px; background: rgba(15,18,24,0.95); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 12px; line-height: 1.4; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
 .chart-tooltip-label { font-weight: 600; margin-bottom: 2px; }
+.workout-chart-legend { position: absolute; top: 4px; right: 6px; display: flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1; padding: 3px 6px; border-radius: 4px; background: rgba(10, 13, 18, 0.6); color: #e6e9ef; pointer-events: none; }
+.workout-chart-legend .swatch { width: 12px; height: 2px; border-radius: 1px; }
+.workout-chart-legend .dim { opacity: 0.6; }
 
 .route-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .route-card { cursor: pointer; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-align: left; display: flex; flex-direction: column; justify-content: flex-start; padding: 0 12px 12px; overflow: hidden; white-space: normal; background: var(--panel); }
