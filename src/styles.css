@@ -280,3 +280,5 @@ button.strava:disabled { opacity: 0.7; }
 .ride-name { font-size: 22px; font-weight: 700; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 2px 6px; margin-left: -7px; color: inherit; width: min(520px, 100%); }
 .ride-name:hover { border-color: var(--border); }
 .ride-name:focus { border-color: var(--accent); outline: none; background: var(--panel); }
+button.garmin { background: #0b3d66; border-color: #11609e; color: #e8f3ff; }
+button.garmin:hover:not(:disabled) { background: #11609e; }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { RideRecord } from '../app/recorder';
 import { lapStats } from '../app/recorder';
 import type { Settings } from '../storage/db';
-import { downloadBlob, rideFileName, rideToFit } from '../export/fit';
+import { downloadBlob, rideFileName, rideToFit, sendToGarmin } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { distUnit, elevUnit, fmtDist, fmtElev, r0 } from './format';
 import { activityUrl } from '../strava/strava';
@@ -93,6 +93,7 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
   const s = ride.summary;
   const [name, setName] = useState(ride.name);
   const [renameMsg, setRenameMsg] = useState('');
+  const [garminHint, setGarminHint] = useState(false);
   useEffect(() => setName(ride.name), [ride.id, ride.name]);
   const commitName = async () => {
     const n = name.trim();
@@ -129,10 +130,26 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
         </div>
         <div className="row">
           <button onClick={() => downloadBlob(rideToFit(ride), rideFileName(ride))}>Download .fit</button>
+          <button
+            className="garmin"
+            title="Downloads the .fit and opens Garmin Connect's Import Data page: drop the file there"
+            onClick={() => {
+              sendToGarmin(ride);
+              setGarminHint(true);
+            }}
+          >
+            Garmin Connect ↗
+          </button>
           <button className="danger" onClick={del}>Delete ride</button>
           <button className="primary" onClick={onClose}>Done</button>
         </div>
       </div>
+      {garminHint && (
+        <div className="banner" onClick={() => setGarminHint(false)}>
+          Garmin Connect opened in a new tab. Drag <b>{rideFileName(ride)}</b> from your Downloads onto its Import Data page, then click <b>Import Data</b>.
+          (Sign in to Garmin first if asked, then go to <a href="https://connect.garmin.com/modern/import-data" target="_blank" rel="noreferrer">Import Data</a> again.)
+        </div>
+      )}
       <StravaPanel ride={ride} connected={stravaConnected} onUpload={(r, opts) => onStravaUpload({ ...r, name: name.trim() || r.name }, opts)} />
       <div className="stats-grid">
         {[
