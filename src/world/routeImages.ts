@@ -10,5 +10,6 @@ import alien from '../assets/routes/alien.jpg';
 import neoncity from '../assets/routes/neoncity.jpg';
 import iceland from '../assets/routes/iceland.jpg';
 import crystal from '../assets/routes/crystal.jpg';
+import kyoto from '../assets/routes/kyoto.jpg';
 
-export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, alien, neoncity, iceland, crystal };
+export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, alien, neoncity, iceland, crystal, kyoto };

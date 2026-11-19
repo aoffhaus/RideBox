@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -107,6 +107,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [3, 14],
     bendiness: 0.65,
     theme: 'crystal',
+  },
+  {
+    id: 'kyoto',
+    name: 'Kyoto Sakura',
+    description: 'Lantern-lit canal path under drifting cherry blossom, through vermilion torii and up short rises toward the temple hills',
+    lengthKm: 15,
+    maxGrade: 0.04,
+    harmonics: [5, 18],
+    bendiness: 0.55,
+    theme: 'kyoto',
   },
 ];
 
