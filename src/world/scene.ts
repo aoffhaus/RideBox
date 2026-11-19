@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { RideSession } from '../app/session';
 import type { Route } from './route';
 import { rng } from './route';
+import { chunkedInstances, type Inst } from './themes/common';
 import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
@@ -221,28 +222,15 @@ function spotPos(route: Route, s: Spot, jitter = 0, r?: () => number) {
   return new THREE.Vector3(route.x[s.i] - Math.sin(h) * s.off + jx, route.y[s.i] + terrainBump(s.i, s.off) - 0.2, route.z[s.i] + Math.cos(h) * s.off + jz);
 }
 
-function instanced(geo: THREE.BufferGeometry, mat: THREE.Material, mats: THREE.Matrix4[], colors?: THREE.Color[], shadow = true) {
-  const m = new THREE.InstancedMesh(geo, mat, Math.max(1, mats.length));
-  m.count = mats.length;
-  mats.forEach((x, k) => m.setMatrixAt(k, x));
-  colors?.forEach((c, k) => m.setColorAt(k, c));
-  m.castShadow = shadow;
-  m.receiveShadow = false;
-  return m;
-}
-
 function buildVegetation(route: Route, density = 1): THREE.Group {
   const n = route.x.length;
   const r = rng(route.seed * 31 + 7);
   const g = new THREE.Group();
-  const pines: THREE.Matrix4[] = [];
-  const pineCol: THREE.Color[] = [];
-  const broad: THREE.Matrix4[] = [];
-  const broadCol: THREE.Color[] = [];
-  const trunksP: THREE.Matrix4[] = [];
-  const trunksB: THREE.Matrix4[] = [];
-  const rocks: THREE.Matrix4[] = [];
-  const bushes: THREE.Matrix4[] = [];
+  const pines: Inst[] = [];
+  const broad: Inst[] = [];
+  const trunks: Inst[] = [];
+  const rocks: Inst[] = [];
+  const bushes: Inst[] = [];
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < n; i += 2) {
@@ -255,26 +243,20 @@ function buildVegetation(route: Route, density = 1): THREE.Group {
         const s = 0.7 + r() * 1.0;
         q.setFromAxisAngle(up, r() * Math.PI * 2);
         const m = new THREE.Matrix4().compose(p, q, new THREE.Vector3(s, s * (0.85 + r() * 0.4), s));
-        if (r() < 0.55 + 0.3 * forest) {
-          pines.push(m);
-          trunksP.push(m);
-          pineCol.push(new THREE.Color().setHSL(0.31 + r() * 0.05, 0.45, 0.17 + r() * 0.08));
-        } else {
-          broad.push(m);
-          trunksB.push(m);
-          broadCol.push(new THREE.Color().setHSL(0.2 + r() * 0.1, 0.5, 0.25 + r() * 0.12));
-        }
+        trunks.push({ i, m });
+        if (r() < 0.55 + 0.3 * forest) pines.push({ i, m, c: new THREE.Color().setHSL(0.31 + r() * 0.05, 0.45, 0.17 + r() * 0.08) });
+        else broad.push({ i, m, c: new THREE.Color().setHSL(0.2 + r() * 0.1, 0.5, 0.25 + r() * 0.12) });
       }
       if (r() < 0.08) {
         const p = spotPos(route, { i, off: side * (ROAD_HALF + 3 + r() * 40) }, 4, r);
         const s = 0.4 + r() * 1.6;
         q.setFromEuler(new THREE.Euler(r() * 3, r() * 3, r() * 3));
-        rocks.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(s, s * 0.7, s)));
+        rocks.push({ i, m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(s, s * 0.7, s)) });
       }
       if (r() < 0.25) {
         const p = spotPos(route, { i, off: side * (ROAD_HALF + 2.5 + r() * 12) }, 3, r);
         const s = 0.4 + r() * 0.7;
-        bushes.push(new THREE.Matrix4().compose(p, q.identity(), new THREE.Vector3(s * 1.4, s, s * 1.4)));
+        bushes.push({ i, m: new THREE.Matrix4().compose(p, q.identity(), new THREE.Vector3(s * 1.4, s, s * 1.4)) });
       }
     }
   }
@@ -289,11 +271,12 @@ function buildVegetation(route: Route, density = 1): THREE.Group {
   const pineGeo = mergeGeos(pineParts);
   const broadGeo = new THREE.IcosahedronGeometry(2.1, 0).scale(1, 0.9, 1).translate(0, 3.6, 0);
   const leafMat = windy(new THREE.MeshLambertMaterial({ flatShading: true }), 7, 0.22);
-  g.add(instanced(trunkGeo, trunkMat, [...trunksP, ...trunksB]));
-  g.add(instanced(pineGeo, leafMat, pines, pineCol));
-  g.add(instanced(broadGeo, windy(leafMat.clone(), 6, 0.26), broad, broadCol));
-  g.add(instanced(new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#8e8c84', flatShading: true }), rocks));
-  g.add(instanced(new THREE.IcosahedronGeometry(1, 0).translate(0, 0.5, 0), windy(new THREE.MeshLambertMaterial({ color: '#4f7f36', flatShading: true }), 1.1, 0.07), bushes, undefined, false));
+  // split into ~800 m chunks so trees out of view (or out of the shadow frustum) are culled
+  g.add(chunkedInstances(route, trunkGeo, trunkMat, trunks));
+  g.add(chunkedInstances(route, pineGeo, leafMat, pines));
+  g.add(chunkedInstances(route, broadGeo, windy(leafMat.clone(), 6, 0.26), broad));
+  g.add(chunkedInstances(route, new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: '#8e8c84', flatShading: true }), rocks));
+  g.add(chunkedInstances(route, new THREE.IcosahedronGeometry(1, 0).translate(0, 0.5, 0), windy(new THREE.MeshLambertMaterial({ color: '#4f7f36', flatShading: true }), 1.1, 0.07), bushes, { shadow: false }));
   return g;
 }
 
@@ -317,10 +300,8 @@ function mergeGeos(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
 function buildBuildings(route: Route): THREE.Group {
   const n = route.x.length;
   const r = rng(route.seed * 97 + 11);
-  const bodies: THREE.Matrix4[] = [];
-  const bodyCol: THREE.Color[] = [];
-  const roofs: THREE.Matrix4[] = [];
-  const roofCol: THREE.Color[] = [];
+  const bodies: Inst[] = [];
+  const roofs: Inst[] = [];
   const every = Math.round(350 / route.step);
   for (let i = 0; i < n; i += every) {
     if (r() < 0.35) continue;
@@ -335,25 +316,23 @@ function buildBuildings(route: Route): THREE.Group {
       const d = barn ? 8 : 6 + r() * 2;
       const h = barn ? 6 : 3.2 + r() * 1.5;
       const p = base.clone().add(new THREE.Vector3((r() - 0.5) * 30, 0, (r() - 0.5) * 30));
-      bodies.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(w, h, d)));
-      bodyCol.push(new THREE.Color(barn ? '#9c2f24' : ['#efe6d2', '#e4d3b0', '#d9dfe4', '#c9b79a'][Math.floor(r() * 4)]));
-      roofs.push(new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, h, 0)), q, new THREE.Vector3(w * 1.05, h * 0.55, d * 1.1)));
-      roofCol.push(new THREE.Color(barn ? '#5b5b5b' : ['#7a3a2a', '#45484f', '#6b4b33'][Math.floor(r() * 3)]));
+      bodies.push({ i, m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(w, h, d)), c: new THREE.Color(barn ? '#9c2f24' : ['#efe6d2', '#e4d3b0', '#d9dfe4', '#c9b79a'][Math.floor(r() * 4)]) });
+      roofs.push({ i, m: new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, h, 0)), q, new THREE.Vector3(w * 1.05, h * 0.55, d * 1.1)), c: new THREE.Color(barn ? '#5b5b5b' : ['#7a3a2a', '#45484f', '#6b4b33'][Math.floor(r() * 3)]) });
     }
   }
   const g = new THREE.Group();
   const body = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
   // triangular prism roof: ridge along local x
   const roof = new THREE.CylinderGeometry(0.5, 0.5, 1, 3, 1).rotateZ(Math.PI / 2).rotateX(Math.PI / 6 + Math.PI / 2).scale(1, 1.15, 1.15).translate(0, 0.28, 0);
-  g.add(instanced(body, new THREE.MeshLambertMaterial(), bodies, bodyCol));
-  g.add(instanced(roof, new THREE.MeshLambertMaterial({ flatShading: true }), roofs, roofCol));
+  g.add(chunkedInstances(route, body, new THREE.MeshLambertMaterial(), bodies));
+  g.add(chunkedInstances(route, roof, new THREE.MeshLambertMaterial({ flatShading: true }), roofs));
   return g;
 }
 
 /** White roadside posts with reflectors every 25 m — they stream past and sell speed. */
 function buildPosts(route: Route): THREE.Group {
-  const posts: THREE.Matrix4[] = [];
-  const refl: THREE.Matrix4[] = [];
+  const posts: Inst[] = [];
+  const refl: Inst[] = [];
   const every = Math.max(1, Math.round(25 / route.step));
   const q = new THREE.Quaternion();
   for (let i = 0; i < route.x.length; i += every) {
@@ -362,13 +341,13 @@ function buildPosts(route: Route): THREE.Group {
       const h = route.heading[i];
       const p = new THREE.Vector3(route.x[i] - Math.sin(h) * off, route.y[i], route.z[i] + Math.cos(h) * off);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -h);
-      posts.push(new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)));
-      refl.push(new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, 0.85, 0)), q, new THREE.Vector3(1, 1, 1)));
+      posts.push({ i, m: new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)) });
+      refl.push({ i, m: new THREE.Matrix4().compose(p.clone().add(new THREE.Vector3(0, 0.85, 0)), q, new THREE.Vector3(1, 1, 1)) });
     }
   }
   const g = new THREE.Group();
-  g.add(instanced(new THREE.BoxGeometry(0.12, 1.1, 0.12).translate(0, 0.55, 0), new THREE.MeshLambertMaterial({ color: '#f4f4f4' }), posts, undefined, false));
-  g.add(instanced(new THREE.BoxGeometry(0.14, 0.14, 0.14), new THREE.MeshBasicMaterial({ color: '#ff3b2f' }), refl, undefined, false));
+  g.add(chunkedInstances(route, new THREE.BoxGeometry(0.12, 1.1, 0.12).translate(0, 0.55, 0), new THREE.MeshLambertMaterial({ color: '#f4f4f4' }), posts, { shadow: false, chunkM: 3000 }));
+  g.add(chunkedInstances(route, new THREE.BoxGeometry(0.14, 0.14, 0.14), new THREE.MeshBasicMaterial({ color: '#ff3b2f' }), refl, { shadow: false, chunkM: 3000 }));
   return g;
 }
 
@@ -783,7 +762,9 @@ export class WorldView {
     this.exaggeration = exaggeration;
     this.route = exaggerateRoute(session.route, exaggeration);
     const high = quality === 'high';
-    this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: 'high-performance' });
+    // High quality renders through the post chain, whose multisampled HDR target does the
+    // antialiasing; a multisampled canvas would just be an unused buffer (and Low never had one).
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.adaptive = new AdaptiveQuality(qualityLevels(quality, window.devicePixelRatio));
     this.renderer.setPixelRatio(this.adaptive.level.pixelRatio);
     this.renderer.shadowMap.enabled = high;
@@ -902,6 +883,7 @@ export class WorldView {
       disposeTree(child);
     }
     this.buildWorld();
+    this.post?.invalidateScene();
     // the camera eases its height toward the new road (see loop), so no pop
   }
   /** Sprint "rush" strength (speed blur, FOV kick, glow flare): 0 = off, 1 = normal, up to 1.5. */
