@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -87,6 +87,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [6, 22],
     bendiness: 0.35,
     theme: 'neoncity',
+  },
+  {
+    id: 'iceland',
+    name: 'Icelandic Highlands',
+    description: 'Remote dusty road through striped rhyolite mountains, mossy lava fields and steaming vents, with a couple of real climbs',
+    lengthKm: 20,
+    maxGrade: 0.06,
+    harmonics: [2, 10],
+    bendiness: 0.55,
+    theme: 'iceland',
   },
 ];
 
