@@ -2,7 +2,9 @@ name: Deploy to Cloudflare
 
 on:
   push:
-    branches: [main]
+    # Deploys from the feature branch while it's being tried out; after it's
+    # merged, remove it so only main deploys.
+    branches: [main, claude/amazing-cray-mi8hmk]
   workflow_dispatch:
 
 permissions:
@@ -44,7 +46,7 @@ jobs:
   # "Download backup" button for moving your data to the private site.
   # Once moved, unpublish Pages and set the repo variable PAGES_RETIRED=true.
   pages-build:
-    if: vars.PAGES_RETIRED != 'true'
+    if: github.ref == 'refs/heads/main' && vars.PAGES_RETIRED != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -5,9 +5,10 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
-  // No public *.workers.dev or preview URLs: the site is only reachable on the
-  // custom domain that Cloudflare Access protects.
-  "workers_dev": false,
+  // Served at ridebox.<account>.workers.dev, protected by Cloudflare Access
+  // (the Worker also refuses any request without a valid Access sign-in).
+  // Preview URLs stay off: they would be extra addresses to protect.
+  "workers_dev": true,
   "preview_urls": false,
   "assets": {
     "directory": "./dist",
@@ -20,12 +21,11 @@
     {
       "binding": "DB",
       "database_name": "ridebox",
-      // paste the id printed by `npx wrangler d1 create ridebox`
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // the id printed by `npx wrangler d1 create ridebox`
+      "database_id": "ed5c13ed-19c2-4f63-9e7b-ae2583ebc3bd",
       "migrations_dir": "worker/migrations"
     }
   ],
-  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "ridebox-data" }],
   "vars": {
     // max Claude coach requests per day (a guard against runaway cost)
     "COACH_DAILY_LIMIT": "40"

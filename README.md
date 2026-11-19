@@ -37,7 +37,7 @@ The arch ahead of you sits where you'll be when the current interval ends. Its p
 You connect Strava through your own free Strava API app (one-time setup):
 
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app (any name, category and website).
-2. Set **Authorization Callback Domain** to the host RideBox is served from, e.g. `ride.yourdomain.com` (or `localhost` for `npm run dev`).
+2. Set **Authorization Callback Domain** to the host RideBox is served from, e.g. `ridebox.<you>.workers.dev` (or `localhost` for `npm run dev`).
 3. In RideBox **Settings → Strava**, paste the app's **Client ID** and **Client Secret** and click **Connect Strava**. Allow uploads on Strava's page.
 
 Nothing uploads automatically. On a ride's summary (open it from History any time):
@@ -120,23 +120,18 @@ To run the full private site locally (Worker, sync API, local database), put `DE
 
 ## Hosting on Cloudflare (private, password-protected)
 
-RideBox is served by a Cloudflare Worker (`worker/`) with a D1 database and an R2 bucket for sync. **Cloudflare Access** puts a login screen in front of the entire site, so nobody else can see your rides or workouts or use your Claude and Strava connections. As a second line of defense the Worker checks the Access sign-in on every request and serves nothing if Access isn't set up (it fails closed).
+RideBox is served by a Cloudflare Worker (`worker/`) with a D1 database for sync (large rides are stored in chunks). **Cloudflare Access** puts a login screen in front of the entire site, so nobody else can see your rides or workouts or use your Claude and Strava connections. As a second line of defense the Worker checks the Access sign-in on every request and serves nothing if Access isn't set up (it fails closed).
 
 One-time setup:
 
 1. **Cloudflare account** with your domain added (any domain you own; the free plan is fine).
-2. **Create the database and bucket** (from this repo, after `npm install`):
+2. **Create the database** (from this repo, after `npm install`):
    ```bash
    npx wrangler login
    npx wrangler d1 create ridebox          # paste the printed database_id into wrangler.jsonc
-   npx wrangler r2 bucket create ridebox-data
    ```
-3. **Deploy once:** `npm run deploy`. Then in the dashboard, Workers & Pages → **ridebox** → Settings → Domains & Routes → add a **Custom domain** such as `ride.yourdomain.com`. (The public `*.workers.dev` URL and preview URLs are turned off in `wrangler.jsonc`.)
-4. **Turn on Cloudflare Access** (Zero Trust → Access → Applications → Add → *Self-hosted*):
-   - Application domain: `ride.yourdomain.com` (the whole site, no path).
-   - Policy: **Allow**, Include → **Emails** → your email address. Login method: *One-time PIN* (a code is emailed to you) or Google.
-   - Session duration: e.g. 1 month, so you don't sign in before every ride.
-   - Copy the application's **Audience (AUD) tag**, and note your team domain (`<team>.cloudflareaccess.com`, under Zero Trust → Settings).
+3. **Deploy once:** `npm run deploy`. The site is served at `ridebox.<your-subdomain>.workers.dev` (preview URLs are off in `wrangler.jsonc`). You can add a custom domain later under Workers & Pages → **ridebox** → Settings → Domains & Routes; protect it with Access too.
+4. **Turn on Cloudflare Access:** Workers & Pages → **ridebox** → Settings → Domains & Routes → workers.dev → **Enable Cloudflare Access** (or Zero Trust → Access → Applications → Add → *Self-hosted* for a custom domain). Allow only yourself (your account, or Include → Emails → your email) and set the session to about a month so you don't sign in before every ride. Copy the application's **Audience (AUD) tag**, and note your team domain (`<team>.cloudflareaccess.com`, under Zero Trust → Settings).
 5. **Secrets** (never committed):
    ```bash
    npx wrangler secret put ACCESS_TEAM_DOMAIN   # e.g. yourteam.cloudflareaccess.com
@@ -144,12 +139,12 @@ One-time setup:
    npx wrangler secret put ALLOWED_EMAILS       # your email (comma-separate to add more)
    npx wrangler secret put ANTHROPIC_API_KEY    # for the Claude coach
    ```
-6. **Automatic deploys:** in GitHub → Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (a token with *Workers Scripts*, *D1* and *Workers R2 Storage* edit permissions) and `CLOUDFLARE_ACCOUNT_ID`.
+6. **Automatic deploys:** in GitHub → Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *D1: Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
 7. **Move your data, then retire the old public copy.** Browsers keep data per site address, so rides saved on the GitHub Pages copy don't appear on the new domain by themselves:
    - Open the old GitHub Pages site → **Settings → Backup & moving → Download backup**.
-   - Open `ride.yourdomain.com` → **Settings → Load backup…** and pick that file. It syncs up right away.
+   - Open your private RideBox site → **Settings → Load backup…** and pick that file. It syncs up right away.
    - GitHub → Settings → Pages → *Unpublish site*, then add the repo variable `PAGES_RETIRED` = `true` (Settings → Secrets and variables → Actions → Variables) so the workflow stops publishing it.
-   - Change your Strava API app's callback domain to `ride.yourdomain.com` and reconnect Strava in RideBox Settings.
+   - Change your Strava API app's callback domain to your private site's host (e.g. `ridebox.<you>.workers.dev`) and reconnect Strava in RideBox Settings.
 
 After that, every browser you sign in from pulls the same data. Every other browser then pulls the same data. The **✓ Synced** chip at the top right shows the sync state; click it to sync now.
 

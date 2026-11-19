@@ -1,16 +1,34 @@
 // Cross-browser sync: every browser keeps its own IndexedDB copy and trades
 // changes with D1 here. The newest write (by client stamp) wins per record;
-// deletes travel as tombstones. Big records (rides with 1 Hz samples) live in R2.
+// deletes travel as tombstones. Big records (rides with 1 Hz samples) are split
+// into chunks in the blob_chunks table.
 
 export interface SyncEnv {
   DB: D1Database;
-  BLOBS: R2Bucket;
+}
+
+/** D1 rows top out around 2 MB; stay well under. */
+export const CHUNK = 500_000;
+
+export async function putBlob(db: D1Database, key: string, body: string) {
+  const stmts = [db.prepare('DELETE FROM blob_chunks WHERE key = ?').bind(key)];
+  for (let i = 0, seq = 0; i < body.length; i += CHUNK, seq++) {
+    stmts.push(db.prepare('INSERT INTO blob_chunks (key, seq, data) VALUES (?, ?, ?)').bind(key, seq, body.slice(i, i + CHUNK)));
+  }
+  await db.batch(stmts);
+}
+export async function getBlob(db: D1Database, key: string): Promise<string | null> {
+  const { results } = await db.prepare('SELECT data FROM blob_chunks WHERE key = ? ORDER BY seq').bind(key).all<{ data: string }>();
+  return results.length ? results.map((r) => r.data).join('') : null;
+}
+export async function deleteBlob(db: D1Database, key: string) {
+  await db.prepare('DELETE FROM blob_chunks WHERE key = ?').bind(key).run();
 }
 
 export const SYNCED_STORES = ['workouts', 'rides', 'kv', 'calendar', 'plans', 'strava_acts'] as const;
 const STORES = new Set<string>(SYNCED_STORES);
 
-/** Records above this size go to R2 instead of a D1 row. */
+/** Records above this size are chunked instead of stored in one row. */
 export const BLOB_THRESHOLD = 200_000;
 const PAGE = 500;
 
@@ -96,7 +114,7 @@ export async function push(env: SyncEnv, req: Request): Promise<Response> {
     let body: string | null = d.deleted ? null : d.json!;
     if (body && body.length > BLOB_THRESHOLD) {
       blob = `docs/${d.store}/${encodeURIComponent(d.id)}/${d.updated_at}`;
-      await env.BLOBS.put(blob, body, { httpMetadata: { contentType: 'application/json' } });
+      await putBlob(env.DB, blob, body);
       body = null;
     }
     await env.DB.prepare(
@@ -107,19 +125,19 @@ export async function push(env: SyncEnv, req: Request): Promise<Response> {
     )
       .bind(d.store, d.id, d.updated_at, d.deleted ? 1 : 0, blob, body, Date.now())
       .run();
-    if (prev?.blob && prev.blob !== blob) await env.BLOBS.delete(prev.blob);
+    if (prev?.blob && prev.blob !== blob) await deleteBlob(env.DB, prev.blob);
     accepted.push(d.id);
   }
   return json({ accepted, rejected });
 }
 
-/** GET /api/blob?store=&id= → a large record's JSON from R2. */
+/** GET /api/blob?store=&id= → a large record's JSON. */
 export async function blob(env: SyncEnv, url: URL): Promise<Response> {
   const store = url.searchParams.get('store') ?? '';
   const id = url.searchParams.get('id') ?? '';
   const row = await env.DB.prepare('SELECT blob FROM docs WHERE store = ? AND id = ?').bind(store, id).first<{ blob: string | null }>();
   if (!row?.blob) return json({ error: 'Not found' }, 404);
-  const obj = await env.BLOBS.get(row.blob);
-  if (!obj) return json({ error: 'Not found' }, 404);
-  return new Response(obj.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  const body = await getBlob(env.DB, row.blob);
+  if (body == null) return json({ error: 'Not found' }, 404);
+  return new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }
