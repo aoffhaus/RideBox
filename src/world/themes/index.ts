@@ -317,9 +317,9 @@ const PATAGONIA: Theme = {
   id: 'patagonia',
   skyTop: '#1f5fc8',
   skyHorizon: '#b8d0e6',
-  haze: '#b4cbe4',
+  haze: '#a6c1e2',
   fogNear: 500,
-  fogFar: 22000,
+  fogFar: 30000,
   hemiSky: '#d6e5ff',
   hemiGround: '#a58d5a',
   hemiIntensity: 0.85,
@@ -332,7 +332,7 @@ const PATAGONIA: Theme = {
   roadTexture: patagoniaRoad,
   // crisp, clear austral light: deep blue scattering sky, sun about 35 degrees up
   sun: PATAGONIA_SUN,
-  sky: { turbidity: 1.0, rayleigh: 2.0, mieCoefficient: 0.001, mieDirectionalG: 0.75, exposure: 0.24 },
+  sky: { turbidity: 1.0, rayleigh: 2.0, mieCoefficient: 0.001, mieDirectionalG: 0.75, exposure: 0.17 },
   cloudShadows: 0.55,
   posts: false,
 };
