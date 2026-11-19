@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto' | 'patagonia';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto' | 'patagonia';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -117,6 +117,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [5, 18],
     bendiness: 0.55,
     theme: 'kyoto',
+  },
+  {
+    id: 'patagonia',
+    name: 'Patagonian Towers',
+    description: 'Big-country steppe road past turquoise glacial lakes beneath granite towers, with long windy drags and one major climb',
+    lengthKm: 24,
+    maxGrade: 0.065,
+    harmonics: [2, 9],
+    bendiness: 0.5,
+    theme: 'patagonia',
   },
 ];
 

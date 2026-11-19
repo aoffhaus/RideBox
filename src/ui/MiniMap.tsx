@@ -45,6 +45,7 @@ const PALETTES: Record<string, Palette> = {
   iceland: { ground: [120, 112, 98], light: [176, 150, 106], dark: [70, 68, 66], patch: 'rgba(112,150,64,0.45)', water: '#a6cfd8', shore: '#d6e6e8' },
   crystal: { ground: [52, 42, 72], light: [74, 60, 102], dark: [34, 28, 50], patch: 'rgba(154,91,255,0.3)', water: '#2fd9c8', shore: '#bff7f0' },
   kyoto: { ground: [132, 168, 92], light: [238, 196, 208], dark: [74, 112, 64], patch: 'rgba(232,150,182,0.45)', water: '#86c4d6', shore: '#d4ecf0' },
+  patagonia: { ground: [196, 172, 112], light: [218, 196, 136], dark: [150, 140, 92], patch: 'rgba(110,128,92,0.45)', water: '#46c8c4', shore: '#bfeee8' },
 };
 
 interface Blob {
