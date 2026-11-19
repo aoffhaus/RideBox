@@ -3,8 +3,7 @@ import type { RideSession, Snapshot } from '../app/session';
 import type { Settings } from '../storage/db';
 import { formatDuration, intervalFtpFraction, zoneFor, type Interval } from '../workout/model';
 import type { Route } from '../world/route';
-import { themeFor } from '../world/themes';
-import { worldMap } from '../world/worldMap';
+import { mapGround, worldMap } from '../world/worldMap';
 
 const W = 280;
 const H = 210;
@@ -36,9 +35,9 @@ function routeOutline(route: Route): [number, number][] {
 }
 
 /**
- * Heading-up mini map in a tilted, top-down "game minimap" style: the actual
- * world around you seen from above (the 3D scenery rasterised once per route,
- * see world/worldMap.ts), the road as a pale ribbon with white edges, the road
+ * Heading-up mini map in a tilted, top-down "game minimap" style: a flat 2D
+ * map of the real world layout around you (its water, woods and buildings,
+ * taken from the 3D scenery once per route, see world/worldMap.ts), the road as a pale ribbon with white edges, the road
  * between you and each upcoming interval start tinted in that interval's zone
  * colour, and a dot where each starts. Marker positions are projected from your
  * current speed — the same projection the arches use, so map and arches agree.
@@ -49,10 +48,7 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
   const ftp = settings.ftp;
   const outline = useMemo(() => routeOutline(route), [route]);
   // shown until the world map is ready (the 3D view registers its scenery first)
-  const placeholder = useMemo(() => {
-    const t = themeFor(route);
-    return t.groundColor ?? t.haze;
-  }, [route]);
+  const placeholder = useMemo(() => mapGround(route), [route]);
 
   useEffect(() => {
     const cv = canvasRef.current!;

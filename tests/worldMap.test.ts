@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { rasterizeWorld, type RasterBounds } from '../src/world/worldMap';
+import { rasterizeWorld, type MapStyle, type RasterBounds } from '../src/world/worldMap';
 
 const bounds: RasterBounds = { minX: -50, minZ: -50, maxX: 50, maxZ: 50, mPerPx: 1, maxY: 500 };
 
@@ -92,5 +92,24 @@ describe('rasterizeWorld', () => {
     expect(a[2]).toBe(0);
     expect(b[2]).toBeGreaterThan(100);
     expect(b[0]).toBe(0);
+  });
+
+  it('flat style: real water and trees in plain map colours, no 3D shading', () => {
+    const style: MapStyle = { ground: [100, 160, 60], light: [100, 160, 60], dark: [100, 160, 60], patch: [0, 0, 0], patchA: 0.5, water: [0, 0, 255], shore: [200, 200, 255], building: [255, 255, 255], seed: 1 };
+    const hill = new THREE.Mesh(new THREE.PlaneGeometry(100, 100).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: '#ff0000' }));
+    hill.rotation.x = 0.5; // a slope: would be shaded in 3D, flat here
+    const lake = flat(20, '#123456', 30);
+    lake.userData.mapWater = true;
+    const tree = new THREE.InstancedMesh(new THREE.ConeGeometry(3, 8), new THREE.MeshLambertMaterial({ color: '#00ff00' }), 1);
+    tree.setMatrixAt(0, new THREE.Matrix4().makeTranslation(30, 60, 30));
+    const gen = rasterizeWorld([hill, lake, tree], bounds, style);
+    let r = gen.next();
+    while (!r.done) r = gen.next();
+    const out = r.value;
+    expect(px(out, -30, -30)).toEqual([100, 160, 60]); // slope: plain ground colour
+    expect(px(out, 30, -30)).toEqual([100, 160, 60]);
+    expect(px(out, 0, 0)).toEqual([0, 0, 255]); // lake: water colour
+    expect(px(out, -10, 0)).toEqual([200, 200, 255]); // its edge: shoreline
+    expect(px(out, 30, 30)).toEqual([50, 80, 30]); // tree: woods tint over the ground
   });
 });

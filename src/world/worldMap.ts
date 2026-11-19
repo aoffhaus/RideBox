@@ -2,12 +2,11 @@
 //
 // The world view registers the scenery it builds for a route (terrain ribbons,
 // ground discs, water, trees, buildings...). The first time the minimap asks for
-// that route's map, those very meshes are rasterised from straight above into a
-// world-space image: vertex colours x material colour x texture, hill-shaded by
-// the surface normals, with the highest surface winning (a height buffer), so
-// the map shows exactly what the world contains. Water surfaces are flagged
-// (material.userData.mapWater) and get a light shoreline. The work is done once,
-// in small time slices so the ride never stutters, and cached per route.
+// that route's map, those meshes are rasterised from straight above, with the
+// highest surface winning (a height buffer), to learn the real layout: where
+// the water, woods and buildings are. The minimap draws that layout as a flat
+// 2D map in simple theme colours (see stylize). The work is done once, in small
+// time slices so the ride never stutters, and cached per route.
 //
 // Hints a theme can put on a material's (or object's) userData:
 //   mapWater: true      - this surface is water
@@ -173,6 +172,8 @@ class Canvas2 {
   water: Uint8Array;
   /** 1 where any real surface (not just a far backdrop disc) lies, seen or hidden */
   cover: Uint8Array;
+  /** what is on top at each pixel: 0 nothing, 1 land, 2 water, 3 tree / rock, 4 building */
+  kind: Uint8Array;
   /** rough count of work done (pixels and primitives), for time slicing */
   work = 0;
   constructor(
@@ -183,12 +184,13 @@ class Canvas2 {
     this.data = new Uint8ClampedArray(w * h * 4);
     this.water = new Uint8Array(w * h);
     this.cover = new Uint8Array(w * h);
+    this.kind = new Uint8Array(w * h);
   }
 
   /**
    * Gouraud triangle in pixel space; v = [x, y(px), height, r, g, b] per vertex (sRGB 0..255).
    */
-  tri(a: Float64Array, b: Float64Array, c: Float64Array, water: number, solid = 1) {
+  tri(a: Float64Array, b: Float64Array, c: Float64Array, water: number, solid = 1, kind = water ? 2 : 1) {
     const { w, h } = this;
     const y0 = Math.max(0, Math.floor(Math.min(a[1], b[1], c[1])));
     const y1 = Math.min(h - 1, Math.ceil(Math.max(a[1], b[1], c[1])));
@@ -231,6 +233,7 @@ class Canvas2 {
         this.data[o + 2] = wa * a[5] + wb * b[5] + wc * c[5];
         this.data[o + 3] = 255;
         this.water[k] = water;
+        this.kind[k] = kind;
       }
     }
   }
@@ -264,6 +267,7 @@ class Canvas2 {
         this.data[o + 2] = rgb[2] * lit;
         this.data[o + 3] = 255;
         this.water[k] = 0;
+        this.kind[k] = 3;
       }
     }
   }
@@ -284,7 +288,7 @@ const shadeOf = (nx: number, ny: number, nz: number) => {
  * Rasterise everything under `roots` into a top-down image. A generator: it
  * yields every so often so the caller can spread the work over several frames.
  */
-export function* rasterizeWorld(roots: THREE.Object3D[], b: RasterBounds): Generator<void, Raster, void> {
+export function* rasterizeWorld(roots: THREE.Object3D[], b: RasterBounds, style?: MapStyle): Generator<void, Raster, void> {
   const w = Math.max(1, Math.ceil((b.maxX - b.minX) / b.mPerPx));
   const h = Math.max(1, Math.ceil((b.maxZ - b.minZ) / b.mPerPx));
   const cv = new Canvas2(w, h);
@@ -381,8 +385,8 @@ export function* rasterizeWorld(roots: THREE.Object3D[], b: RasterBounds): Gener
             v[4] = rgb[1] * 1.08;
             v[5] = rgb[2] * 1.08;
           }
-          cv.tri(cw[0], cw[1], cw[2], 0);
-          cv.tri(cw[0], cw[2], cw[3], 0);
+          cv.tri(cw[0], cw[1], cw[2], 0, 1, 4);
+          cv.tri(cw[0], cw[2], cw[3], 0, 1, 4);
         } else cv.disc(px, py, rad, p.y, rgb);
         cv.work += 20;
         if (cv.work >= nextYield) {
@@ -517,6 +521,7 @@ export function* rasterizeWorld(roots: THREE.Object3D[], b: RasterBounds): Gener
       const o = k * 4;
       const seaDisc = zbuf[k] !== -Infinity && water[k] === 1;
       water[k] = cell[3] >= 0.5 ? 1 : 0;
+      cv.kind[k] = water[k] ? 2 : 1;
       if (water[k] && seaDisc) continue; // keep the sea disc's own colour
       if (!water[k]) {
         bilinear(landGrid, gw, gh, (x + 0.5) / B - 0.5, (y + 0.5) / B - 0.5, landCell);
@@ -530,6 +535,8 @@ export function* rasterizeWorld(roots: THREE.Object3D[], b: RasterBounds): Gener
     }
     if (y % 128 === 127) yield;
   }
+  // the minimap's flat 2D look: only the layout (water, woods, buildings) is kept
+  if (style) return yield* stylize(cv, b, style);
   // light shorelines along every water edge
   const shoreline = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
@@ -702,7 +709,7 @@ function start(route: Route, e: Entry) {
   const version = e.version;
   const roots = e.roots!;
   const b = boundsFor(e.drawn ?? route);
-  const job = rasterizeWorld(roots, b);
+  const job = rasterizeWorld(roots, b, styleFor(route));
   e.building = version;
   const tick = () => {
     if (e.version !== version) {
@@ -729,4 +736,115 @@ function start(route: Route, e: Entry) {
     if (e.version === version) e.roots = null; // done with the meshes: don't keep them alive
   };
   setTimeout(tick, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Flat 2D style: the minimap draws the real layout (where the water, woods and
+// buildings are) in simple flat map colours, not a shaded render of the 3D view.
+// ---------------------------------------------------------------------------
+type RGB = [number, number, number];
+export interface MapStyle {
+  ground: RGB;
+  light: RGB;
+  dark: RGB;
+  /** woods / tree cover, blended over the ground by `patchA` */
+  patch: RGB;
+  patchA: number;
+  water: RGB;
+  shore: RGB;
+  building: RGB;
+  seed: number;
+}
+
+type Pal = Omit<MapStyle, 'seed'>;
+const ROOF: RGB = [226, 222, 212];
+const PALETTES: Record<string, Pal> = {
+  countryside: { ground: [116, 178, 70], light: [150, 202, 92], dark: [84, 146, 54], patch: [52, 108, 38], patchA: 0.6, water: [143, 211, 240], shore: [200, 236, 250], building: ROOF },
+  redwoods: { ground: [88, 146, 66], light: [112, 166, 80], dark: [62, 116, 52], patch: [36, 84, 34], patchA: 0.6, water: [134, 201, 230], shore: [194, 230, 244], building: ROOF },
+  bigsur: { ground: [160, 172, 88], light: [192, 186, 112], dark: [116, 146, 70], patch: [86, 120, 52], patchA: 0.6, water: [124, 198, 236], shore: [196, 232, 248], building: ROOF },
+  zion: { ground: [196, 128, 88], light: [214, 156, 112], dark: [170, 104, 72], patch: [110, 130, 66], patchA: 0.6, water: [143, 208, 232], shore: [205, 234, 243], building: ROOF },
+  synthwave: { ground: [38, 14, 62], light: [58, 22, 88], dark: [22, 8, 40], patch: [255, 43, 214], patchA: 0.3, water: [18, 6, 42], shore: [25, 243, 255], building: [90, 40, 130] },
+  aurora: { ground: [196, 210, 222], light: [226, 236, 244], dark: [150, 168, 186], patch: [60, 72, 90], patchA: 0.5, water: [14, 36, 56], shore: [95, 224, 168], building: [120, 90, 70] },
+  alien: { ground: [72, 40, 110], light: [96, 58, 140], dark: [48, 26, 82], patch: [64, 224, 200], patchA: 0.4, water: [27, 143, 154], shore: [143, 255, 240], building: [150, 120, 190] },
+  neoncity: { ground: [30, 27, 40], light: [46, 40, 60], dark: [18, 16, 26], patch: [255, 47, 142], patchA: 0.3, water: [11, 24, 48], shore: [33, 228, 255], building: [70, 64, 92] },
+  iceland: { ground: [120, 112, 98], light: [176, 150, 106], dark: [70, 68, 66], patch: [100, 140, 58], patchA: 0.6, water: [166, 207, 216], shore: [214, 230, 232], building: ROOF },
+  crystal: { ground: [52, 42, 72], light: [74, 60, 102], dark: [34, 28, 50], patch: [154, 91, 255], patchA: 0.4, water: [47, 217, 200], shore: [191, 247, 240], building: [120, 100, 160] },
+  kyoto: { ground: [132, 168, 92], light: [150, 178, 104], dark: [74, 112, 64], patch: [232, 150, 182], patchA: 0.55, water: [134, 196, 214], shore: [212, 236, 240], building: [140, 120, 110] },
+  patagonia: { ground: [196, 172, 112], light: [218, 196, 136], dark: [150, 140, 92], patch: [100, 120, 84], patchA: 0.6, water: [70, 200, 196], shore: [191, 238, 232], building: ROOF },
+};
+
+export function styleFor(route: Route): MapStyle {
+  const pal = PALETTES[route.preset.theme ?? 'countryside'] ?? PALETTES.countryside;
+  return { ...pal, seed: route.seed };
+}
+
+/** Colour of open ground on the minimap (also shown before the map is ready). */
+export function mapGround(route: Route): string {
+  return `rgb(${styleFor(route).ground.join(',')})`;
+}
+
+const hash2 = (ix: number, iy: number, seed: number) => {
+  let t = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + Math.imul(seed, 1442695041)) | 0;
+  t = Math.imul(t ^ (t >>> 13), 1274126177);
+  return ((t ^ (t >>> 16)) >>> 0) / 4294967296;
+};
+/** Smooth value noise in [0, 1]. */
+function valueNoise(x: number, y: number, seed: number) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  let tx = x - ix, ty = y - iy;
+  tx = tx * tx * (3 - 2 * tx);
+  ty = ty * ty * (3 - 2 * ty);
+  const a = hash2(ix, iy, seed), b = hash2(ix + 1, iy, seed);
+  const c = hash2(ix, iy + 1, seed), d = hash2(ix + 1, iy + 1, seed);
+  return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
+}
+
+const mix = (a: RGB, b: RGB, t: number, out: RGB) => {
+  out[0] = a[0] + (b[0] - a[0]) * t;
+  out[1] = a[1] + (b[1] - a[1]) * t;
+  out[2] = a[2] + (b[2] - a[2]) * t;
+  return out;
+};
+
+function* stylize(cv: Canvas2, b: RasterBounds, s: MapStyle): Generator<void, Raster, void> {
+  const { w, h, kind, water } = cv;
+  const data = new Uint8ClampedArray(w * h * 4);
+  const isWater = (x: number, y: number) => x < 0 || y < 0 || x >= w || y >= h || water[y * w + x] === 1;
+  // shoreline about 6 m wide (at least one pixel)
+  const sr = Math.max(1, Math.round(6 / b.mPerPx));
+  const c: RGB = [0, 0, 0];
+  const land: RGB = [0, 0, 0];
+  for (let y = 0; y < h; y++) {
+    const wz = b.minZ + (y + 0.5) * b.mPerPx;
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      const o = k * 4;
+      if (water[k]) {
+        let shore = false;
+        for (let d = 1; d <= sr && !shore; d++) shore = !isWater(x - d, y) || !isWater(x + d, y) || !isWater(x, y - d) || !isWater(x, y + d);
+        const col = shore ? s.shore : s.water;
+        data[o] = col[0];
+        data[o + 1] = col[1];
+        data[o + 2] = col[2];
+        data[o + 3] = 255;
+        continue;
+      }
+      // soft two-octave ground tint, like a game minimap
+      const wx = b.minX + (x + 0.5) * b.mPerPx;
+      const t = Math.min(1, Math.max(0, valueNoise(wx / 350, wz / 350, s.seed) * 0.7 + valueNoise(wx / 100, wz / 100, s.seed + 7) * 0.3));
+      if (t < 0.5) mix(s.dark, s.ground, t * 2, land);
+      else mix(s.ground, s.light, t * 2 - 1, land);
+      const near = (x > 0 && kind[k - 1] === 3) || (x < w - 1 && kind[k + 1] === 3) || (y > 0 && kind[k - w] === 3) || (y < h - 1 && kind[k + w] === 3);
+      if (kind[k] === 3) mix(land, s.patch, s.patchA, c);
+      else if (near && kind[k] !== 4) mix(land, s.patch, s.patchA * 0.6, c);
+      else if (kind[k] === 4) mix(land, s.building, 0.85, c);
+      else c.splice(0, 3, ...land);
+      data[o] = c[0];
+      data[o + 1] = c[1];
+      data[o + 2] = c[2];
+      data[o + 3] = 255;
+    }
+    if (y % 24 === 23) yield;
+  }
+  return { w, h, data, fill: [...s.ground] as RGB };
 }
