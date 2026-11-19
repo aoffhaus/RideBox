@@ -6,6 +6,7 @@ import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
+import { ICELAND_SUN, buildIceland, icelandRoad } from './iceland';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -150,7 +151,30 @@ const SYNTHWAVE: Theme = {
   posts: false, // the neon pylons replace them
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };
+const ICELAND: Theme = {
+  id: 'iceland',
+  skyTop: '#7f9db6',
+  skyHorizon: '#cdd5d9',
+  haze: '#c4ccd0',
+  fogNear: 300,
+  fogFar: 4200,
+  hemiSky: '#dde6ee',
+  hemiGround: '#5b544c',
+  hemiIntensity: 1.3,
+  sunColor: '#f4efe6',
+  sunIntensity: 2.0,
+  exposure: 1.02,
+  groundColor: '#4a4642',
+  clouds: true,
+  build: buildIceland,
+  roadTexture: icelandRoad,
+  // low, cool Nordic sun through a thin overcast
+  sun: ICELAND_SUN,
+  sky: { turbidity: 14, rayleigh: 0.4, mieCoefficient: 0.012, mieDirectionalG: 0.74, exposure: 0.42 },
+  cloudShadows: 0.55,
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, iceland: ICELAND };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;

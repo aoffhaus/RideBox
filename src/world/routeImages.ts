@@ -5,5 +5,6 @@ import bigsur from '../assets/routes/bigsur.jpg';
 import redwoods from '../assets/routes/redwoods.jpg';
 import zion from '../assets/routes/zion.jpg';
 import synthwave from '../assets/routes/synthwave.jpg';
+import iceland from '../assets/routes/iceland.jpg';
 
-export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave };
+export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, iceland };
