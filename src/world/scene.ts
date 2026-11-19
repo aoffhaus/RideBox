@@ -743,6 +743,8 @@ export class WorldView {
   /** live effort → world reactions (wind, clouds, grading, glow, camera) */
   private effortMeter = new EffortMeter();
   private reactivity = 1;
+  /** headlamp + rider fill (night themes); separate from the rider so it stays on in first person */
+  private lampRig: THREE.Group | null = null;
   private raf = 0;
   private ro: ResizeObserver;
   private camPos = new THREE.Vector3();
@@ -819,6 +821,19 @@ export class WorldView {
 
     this.rider = buildRider();
     this.scene.add(this.rider.group);
+    if (theme.headlamp) {
+      // a cool-white lamp on the bars throwing a soft pool ~20 m up the road
+      const lamp = new THREE.SpotLight('#f4f1ff', high ? 60 : 45, 70, 0.42, 0.75, 1.4);
+      lamp.position.set(0.45, 1.0, 0);
+      lamp.target.position.set(22, 0, 0);
+      this.lampRig = new THREE.Group();
+      this.lampRig.add(lamp, lamp.target);
+      this.scene.add(this.lampRig);
+      // short-range fill so the rider reads against the dark (falls off before the scenery)
+      const fill = new THREE.PointLight('#c9d6ff', 2.2, 7, 2);
+      fill.position.set(-3, 2.5, 1.5);
+      this.lampRig.add(fill);
+    }
     this.arch = buildArch(1);
     this.nextArch = buildArch(0.35);
     this.scene.add(this.arch.group, this.nextArch.group);
@@ -960,6 +975,10 @@ export class WorldView {
 
     // --- rider
     const p = this.place(this.rider.group, d, 1.7);
+    if (this.lampRig) {
+      this.lampRig.position.copy(this.rider.group.position);
+      this.lampRig.rotation.copy(this.rider.group.rotation);
+    }
     // pitch from the local road slope over the wheelbase, smoothed
     const slope = Math.atan2(route.at(d + 0.6).y - route.at(d - 0.6).y, 1.2);
     this.pitch += (slope - this.pitch) * (1 - Math.exp(-dt * 8));

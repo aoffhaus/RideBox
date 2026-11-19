@@ -54,6 +54,8 @@ export interface Theme {
   cloudShadows?: number;
   /** false = no white reflector posts along the road edge. Default true. */
   posts?: boolean;
+  /** Night riding: a bike headlamp pool on the road ahead plus a soft fill light on the rider. */
+  headlamp?: boolean;
 }
 
 /** The original look (rolling green countryside, farms, distant mountains). */
@@ -179,6 +181,7 @@ const AURORA_NIGHT: Theme = {
   sun: AURORA.moon,
   cloudShadows: 0,
   posts: false, // the theme brings its own reflector posts and snow poles
+  headlamp: true,
 };
 
 const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT };

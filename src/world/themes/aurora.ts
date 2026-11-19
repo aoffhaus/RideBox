@@ -35,7 +35,7 @@ import {
   type TerrainModel,
 } from './common';
 import type { ThemeBuildOptions } from './index';
-import { fxTime } from '../fx';
+import { fxBuild, fxSurge, fxTime } from '../fx';
 import { sunDirection } from '../sky';
 
 // ---------------------------------------------------------------------------
@@ -315,6 +315,8 @@ function buildCurtain(c: (typeof CURTAINS)[number], seed: number, r: () => numbe
     toneMapped: false,
     uniforms: {
       fxTime,
+      fxBuild,
+      fxSurge,
       uLen: { value: along },
       uSeed: { value: seed },
       uK: { value: c.k },
@@ -343,6 +345,7 @@ function buildCurtain(c: (typeof CURTAINS)[number], seed: number, r: () => numbe
       }`,
     fragmentShader: /* glsl */ `
       uniform float fxTime, uLen, uSeed, uK;
+      uniform float fxBuild, fxSurge;
       uniform vec3 uGreen, uTeal, uViolet, uMagenta;
       varying vec2 vUv;
       varying float vEdgeOn;
@@ -361,7 +364,8 @@ function buildCurtain(c: (typeof CURTAINS)[number], seed: number, r: () => numbe
         // vertical rays drifting along the curtain, slightly slanted
         float x = u + v * 60.0;
         float rays = aNoise(x * 0.045 + t * 0.7 + uSeed * 7.0) * 0.6 + aNoise(x * 0.13 - t * 1.1) * 0.28 + aNoise(x * 0.4 + t * 1.9) * 0.12;
-        rays = 0.3 + 1.5 * pow(rays, 2.6);
+        // effort turns it into a substorm: sharper, busier rays
+        rays = 0.3 + (1.5 + 1.2 * fxBuild) * pow(rays, 2.6 - 0.9 * fxBuild);
         // broad bands along the curtain where it folds over itself and brightens
         float bands = 0.45 + 0.85 * pow(aNoise(u * 0.0065 + t * 0.08 + uSeed * 1.7), 1.5);
         // bright patches wandering slowly, gentle pulsing
@@ -373,8 +377,9 @@ function buildCurtain(c: (typeof CURTAINS)[number], seed: number, r: () => numbe
         col = mix(col, uViolet, smoothstep(0.14, 0.45, hh));
         col = mix(col, uMagenta, smoothstep(0.4, 0.8, hh) * 0.6);
         // occasional crimson-pink fringe right at the lower edge
-        col += uMagenta * 0.5 * exp(-abs(h) * 60.0) * smoothstep(0.55, 0.85, aNoise(u * 0.004 + t * 0.1 + uSeed * 5.0));
+        col += uMagenta * (0.5 + 1.6 * fxBuild) * exp(-abs(h) * 60.0) * smoothstep(0.55 - 0.3 * fxBuild, 0.85, aNoise(u * 0.004 + t * 0.1 + uSeed * 5.0));
         float k = prof * rays * bands * blotch * pulse * ends * uK * min(vEdgeOn, 2.4) * 0.5;
+        k *= 1.0 + 1.1 * fxBuild + 0.9 * fxSurge; // flares as you push
         gl_FragColor = vec4(col * k, 1.0);
         #include <colorspace_fragment>
       }`,
