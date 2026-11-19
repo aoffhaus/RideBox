@@ -821,6 +821,7 @@ export function buildCrystal(route: Route, opts: ThemeBuildOptions): THREE.Objec
 
   // ----- crystals
   const crysMat = crystalMaterial(sunDir);
+  crysMat.userData.mapColor = '#b9a2ff'; // minimap
   crysMat.uniforms.fxTime = fxTime;
   crysMat.uniforms.fxBuild = fxBuild;
   crysMat.uniforms.fxSurge = fxSurge;

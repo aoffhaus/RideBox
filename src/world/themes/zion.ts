@@ -296,6 +296,7 @@ export function buildZion(route: Route, opts: ThemeBuildOptions): THREE.Object3D
     });
     const m = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: '#4d7a68', specular: '#cfe3e0', shininess: 60, map: ripple, side: THREE.DoubleSide }));
     m.receiveShadow = true;
+    m.userData.mapWater = true; // minimap: the river
     out.push(m);
   }
 

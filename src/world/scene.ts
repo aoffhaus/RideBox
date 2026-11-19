@@ -6,6 +6,7 @@ import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
 import { themeFor } from './themes';
+import { registerWorld, releaseWorld } from './worldMap';
 import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
 import { EffortMeter } from './effort';
 import { PostFX, DEFAULT_BLOOM } from './postfx';
@@ -971,13 +972,17 @@ export class WorldView {
     const theme = this.theme;
     const high = this.high;
     const w = this.world;
+    // the landscape itself (not road furniture, clouds or far backdrops): also drawn on the minimap
+    let land: THREE.Object3D[];
     if (theme.build) {
       // themed landscape: the theme supplies terrain & scenery; road furniture is shared
-      w.add(...theme.build(route, { high, sunDir: this.sunDir.clone() }), buildRoad(route, theme.roadTexture?.()), buildClimbSigns(route));
+      land = theme.build(route, { high, sunDir: this.sunDir.clone() });
+      w.add(...land, buildRoad(route, theme.roadTexture?.()), buildClimbSigns(route));
       if (theme.posts !== false) w.add(buildPosts(route));
       if (theme.clouds) w.add(buildClouds(route, theme.cloudHeight));
     } else {
-      w.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
+      land = [buildTerrain(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route)];
+      w.add(...land, buildRoad(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
     }
     let minY = Infinity;
     for (const y of route.y) minY = Math.min(minY, y);
@@ -986,7 +991,9 @@ export class WorldView {
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = minY - 30;
       w.add(ground);
+      land.push(ground);
     }
+    registerWorld(this.session.route, route, land);
     // shader-level life: drifting cloud shadows over everything, wind in the foliage
     applyWorldFx(w, { cloudShadows: theme.cloudShadows ?? (theme.clouds ? 0.45 : 0), wind: true });
   }
@@ -1217,6 +1224,7 @@ export class WorldView {
 
   dispose() {
     cancelAnimationFrame(this.raf);
+    releaseWorld(this.session.route);
     this.ro.disconnect();
     disposeTree(this.scene);
     this.post?.dispose();

@@ -279,6 +279,7 @@ function buildingMaterial(o: { far?: boolean; store?: boolean; fogNear: number; 
       }`,
   });
   mat.uniforms.fxTime = fxTime;
+  mat.userData.mapColor = o.far ? '#16131f' : '#2b2638'; // minimap: dark rooftops
   return mat;
 }
 

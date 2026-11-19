@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { RideSession, Snapshot } from '../app/session';
 import type { Settings } from '../storage/db';
 import { formatDuration, intervalFtpFraction, zoneFor, type Interval } from '../workout/model';
-import { rng, type Route } from '../world/route';
+import type { Route } from '../world/route';
+import { themeFor } from '../world/themes';
+import { worldMap } from '../world/worldMap';
 
 const W = 280;
 const H = 210;
@@ -24,169 +26,19 @@ export function ivColor(iv: Interval | undefined, ftp: number) {
   return iv.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(iv, ftp)).color;
 }
 
-interface Palette {
-  ground: [number, number, number];
-  light: [number, number, number];
-  dark: [number, number, number];
-  patch: string;
-  water: string;
-  shore: string;
-}
-
-const PALETTES: Record<string, Palette> = {
-  countryside: { ground: [116, 178, 70], light: [150, 202, 92], dark: [84, 146, 54], patch: 'rgba(70,128,48,0.4)', water: '#8fd3f0', shore: '#c8ecfa' },
-  redwoods: { ground: [88, 146, 66], light: [112, 166, 80], dark: [62, 116, 52], patch: 'rgba(42,92,40,0.45)', water: '#86c9e6', shore: '#c2e6f4' },
-  bigsur: { ground: [160, 172, 88], light: [192, 186, 112], dark: [116, 146, 70], patch: 'rgba(98,130,60,0.5)', water: '#7cc6ec', shore: '#c4e8f8' },
-  zion: { ground: [196, 128, 88], light: [214, 156, 112], dark: [170, 104, 72], patch: 'rgba(120,138,72,0.5)', water: '#8fd0e8', shore: '#cdeaf3' },
-  synthwave: { ground: [38, 14, 62], light: [58, 22, 88], dark: [22, 8, 40], patch: 'rgba(255,43,214,0.22)', water: '#12062a', shore: '#19f3ff' },
-  aurora: { ground: [196, 210, 222], light: [226, 236, 244], dark: [150, 168, 186], patch: 'rgba(60,72,90,0.35)', water: '#0e2438', shore: '#5fe0a8' },
-  alien: { ground: [72, 40, 110], light: [96, 58, 140], dark: [48, 26, 82], patch: 'rgba(64,224,200,0.3)', water: '#1b8f9a', shore: '#8ffff0' },
-  neoncity: { ground: [30, 27, 40], light: [46, 40, 60], dark: [18, 16, 26], patch: 'rgba(255,47,142,0.2)', water: '#0b1830', shore: '#21e4ff' },
-  iceland: { ground: [120, 112, 98], light: [176, 150, 106], dark: [70, 68, 66], patch: 'rgba(112,150,64,0.45)', water: '#a6cfd8', shore: '#d6e6e8' },
-  crystal: { ground: [52, 42, 72], light: [74, 60, 102], dark: [34, 28, 50], patch: 'rgba(154,91,255,0.3)', water: '#2fd9c8', shore: '#bff7f0' },
-  kyoto: { ground: [132, 168, 92], light: [238, 196, 208], dark: [74, 112, 64], patch: 'rgba(232,150,182,0.45)', water: '#86c4d6', shore: '#d4ecf0' },
-  patagonia: { ground: [196, 172, 112], light: [218, 196, 136], dark: [150, 140, 92], patch: 'rgba(110,128,92,0.45)', water: '#46c8c4', shore: '#bfeee8' },
-};
-
-interface Blob {
-  x: number;
-  z: number;
-  r: number; // bounding radius
-  pts: [number, number][];
-  water: boolean;
-}
-
-interface Layers {
-  terrain: HTMLCanvasElement; // low-res colour-variation raster in world space
-  minX: number;
-  minZ: number;
-  mPerPx: number;
-  blobs: Blob[];
-  pal: Palette;
-  outline: [number, number][];
-}
-
-/** Deterministic (route-seeded) terrain colour field, lakes and darker patches. */
-function buildLayers(route: Route): Layers {
-  const pal = PALETTES[route.preset.theme ?? 'countryside'] ?? PALETTES.countryside;
+/** Decimated route outline (every ~10 m), closed. */
+function routeOutline(route: Route): [number, number][] {
   const outline: [number, number][] = [];
   const every = Math.max(1, Math.round(10 / route.step));
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  for (let i = 0; i < route.x.length; i += every) {
-    const x = route.x[i], z = route.z[i];
-    outline.push([x, z]);
-    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-    minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
-  }
+  for (let i = 0; i < route.x.length; i += every) outline.push([route.x[i], route.z[i]]);
   outline.push([route.x[0], route.z[0]]);
-  const margin = 4000;
-  minX -= margin; minZ -= margin; maxX += margin; maxZ += margin;
-
-  const rand = rng(route.seed * 31337 + route.preset.id.length * 977 + Math.round(route.length));
-
-  // ---- terrain: two octaves of value noise at ~25 m/px, smoothed when upscaled ----
-  const mPerPx = 25;
-  const tw = Math.ceil((maxX - minX) / mPerPx);
-  const th = Math.ceil((maxZ - minZ) / mPerPx);
-  const lattice = (cell: number) => {
-    const gw = Math.ceil(tw / cell) + 2, gh = Math.ceil(th / cell) + 2;
-    const v = new Float32Array(gw * gh);
-    for (let i = 0; i < v.length; i++) v[i] = rand();
-    return (x: number, y: number) => {
-      const fx = x / cell, fy = y / cell;
-      const ix = Math.floor(fx), iy = Math.floor(fy);
-      let tx = fx - ix, ty = fy - iy;
-      tx = tx * tx * (3 - 2 * tx);
-      ty = ty * ty * (3 - 2 * ty);
-      const a = v[iy * gw + ix], b = v[iy * gw + ix + 1];
-      const c = v[(iy + 1) * gw + ix], d = v[(iy + 1) * gw + ix + 1];
-      return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
-    };
-  };
-  const n1 = lattice(14);
-  const n2 = lattice(4);
-  const terrain = document.createElement('canvas');
-  terrain.width = tw;
-  terrain.height = th;
-  const tg = terrain.getContext('2d')!;
-  const img = tg.createImageData(tw, th);
-  for (let y = 0; y < th; y++) {
-    for (let x = 0; x < tw; x++) {
-      const t = Math.min(1, Math.max(0, n1(x, y) * 0.62 + n2(x, y) * 0.28 + rand() * 0.1));
-      const [c0, c1] = t < 0.5 ? [pal.dark, pal.ground] : [pal.ground, pal.light];
-      const w = t < 0.5 ? t * 2 : t * 2 - 1;
-      const o = (y * tw + x) * 4;
-      img.data[o] = c0[0] + (c1[0] - c0[0]) * w;
-      img.data[o + 1] = c0[1] + (c1[1] - c0[1]) * w;
-      img.data[o + 2] = c0[2] + (c1[2] - c0[2]) * w;
-      img.data[o + 3] = 255;
-    }
-  }
-  tg.putImageData(img, 0, 0);
-
-  // ---- lakes and darker patches, kept clear of the road ----
-  const near = outline.filter((_, i) => i % 2 === 0); // ~20 m spacing is plenty here
-  const clearance = (x: number, z: number) => {
-    let best = Infinity;
-    for (const [px, pz] of near) {
-      const d = (px - x) * (px - x) + (pz - z) * (pz - z);
-      if (d < best) best = d;
-    }
-    return Math.sqrt(best);
-  };
-  const blobs: Blob[] = [];
-  const area = ((maxX - minX) * (maxZ - minZ)) / 1e6; // km²
-  const tries = Math.round(area * 6);
-  for (let i = 0; i < tries; i++) {
-    const water = rand() < 0.6;
-    const x = minX + rand() * (maxX - minX);
-    const z = minZ + rand() * (maxZ - minZ);
-    const big = rand() < 0.15;
-    const r = (big ? 180 + rand() * 360 : 35 + rand() * 120) * (water ? 1 : 1.4);
-    const free = clearance(x, z);
-    if (free < r * 1.1 + 22) continue;
-    if (blobs.some((b) => b.water && water && Math.hypot(b.x - x, b.z - z) < b.r + r + 20)) continue;
-    // irregular outline: radius modulated by a few random harmonics
-    const n = 26;
-    const harm = [1, 2, 3, 5].map((k) => ({ k, a: (rand() * 0.22) / Math.sqrt(k), p: rand() * Math.PI * 2 }));
-    const stretch = 0.65 + rand() * 0.5;
-    const rot = rand() * Math.PI;
-    const pts: [number, number][] = [];
-    for (let j = 0; j < n; j++) {
-      const t = (j / n) * Math.PI * 2;
-      let m = 1;
-      for (const h of harm) m += h.a * Math.sin(h.k * t + h.p);
-      const lx = Math.cos(t) * r * m;
-      const lz = Math.sin(t) * r * m * stretch;
-      pts.push([x + lx * Math.cos(rot) - lz * Math.sin(rot), z + lx * Math.sin(rot) + lz * Math.cos(rot)]);
-    }
-    blobs.push({ x, z, r: r * 1.5, pts, water });
-  }
-  blobs.sort((a, b) => Number(a.water) - Number(b.water)); // patches under water
-  return { terrain, minX, minZ, mPerPx, blobs, pal, outline };
-}
-
-/** Smooth closed path through the points (quadratic curves via midpoints). */
-function blobPath(g: CanvasRenderingContext2D, pts: [number, number][]) {
-  const n = pts.length;
-  const mid = (i: number): [number, number] => {
-    const a = pts[i % n], b = pts[(i + 1) % n];
-    return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  };
-  g.beginPath();
-  const m0 = mid(0);
-  g.moveTo(m0[0], m0[1]);
-  for (let i = 1; i <= n; i++) {
-    const p = pts[i % n];
-    const m = mid(i);
-    g.quadraticCurveTo(p[0], p[1], m[0], m[1]);
-  }
-  g.closePath();
+  return outline;
 }
 
 /**
- * Heading-up mini map in a tilted, top-down "game minimap" style: soft green
- * terrain with lakes, the road as a pale ribbon with white edges, the road
+ * Heading-up mini map in a tilted, top-down "game minimap" style: the actual
+ * world around you seen from above (the 3D scenery rasterised once per route,
+ * see world/worldMap.ts), the road as a pale ribbon with white edges, the road
  * between you and each upcoming interval start tinted in that interval's zone
  * colour, and a dot where each starts. Marker positions are projected from your
  * current speed — the same projection the arches use, so map and arches agree.
@@ -195,7 +47,12 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const route = session.route;
   const ftp = settings.ftp;
-  const layers = useMemo(() => buildLayers(route), [route]);
+  const outline = useMemo(() => routeOutline(route), [route]);
+  // shown until the world map is ready (the 3D view registers its scenery first)
+  const placeholder = useMemo(() => {
+    const t = themeFor(route);
+    return t.groundColor ?? t.haze;
+  }, [route]);
 
   useEffect(() => {
     const cv = canvasRef.current!;
@@ -207,7 +64,6 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
     src.width = SW * dpr;
     src.height = SH * dpr;
     const sg = src.getContext('2d')!;
-    const { terrain, blobs, pal, outline } = layers;
 
     let raf = 0;
     let heading: number | null = null;
@@ -260,31 +116,17 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
       const e = SCX - (a * p.x + c * p.z);
       const f = RIDER_SY - (b * p.x + dd * p.z);
       const px = 1 / scale; // one source pixel in metres
-      const viewR = Math.hypot(SW, SH) * px; // metres from rider that can be visible
 
       // ---------- flat map into the source canvas ----------
+      const map = worldMap(route);
       sg.setTransform(dpr, 0, 0, dpr, 0, 0);
-      sg.fillStyle = `rgb(${pal.ground.join(',')})`;
+      sg.fillStyle = map ? map.fill : placeholder;
       sg.fillRect(0, 0, SW, SH);
       sg.setTransform(a * dpr, b * dpr, c * dpr, dd * dpr, e * dpr, f * dpr);
-      sg.imageSmoothingEnabled = true;
-      sg.drawImage(terrain, layers.minX, layers.minZ, terrain.width * layers.mPerPx, terrain.height * layers.mPerPx);
-
-      for (const bl of blobs) {
-        if (Math.hypot(bl.x - p.x, bl.z - p.z) > viewR + bl.r) continue;
-        blobPath(sg, bl.pts);
-        if (bl.water) {
-          sg.fillStyle = pal.shore;
-          sg.fill();
-          sg.lineWidth = 3.5 * px;
-          sg.strokeStyle = pal.shore;
-          sg.stroke();
-          sg.fillStyle = pal.water;
-          sg.fill();
-        } else {
-          sg.fillStyle = pal.patch;
-          sg.fill();
-        }
+      if (map) {
+        // just pan/rotate the pre-rendered world image
+        sg.imageSmoothingEnabled = true;
+        sg.drawImage(map.canvas, map.minX, map.minZ, map.canvas.width * map.mPerPx, map.canvas.height * map.mPerPx);
       }
 
       // road ribbon: soft shadow, pale edge, grey surface
@@ -415,7 +257,7 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [session, route, layers, ftp]);
+  }, [session, route, outline, placeholder, ftp]);
 
   // progress pill: workout progress when a workout is loaded, else lap progress
   const st = snap.workout;
