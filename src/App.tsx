@@ -25,6 +25,8 @@ import type { PlannedWorkout, StravaActivity, TrainingPlan } from './training/mo
 import { reconcile } from './training/calendar';
 import { today } from './training/load';
 import { Calendar } from './ui/Calendar';
+import { computeLevels, ZONE_NAMES } from './training/levels';
+import { LevelsCard } from './ui/Levels';
 import { Fitness } from './ui/Fitness';
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
@@ -189,6 +191,10 @@ export function App() {
       if (hrm.onHeartRate === h) hrm.onHeartRate = undefined;
     };
   }, [hrm, session]);
+  const { levels, history: levelHistory } = useMemo(
+    () => computeLevels(rides, acts, calendar, workouts.map((w) => w.workout), settings.ftp),
+    [rides, acts, calendar, workouts, settings.ftp],
+  );
   const routes = useMemo(() => ROUTE_PRESETS.map((p) => ({ p, r: generateRoute(p.id, 1) })), []);
 
   /** Closing the picker without choosing a device: Chrome reports "User cancelled". */
@@ -373,7 +379,30 @@ export function App() {
       )}
 
       {summary ? (
-        <Summary ride={summary} settings={settings} stravaConnected={isConnected(strava)} onStravaUpload={sendToStrava} onRename={rename} onDelete={removeRide} onClose={() => setSummary(null)} />
+        <Summary
+          ride={summary}
+          settings={settings}
+          stravaConnected={isConnected(strava)}
+          onStravaUpload={sendToStrava}
+          onRename={rename}
+          onDelete={removeRide}
+          onClose={() => setSummary(null)}
+          onFeel={async (r, feel) => {
+            const next = { ...r, feel };
+            await saveRide(next);
+            showRide(next);
+          }}
+        >
+          {(() => {
+            const ev = levelHistory.find((h) => h.name === summary.name && h.date === today() && h.after !== h.before);
+            return ev ? (
+              <div className="banner">
+                {ev.before == null ? `${ZONE_NAMES[ev.zone]} level set to ` : `${ev.after > ev.before ? '⬆' : '⬇'} ${ZONE_NAMES[ev.zone]} level ${ev.before.toFixed(1)} → `}
+                <b>{ev.after.toFixed(1)}</b>
+              </div>
+            ) : null;
+          })()}
+        </Summary>
       ) : editing !== undefined ? (
         <Builder
           initial={editing}
@@ -483,6 +512,7 @@ export function App() {
           acts={acts}
           workouts={workouts}
           settings={settings}
+          levels={levels}
           onSave={saveCalendar}
           onDelete={deleteCalendar}
           onRide={(p) => {
@@ -495,7 +525,9 @@ export function App() {
           }}
         />
       ) : tab === 'fitness' ? (
-        <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} strava={strava} onSettingsChange={updateSettings} onImported={refresh} />
+        <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} strava={strava} onSettingsChange={updateSettings} onImported={refresh}>
+          <LevelsCard levels={levels} history={levelHistory} />
+        </Fitness>
       ) : tab === 'history' ? (
         <History rides={rides} settings={settings} stravaConnected={isConnected(strava)} onOpen={setSummary} onChange={refresh} />
       ) : (

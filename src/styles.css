@@ -405,3 +405,18 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .picker-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow: auto; }
 .picker-item { text-align: left; white-space: normal; display: flex; flex-direction: column; gap: 4px; }
 .nowrap { white-space: nowrap; }
+
+/* ---------- progression levels ---------- */
+.levels { display: flex; flex-direction: column; gap: 6px; }
+.level-row { display: grid; grid-template-columns: 100px 1fr 36px; gap: 10px; align-items: center; font-size: 13px; }
+.level-track { height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; }
+.level-fill { display: block; height: 100%; border-radius: 0 5px 5px 0; }
+.level-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.diff { font-size: 11px; white-space: nowrap; }
+.diff-easy { color: #8fb3e8; }
+.diff-productive { color: #6fcf97; }
+.diff-challenging { color: #f2c94c; }
+.diff-hard { color: #ff8a80; }
+.diff-test { color: #c9c0ff; }
+.feel .row button { flex: 1; min-width: 80px; }
+.diff-unknown { color: var(--muted); }

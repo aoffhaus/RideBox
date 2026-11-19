@@ -6,6 +6,8 @@ import { addDays, dayKey, dayStart, loadEntries, today, type LoadEntry } from '.
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../training/model';
 import { flatten, formatDuration, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
 import { WorkoutChart } from './WorkoutChart';
+import { rateWorkout, type Levels } from '../training/levels';
+import { LevelBadge } from './Levels';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PHASE_COLORS: Record<string, string> = { base: '#2f80ed', build: '#27ae60', specialty: '#f2994a', peak: '#f2994a', taper: '#9b8afb', recovery: '#8a8f98', race: '#eb5757' };
@@ -18,6 +20,7 @@ export interface CalendarProps {
   acts: StravaActivity[];
   workouts: StoredWorkout[];
   settings: Settings;
+  levels: Levels;
   /** create or update calendar items */
   onSave: (items: PlannedWorkout[]) => void;
   onDelete: (ids: string[]) => void;
@@ -38,7 +41,7 @@ function workoutColor(w: Workout, ftp: number) {
 }
 
 export function Calendar(props: CalendarProps) {
-  const { calendar, plans, rides, acts, workouts, settings, onSave, onDelete, onRide, onOpenRide } = props;
+  const { calendar, plans, rides, acts, workouts, settings, levels, onSave, onDelete, onRide, onOpenRide } = props;
   const t = today();
   const [view, setView] = useState<'month' | 'week'>(() => (window.innerWidth < 700 ? 'week' : 'month'));
   const [anchor, setAnchor] = useState<DayKey>(t);
@@ -200,6 +203,9 @@ export function Calendar(props: CalendarProps) {
                             {formatDuration(s.duration)} · TSS {Math.round(s.tss)}
                             {p.origin === 'adapt' && <span className="tag">adapted</span>}
                           </div>
+                          <div className="cal-card-meta">
+                            <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} compact={view === 'month'} />
+                          </div>
                           {view === 'week' && <WorkoutChart intervals={flatten(p.workout)} ftp={settings.ftp} height={36} />}
                         </div>
                       );
@@ -241,6 +247,7 @@ export function Calendar(props: CalendarProps) {
         <WorkoutDetail
           p={selected}
           settings={settings}
+          levels={levels}
           ride={rides.find((r) => r.id === selected.rideId)}
           act={acts.find((x) => x.id === selected.stravaId)}
           onClose={() => setOpen(null)}
@@ -264,6 +271,7 @@ export function Calendar(props: CalendarProps) {
           date={picker}
           workouts={workouts}
           ftp={settings.ftp}
+          levels={levels}
           onPick={(w) => {
             onSave([newPlanned(w, picker, calendar)]);
             setPicker(null);
@@ -294,9 +302,10 @@ export function Modal({ title, onClose, children }: { title: ReactNode; onClose:
   );
 }
 
-function WorkoutDetail({ p, settings, ride, act, onClose, onSave, onDelete, onRide, onMove, onOpenRide, todayKey, calendar }: {
+function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDelete, onRide, onMove, onOpenRide, todayKey, calendar }: {
   p: PlannedWorkout;
   settings: Settings;
+  levels: Levels;
   ride?: RideRecord;
   act?: StravaActivity;
   onClose: () => void;
@@ -316,7 +325,7 @@ function WorkoutDetail({ p, settings, ride, act, onClose, onSave, onDelete, onRi
       <div className="muted small">
         {dayStart(p.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} · {formatDuration(s.duration)} · TSS {Math.round(s.tss)} · IF{' '}
         {s.if.toFixed(2)}
-        {p.phase ? ` · ${p.phase}` : ''}
+        {p.phase ? ` · ${p.phase}` : ''} · <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} />
       </div>
       <WorkoutChart intervals={ivs} ftp={settings.ftp} height={110} />
       {p.workout.description && <p className="desc">{p.workout.description}</p>}
@@ -362,7 +371,8 @@ function WorkoutDetail({ p, settings, ride, act, onClose, onSave, onDelete, onRi
   );
 }
 
-function WorkoutPicker({ date, workouts, ftp, onPick, onClose }: {
+function WorkoutPicker({ date, workouts, ftp, levels, onPick, onClose }: {
+  levels: Levels;
   date: DayKey;
   workouts: StoredWorkout[];
   ftp: number;
@@ -382,7 +392,9 @@ function WorkoutPicker({ date, workouts, ftp, onPick, onClose }: {
             <button key={w.id} className="picker-item" onClick={() => onPick(w.workout)}>
               <div className="row space">
                 <b>{w.workout.name}</b>
-                <span className="muted small">{formatDuration(s.duration)} · TSS {Math.round(s.tss)}</span>
+                <span className="muted small">
+                  {formatDuration(s.duration)} · TSS {Math.round(s.tss)} · <LevelBadge rating={rateWorkout(w.workout, ftp)} levels={levels} />
+                </span>
               </div>
               <WorkoutChart intervals={ivs} ftp={ftp} height={30} />
             </button>

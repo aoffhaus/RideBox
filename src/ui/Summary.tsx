@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { RideRecord } from '../app/recorder';
 import { lapStats } from '../app/recorder';
 import type { Settings } from '../storage/db';
@@ -81,8 +81,29 @@ function StravaPanel({ ride, connected, onUpload }: { ride: RideRecord; connecte
   );
 }
 
-export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRename, onDelete, onClose }: {
+const FEELS = ['Easy', 'Moderate', 'Hard', 'Very hard', 'All out'];
+
+/** "How did it feel?": feeds progression levels and the coach's adaptations. */
+function FeelPicker({ ride, onFeel }: { ride: RideRecord; onFeel: (r: RideRecord, feel: number) => void }) {
+  return (
+    <div className="card feel">
+      <div className="card-title">How did it feel?</div>
+      <div className="row">
+        {FEELS.map((f, i) => (
+          <button key={f} className={ride.feel === i + 1 ? 'primary' : ''} onClick={() => onFeel(ride, i + 1)}>
+            {f}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRename, onDelete, onClose, onFeel, children }: {
   ride: RideRecord;
+  onFeel: (r: RideRecord, feel: number) => void;
+  /** level change and coach suggestions for this ride */
+  children?: ReactNode;
   settings: Settings;
   stravaConnected: boolean;
   onStravaUpload: (r: RideRecord, opts: { hidden: boolean }) => void;
@@ -150,6 +171,8 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
           (Sign in to Garmin first if asked, then go to <a href="https://connect.garmin.com/modern/import-data" target="_blank" rel="noreferrer">Import Data</a> again.)
         </div>
       )}
+      <FeelPicker ride={ride} onFeel={onFeel} />
+      {children}
       <StravaPanel ride={ride} connected={stravaConnected} onUpload={(r, opts) => onStravaUpload({ ...r, name: name.trim() || r.name }, opts)} />
       <div className="stats-grid">
         {[

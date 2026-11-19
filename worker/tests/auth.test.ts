@@ -12,12 +12,12 @@ const b64url = (b: ArrayBuffer | Uint8Array) =>
     .replace(/=+$/, '');
 const enc = (o: unknown) => b64url(new TextEncoder().encode(JSON.stringify(o)));
 
-async function keypair() {
-  return crypto.subtle.generateKey(
+async function keypair(): Promise<CryptoKeyPair> {
+  return (await crypto.subtle.generateKey(
     { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
     true,
     ['sign', 'verify'],
-  );
+  )) as CryptoKeyPair;
 }
 
 async function token(priv: CryptoKey, payload: Record<string, unknown>, kid = 'k1') {
