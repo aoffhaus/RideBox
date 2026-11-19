@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type { RideSession, Snapshot } from '../app/session';
 import type { Settings } from '../storage/db';
 import { formatDuration, toWatts, type Interval } from '../workout/model';
-import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, r0, speedUnit } from './format';
+import { distUnit, elevUnit, fmtDist, fmtElev, fmtSpeed, powerZoneColor, r0, speedUnit } from './format';
 import { ivColor } from './MiniMap';
 
 /** "5 min", "90 s", "2:30" */
@@ -71,6 +71,9 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
   const p3 = snap.power3s;
   const diff = target ? p3 - target : 0;
   const powerClass = !target ? '' : Math.abs(diff) <= target * 0.05 ? 'ok' : diff > 0 ? 'high' : 'low';
+  // Live power is coloured by the zone you're riding in right now; without
+  // usable power/FTP the class-based compliance colour applies as before.
+  const powerColor = powerZoneColor(p3, ftp);
 
   const lapFrac = (snap.distance % route.length) / route.length;
   const ivFrac = cur ? Math.min(1, Math.max(0, st!.timeInInterval / cur.duration)) : 0;
@@ -129,7 +132,7 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
             </>
           )}
         </div>
-        <div className={`zh-power ${powerClass}`}>
+        <div className={`zh-power ${powerClass}`} style={powerColor ? { color: powerColor } : undefined}>
           {r0(p3)}
           <small>w</small>
         </div>
