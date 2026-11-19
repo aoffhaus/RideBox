@@ -267,3 +267,4 @@ table.laps { width: 100%; border-collapse: collapse; margin: 10px 0; }
   .hud-elev { display: none; }
   .iv-stats { display: none; }
 }
+.pair-help { margin: 6px 0 10px; padding-left: 20px; line-height: 1.5; }

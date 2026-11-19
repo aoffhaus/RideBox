@@ -58,6 +58,7 @@ export function App() {
   const [summary, setSummary] = useState<RideRecord | null>(null);
   const [editing, setEditing] = useState<StoredWorkout | null | undefined>(undefined);
   const [error, setError] = useState('');
+  const [pairHelp, setPairHelp] = useState<'trainer' | 'hrm' | null>(null);
   const [livePower, setLivePower] = useState<number | null>(null);
   const [liveHr, setLiveHr] = useState<number | null>(null);
 
@@ -98,25 +99,32 @@ export function App() {
   }, [hrm, session]);
   const routes = useMemo(() => ROUTE_PRESETS.map((p) => ({ p, r: generateRoute(p.id, 1) })), []);
 
-  async function connectTrainer() {
+  /** Closing the picker without choosing a device: Chrome reports "User cancelled". */
+  const isCancel = (e: unknown) => (e as Error).name === 'NotFoundError' && /cancel/i.test((e as Error).message);
+
+  async function connectTrainer(showAll = false) {
     setError('');
+    setPairHelp(null);
     try {
       trainer?.disconnect();
-      const t = await pairTrainer(() => settings.riderKg, setTrainerState);
+      const t = await pairTrainer(() => settings.riderKg, setTrainerState, showAll);
       setTrainer(t);
     } catch (e) {
-      if ((e as Error).name !== 'NotFoundError') setError(`Trainer: ${(e as Error).message}`);
+      if (isCancel(e)) setPairHelp('trainer');
+      else setError(`Trainer: ${(e as Error).message}`);
       setTrainerState(trainer ? trainerState : 'disconnected');
     }
   }
-  async function connectHrm() {
+  async function connectHrm(showAll = false) {
     setError('');
+    setPairHelp(null);
     try {
       hrm?.disconnect();
-      const h = await pairHeartRate(setHrmState);
+      const h = await pairHeartRate(setHrmState, showAll);
       setHrm(h);
     } catch (e) {
-      if ((e as Error).name !== 'NotFoundError') setError(`Heart rate: ${(e as Error).message}`);
+      if (isCancel(e)) setPairHelp('hrm');
+      else setError(`Heart rate: ${(e as Error).message}`);
     }
   }
   function useSimulator() {
@@ -194,12 +202,12 @@ export function App() {
           <span className="device">
             <StatusDot s={trainerState} /> {trainer ? trainer.name : 'No trainer'}
             {trainer && livePower != null && <b> {livePower} W</b>}
-            <button onClick={connectTrainer} disabled={!bluetoothAvailable()}>{trainer && trainer.kind !== 'simulated' ? 'Reconnect' : 'Connect trainer'}</button>
+            <button onClick={() => connectTrainer()} disabled={!bluetoothAvailable()}>{trainer && trainer.kind !== 'simulated' ? 'Reconnect' : 'Connect trainer'}</button>
           </span>
           <span className="device">
             <StatusDot s={hrmState} /> {hrm ? hrm.name : 'No HRM'}
             {hrm && liveHr != null && <b> {liveHr} bpm</b>}
-            <button onClick={connectHrm} disabled={!bluetoothAvailable()}>{hrm && !(hrm instanceof SimulatedHrm) ? 'Reconnect' : 'Connect HRM'}</button>
+            <button onClick={() => connectHrm()} disabled={!bluetoothAvailable()}>{hrm && !(hrm instanceof SimulatedHrm) ? 'Reconnect' : 'Connect HRM'}</button>
           </span>
           <button className="ghost" onClick={useSimulator} title="Try the app without hardware">Simulator</button>
         </div>
@@ -207,6 +215,25 @@ export function App() {
 
       {!bluetoothAvailable() && (
         <div className="banner">This browser doesn&apos;t support Web Bluetooth. Open RideBox in <b>Chrome</b> (or Edge) on your Mac. The simulator still works here.</div>
+      )}
+      {pairHelp && (
+        <div className="banner">
+          <b>Didn&apos;t see your {pairHelp === 'trainer' ? 'trainer' : 'heart-rate strap'}?</b>
+          <ul className="pair-help">
+            {pairHelp === 'trainer' ? (
+              <li>Wake the trainer by pedaling for a few seconds (the KICKR Core&apos;s light should blink blue).</li>
+            ) : (
+              <li>Put the strap on (or wet the sensor pads) so it wakes up and starts advertising.</li>
+            )}
+            <li>
+              Close Zwift, the Wahoo app, TrainerRoad and anything else that might be connected, and turn off Bluetooth on
+              your phone/watch for a moment. Most sensors stop showing up once another app has them.
+            </li>
+            <li>On your Mac: System Settings → Privacy &amp; Security → Bluetooth → make sure Google Chrome is on.</li>
+          </ul>
+          <button onClick={() => (pairHelp === 'trainer' ? connectTrainer(true) : connectHrm(true))}>Show all nearby Bluetooth devices</button>{' '}
+          <button className="ghost" onClick={() => setPairHelp(null)}>Dismiss</button>
+        </div>
       )}
       {error && (
         <div className="banner err" onClick={() => setError('')}>

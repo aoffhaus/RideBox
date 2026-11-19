@@ -243,20 +243,53 @@ class BleHrm implements HeartRateMonitor {
   }
 }
 
+/** Thrown when the Mac's Bluetooth is off or Chrome isn't allowed to use it. */
+export class BluetoothOffError extends Error {
+  name = 'BluetoothOffError';
+}
+
+async function assertBluetoothOn() {
+  const ok = await navigator.bluetooth.getAvailability?.().catch(() => true);
+  if (ok === false) {
+    throw new BluetoothOffError(
+      'Bluetooth is off or Chrome is not allowed to use it. Turn Bluetooth on, then check System Settings → Privacy & Security → Bluetooth → Google Chrome.',
+    );
+  }
+}
+
 /** Opens Chrome's device picker for a smart trainer. Must be called from a click. */
-export async function pairTrainer(riderKg: () => number, onState?: (s: ConnState) => void): Promise<Trainer> {
-  const device = await navigator.bluetooth.requestDevice({
-    filters: [{ services: [FTMS] }, { services: [CYCLING_POWER] }, { namePrefix: 'KICKR' }],
-    optionalServices: [FTMS, CYCLING_POWER, WAHOO.SERVICE],
-  });
+/**
+ * `showAll` lists every nearby Bluetooth device instead of only ones advertising
+ * the expected service, for devices whose advertisement Chrome doesn't match.
+ */
+export async function pairTrainer(
+  riderKg: () => number,
+  onState?: (s: ConnState) => void,
+  showAll = false,
+): Promise<Trainer> {
+  await assertBluetoothOn();
+  const optionalServices = [FTMS, CYCLING_POWER, WAHOO.SERVICE];
+  const device = await navigator.bluetooth.requestDevice(
+    showAll
+      ? { acceptAllDevices: true, optionalServices }
+      : {
+          filters: [{ services: [FTMS] }, { services: [CYCLING_POWER] }, { namePrefix: 'KICKR' }, { namePrefix: 'Wahoo' }],
+          optionalServices,
+        },
+  );
   const t = new BleTrainer(device, riderKg);
   t.onState = onState;
   await t.start();
   return t;
 }
 
-export async function pairHeartRate(onState?: (s: ConnState) => void): Promise<HeartRateMonitor> {
-  const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [HEART_RATE] }] });
+export async function pairHeartRate(onState?: (s: ConnState) => void, showAll = false): Promise<HeartRateMonitor> {
+  await assertBluetoothOn();
+  const device = await navigator.bluetooth.requestDevice(
+    showAll
+      ? { acceptAllDevices: true, optionalServices: [HEART_RATE] }
+      : { filters: [{ services: [HEART_RATE] }], optionalServices: [HEART_RATE] },
+  );
   const h = new BleHrm(device);
   h.onState = onState;
   await h.start();
