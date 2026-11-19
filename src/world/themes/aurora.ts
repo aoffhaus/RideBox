@@ -835,6 +835,7 @@ export function buildAurora(route: Route, opts: ThemeBuildOptions): THREE.Object
   const water = new THREE.Mesh(new THREE.CircleGeometry(12000, 96).rotateX(-Math.PI / 2), waterMaterial(moonDir));
   water.position.set(L.cx, sea, L.cz);
   water.userData.noAO = true;
+  Object.assign(water.userData, { mapWater: true, mapColor: '#12304a' }); // minimap
   out.push(water);
   out.push(buildFarPeaks(route, L.cx, L.cz, sea, r));
 

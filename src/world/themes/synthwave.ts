@@ -518,6 +518,7 @@ export function buildSynthwave(route: Route, opts: ThemeBuildOptions): THREE.Obj
 
   // --- ground: a terrain ribbon easing from road level down to an endless grid plane
   const grid = gridMaterial();
+  grid.userData.mapColor = '#1c0b33'; // minimap
   const { offs, roadCol } = mirroredColumns([EDGE, EDGE + 1.2, 8, 13, 20, 30, 45, 65, 90, 125, 170, 230, 300]);
   const model: TerrainModel = {
     cols: offs.length,

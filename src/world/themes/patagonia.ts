@@ -796,6 +796,7 @@ export function buildPatagonia(route: Route, opts: ThemeBuildOptions): THREE.Obj
   // --- lake surfaces and icebergs
   {
     const mat = lakeMaterial(0.55);
+    Object.assign(mat.userData, { mapWater: true, mapColor: '#2fb4b4' }); // minimap
     for (const lk of lakes) {
       const m = new THREE.Mesh(new THREE.CircleGeometry(1, 72).rotateX(-Math.PI / 2), mat);
       m.scale.set(lk.ra, 1, lk.rb);

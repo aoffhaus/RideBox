@@ -772,6 +772,7 @@ export function buildKyoto(route: Route, opts: ThemeBuildOptions): THREE.Object3
       Math.cos(THREE.MathUtils.degToRad(KYOTO_SUN.elevation)) * Math.sin(THREE.MathUtils.degToRad(KYOTO_SUN.azimuth)),
     );
     const m = new THREE.Mesh(geo, waterMaterial(sunDir));
+    Object.assign(m.userData, { mapWater: true, mapColor: '#3f6f6a' }); // minimap
     m.frustumCulled = false; // one long ribbon around the lap
     out.push(m);
   }
