@@ -653,36 +653,140 @@ function buildRider(): RiderModel {
 // ---------------------------------------------------------------------------
 interface ArchObj {
   group: THREE.Group;
+  /** the frame: solid, lit, glowing in the zone colour */
   mat: THREE.MeshStandardMaterial;
+  /** additive glow pieces (curtain, ground strip) tinted with the zone colour */
+  glow: THREE.MeshBasicMaterial[];
+  /** shimmering curtain texture (scrolled each frame) */
+  curtainTex: THREE.CanvasTexture;
   canvas: HTMLCanvasElement;
   tex: THREE.CanvasTexture;
   lastText: string;
 }
 
+/** Height of the gantry's crossbar centreline above the road (m). */
+const ARCH_H = 5.4;
+
+/** Grayscale curtain: bright at the base and under the crossbar, faint in the middle, with soft vertical bands. */
+function curtainTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const g = c.getContext('2d')!;
+  const v = g.createLinearGradient(0, 0, 0, 256);
+  v.addColorStop(0, 'rgba(255,255,255,0.55)');
+  v.addColorStop(0.22, 'rgba(255,255,255,0.12)');
+  v.addColorStop(0.7, 'rgba(255,255,255,0.18)');
+  v.addColorStop(1, 'rgba(255,255,255,0.85)');
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, 256, 256);
+  g.fillStyle = v;
+  g.fillRect(0, 0, 256, 256);
+  // soft bands that scroll upwards
+  g.globalCompositeOperation = 'lighter';
+  for (let y = 0; y < 256; y += 32) {
+    const b = g.createLinearGradient(0, y, 0, y + 32);
+    b.addColorStop(0, 'rgba(255,255,255,0)');
+    b.addColorStop(0.5, 'rgba(255,255,255,0.12)');
+    b.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = b;
+    g.fillRect(0, y, 256, 32);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/** Soft-edged glow for the strip across the road (bright line, fading either side). */
+function stripTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 8;
+  c.height = 128;
+  const g = c.getContext('2d')!;
+  const v = g.createLinearGradient(0, 0, 0, 128);
+  v.addColorStop(0, '#000');
+  v.addColorStop(0.42, '#555');
+  v.addColorStop(0.5, '#fff');
+  v.addColorStop(0.58, '#555');
+  v.addColorStop(1, '#000');
+  g.fillStyle = v;
+  g.fillRect(0, 0, 8, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+/**
+ * Interval gate: a broad, flat-topped gantry with rounded corners spanning the
+ * road, a translucent glowing curtain to ride through, a light strip across the
+ * road at the exact finish line and a countdown banner on the crossbar.
+ * Local frame: +x is the direction of travel, z is across the road.
+ */
 function buildArch(opacity: number): ArchObj {
   const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ color: '#f2c94c', emissive: '#f2c94c', emissiveIntensity: 0.55, transparent: opacity < 1, opacity, roughness: 0.4 });
-  // rounded arch: half torus over the road + legs
-  const span = ROAD_HALF + 0.9;
-  const arc = new THREE.Mesh(new THREE.TorusGeometry(span, 0.32, 10, 40, Math.PI), mat);
-  arc.rotation.y = Math.PI / 2;
-  arc.position.y = 3.2;
-  g.add(arc);
-  for (const z of [-span, span]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 3.2, 12).translate(0, 1.6, 0), mat);
-    leg.position.z = z;
-    g.add(leg);
+  const faded = opacity < 1;
+  const mat = new THREE.MeshStandardMaterial({ color: '#f2c94c', emissive: '#f2c94c', emissiveIntensity: 0.7, transparent: faded, opacity, roughness: 0.35, metalness: 0.1 });
+  const half = ROAD_HALF + 1.1;
+  const r = 1.3; // corner radius
+
+  // frame: one tube along a rounded rectangle (legs + crossbar), in the z-y plane
+  const path = new THREE.Path();
+  path.moveTo(-half, 0);
+  path.lineTo(-half, ARCH_H - r);
+  path.absarc(-half + r, ARCH_H - r, r, Math.PI, Math.PI / 2, true);
+  path.lineTo(half - r, ARCH_H);
+  path.absarc(half - r, ARCH_H - r, r, Math.PI / 2, 0, true);
+  path.lineTo(half, 0);
+  const pts = path.getSpacedPoints(160).map((p) => new THREE.Vector3(0, p.y, p.x));
+  const frame = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), 200, 0.3, 12, false), mat);
+  frame.castShadow = !faded;
+  g.add(frame);
+  // a slimmer inner rail, set in from the frame, for depth
+  const inner = path.getSpacedPoints(160).map((p) => new THREE.Vector3(0, p.y * 0.93, p.x * 0.93));
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(inner, false, 'centripetal'), 200, 0.09, 8, false), mat));
+  // feet
+  for (const z of [-half, half]) {
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.25, 1.1).translate(0, 0.12, 0), mat);
+    foot.position.z = z;
+    g.add(foot);
   }
+
+  // curtain: translucent, additive, tinted with the zone colour
+  const curtainTex = curtainTexture();
+  const glowBase = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false } as const;
+  const curtainMat = new THREE.MeshBasicMaterial({ ...glowBase, map: curtainTex, color: '#f2c94c', opacity: 0.8 * opacity });
+  const curtain = new THREE.Mesh(new THREE.PlaneGeometry(half * 2 * 0.93, ARCH_H * 0.93).translate(0, (ARCH_H * 0.93) / 2, 0), curtainMat);
+  curtain.rotation.y = Math.PI / 2;
+  g.add(curtain);
+
+  // light strip across the road at the line
+  const stripMat = new THREE.MeshBasicMaterial({ ...glowBase, map: stripTexture(), color: '#f2c94c', opacity: opacity });
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(3, half * 2), stripMat);
+  strip.rotation.x = -Math.PI / 2;
+  strip.position.y = 0.04;
+  g.add(strip);
+
+  // countdown banner on the crossbar, facing the oncoming rider
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
   canvas.height = 256;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 1.6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, side: THREE.DoubleSide }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 1.8), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, side: THREE.DoubleSide }));
   sign.rotation.y = -Math.PI / 2;
-  sign.position.set(-0.4, 3.2 + span - 0.6, 0);
+  sign.position.set(-0.4, ARCH_H - 0.55, 0);
   g.add(sign);
-  return { group: g, mat, canvas, tex, lastText: '' };
+  return { group: g, mat, glow: [curtainMat, stripMat], curtainTex, canvas, tex, lastText: '' };
+}
+
+function setArchColor(a: ArchObj, color: string) {
+  a.mat.color.set(color);
+  a.mat.emissive.set(color);
+  for (const m of a.glow) m.color.set(color);
+}
+
+/** Curtain shimmer drifts upward; the strip breathes gently. */
+function animateArch(a: ArchObj, time: number, opacity: number) {
+  a.curtainTex.offset.y = -time * 0.35;
+  a.glow[1].opacity = opacity * (0.75 + 0.25 * Math.sin(time * 4));
 }
 
 function drawLabel(a: ArchObj, big: string, small: string, color: string) {
@@ -693,10 +797,11 @@ function drawLabel(a: ArchObj, big: string, small: string, color: string) {
   g.clearRect(0, 0, 1024, 256);
   g.fillStyle = 'rgba(10,12,16,0.88)';
   g.beginPath();
-  g.roundRect(8, 8, 1008, 240, 40);
+  g.roundRect(10, 10, 1004, 236, 40);
   g.fill();
-  g.fillStyle = color;
-  g.fillRect(8, 8, 26, 240);
+  g.strokeStyle = color;
+  g.lineWidth = 12;
+  g.stroke();
   g.fillStyle = '#fff';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -1069,8 +1174,8 @@ export class WorldView {
       this.place(this.arch.group, archD);
       const next = st.next;
       const color = next ? (next.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(next, ftp)).color) : '#ffffff';
-      this.arch.mat.color.set(color);
-      this.arch.mat.emissive.set(color);
+      setArchColor(this.arch, color);
+      animateArch(this.arch, (now - this.t0) / 1000, 1);
       const intensity = st.intensity / 100;
       const nextTxt = next
         ? next.free
@@ -1083,8 +1188,8 @@ export class WorldView {
         this.place(this.nextArch.group, nextD);
         const nn = this.session.engine!.intervals[next.index + 1];
         const c2 = nn ? (nn.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(nn, ftp)).color) : '#ffffff';
-        this.nextArch.mat.color.set(c2);
-        this.nextArch.mat.emissive.set(c2);
+        setArchColor(this.nextArch, c2);
+        animateArch(this.nextArch, (now - this.t0) / 1000, 0.35);
         drawLabel(this.nextArch, formatDuration(Math.ceil(st.remaining + next.duration)), nn ? 'End of next interval' : 'Finish', c2);
       } else this.nextArch.group.visible = false;
     } else {
