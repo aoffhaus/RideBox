@@ -42,6 +42,9 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const ftp = settings.ftp;
 
   useEffect(() => {
+    // dev aid: ?d=4500 starts the ride 4.5 km into the lap (handy for checking scenery)
+    const d0 = Number(new URLSearchParams(window.location.search).get('d'));
+    if (d0 > 0 && session.distance === 0) session.distance = d0;
     const view = new WorldView(viewRef.current!, session, settings.graphics, settings.gradeExaggeration);
     worldRef.current = view;
     view.setEffortReactions(settings.effortReactions);

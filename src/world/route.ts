@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto' | 'patagonia';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'aurora' | 'alien' | 'neoncity' | 'iceland' | 'crystal' | 'kyoto' | 'patagonia';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -67,6 +67,66 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [4, 16],
     bendiness: 0.6,
     theme: 'aurora',
+  },
+  {
+    id: 'alien',
+    name: 'Xenoworld',
+    description: 'Otherworldly rollers and one big climb across a glowing violet plain, under twin suns and a ringed giant planet',
+    lengthKm: 20,
+    maxGrade: 0.06,
+    harmonics: [2, 12],
+    bendiness: 0.6,
+    theme: 'alien',
+  },
+  {
+    id: 'neoncity',
+    name: 'Neon Rain',
+    description: 'Night streets in steady rain: neon mirrored in wet asphalt, canyons of lit towers and a couple of overpass ramps',
+    lengthKm: 14,
+    maxGrade: 0.035,
+    harmonics: [6, 22],
+    bendiness: 0.35,
+    theme: 'neoncity',
+  },
+  {
+    id: 'iceland',
+    name: 'Icelandic Highlands',
+    description: 'Remote dusty road through striped rhyolite mountains, mossy lava fields and steaming vents, with a couple of real climbs',
+    lengthKm: 20,
+    maxGrade: 0.06,
+    harmonics: [2, 10],
+    bendiness: 0.55,
+    theme: 'iceland',
+  },
+  {
+    id: 'crystal',
+    name: 'Crystal Canyon',
+    description: 'A winding gorge walled with colossal glowing gemstones, crystal arches overhead and a few punchy climbs',
+    lengthKm: 16,
+    maxGrade: 0.055,
+    harmonics: [3, 14],
+    bendiness: 0.65,
+    theme: 'crystal',
+  },
+  {
+    id: 'kyoto',
+    name: 'Kyoto Sakura',
+    description: 'Lantern-lit canal path under drifting cherry blossom, through vermilion torii and up short rises toward the temple hills',
+    lengthKm: 15,
+    maxGrade: 0.04,
+    harmonics: [5, 18],
+    bendiness: 0.55,
+    theme: 'kyoto',
+  },
+  {
+    id: 'patagonia',
+    name: 'Patagonian Towers',
+    description: 'Big-country steppe road past turquoise glacial lakes beneath granite towers, with long windy drags and one major climb',
+    lengthKm: 24,
+    maxGrade: 0.065,
+    harmonics: [2, 9],
+    bendiness: 0.5,
+    theme: 'patagonia',
   },
 ];
 

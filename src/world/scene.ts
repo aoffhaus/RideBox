@@ -503,7 +503,7 @@ function buildMountains(route: Route): THREE.Group {
   return g;
 }
 
-function buildClouds(route: Route): THREE.Group {
+function buildClouds(route: Route, height = 500): THREE.Group {
   const r = rng(route.seed + 5);
   const tex = cloudTexture();
   const g = new THREE.Group();
@@ -522,7 +522,7 @@ function buildClouds(route: Route): THREE.Group {
     const s = new THREE.Sprite(mat);
     const a = r() * Math.PI * 2;
     const d = 800 + r() * 4500;
-    s.position.set(cx + Math.cos(a) * d, maxY + 500 + r() * 700, cz + Math.sin(a) * d);
+    s.position.set(cx + Math.cos(a) * d, maxY + height + r() * 700, cz + Math.sin(a) * d);
     const sc = 500 + r() * 900;
     s.scale.set(sc * 1.8, sc * 0.7, 1);
     g.add(s);
@@ -860,9 +860,9 @@ export class WorldView {
     const w = this.world;
     if (theme.build) {
       // themed landscape: the theme supplies terrain & scenery; road furniture is shared
-      w.add(...theme.build(route, { high }), buildRoad(route, theme.roadTexture?.()), buildClimbSigns(route));
+      w.add(...theme.build(route, { high, sunDir: this.sunDir.clone() }), buildRoad(route, theme.roadTexture?.()), buildClimbSigns(route));
       if (theme.posts !== false) w.add(buildPosts(route));
-      if (theme.clouds) w.add(buildClouds(route));
+      if (theme.clouds) w.add(buildClouds(route, theme.cloudHeight));
     } else {
       w.add(buildTerrain(route), buildRoad(route), buildVegetation(route, high ? 1 : 0.45), buildBuildings(route), buildPosts(route), buildClimbSigns(route), buildMountains(route), buildClouds(route));
     }

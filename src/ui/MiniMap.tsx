@@ -40,6 +40,12 @@ const PALETTES: Record<string, Palette> = {
   zion: { ground: [196, 128, 88], light: [214, 156, 112], dark: [170, 104, 72], patch: 'rgba(120,138,72,0.5)', water: '#8fd0e8', shore: '#cdeaf3' },
   synthwave: { ground: [38, 14, 62], light: [58, 22, 88], dark: [22, 8, 40], patch: 'rgba(255,43,214,0.22)', water: '#12062a', shore: '#19f3ff' },
   aurora: { ground: [196, 210, 222], light: [226, 236, 244], dark: [150, 168, 186], patch: 'rgba(60,72,90,0.35)', water: '#0e2438', shore: '#5fe0a8' },
+  alien: { ground: [72, 40, 110], light: [96, 58, 140], dark: [48, 26, 82], patch: 'rgba(64,224,200,0.3)', water: '#1b8f9a', shore: '#8ffff0' },
+  neoncity: { ground: [30, 27, 40], light: [46, 40, 60], dark: [18, 16, 26], patch: 'rgba(255,47,142,0.2)', water: '#0b1830', shore: '#21e4ff' },
+  iceland: { ground: [120, 112, 98], light: [176, 150, 106], dark: [70, 68, 66], patch: 'rgba(112,150,64,0.45)', water: '#a6cfd8', shore: '#d6e6e8' },
+  crystal: { ground: [52, 42, 72], light: [74, 60, 102], dark: [34, 28, 50], patch: 'rgba(154,91,255,0.3)', water: '#2fd9c8', shore: '#bff7f0' },
+  kyoto: { ground: [132, 168, 92], light: [238, 196, 208], dark: [74, 112, 64], patch: 'rgba(232,150,182,0.45)', water: '#86c4d6', shore: '#d4ecf0' },
+  patagonia: { ground: [196, 172, 112], light: [218, 196, 136], dark: [150, 140, 92], patch: 'rgba(110,128,92,0.45)', water: '#46c8c4', shore: '#bfeee8' },
 };
 
 interface Blob {
