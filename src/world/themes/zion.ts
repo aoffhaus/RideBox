@@ -23,6 +23,7 @@ import {
   jitterAlong,
 } from './common';
 import type { ThemeBuildOptions } from './index';
+import { windy } from '../fx';
 
 export function zionRoad() {
   return roadTex({
@@ -383,16 +384,16 @@ export function buildZion(route: Route, opts: ThemeBuildOptions): THREE.Object3D
     new THREE.IcosahedronGeometry(2.0, 0).translate(0.5, 10.6, -0.4),
   ]);
   out.push(chunkedInstances(route, new THREE.CylinderGeometry(0.3, 0.55, 7.5, 6, 1, true).translate(0, 3.75, 0), new THREE.MeshLambertMaterial({ color: '#7a6a58' }), cwTrunks));
-  out.push(chunkedInstances(route, cwGeo, new THREE.MeshLambertMaterial({ flatShading: true }), cottonwoods));
+  out.push(chunkedInstances(route, cwGeo, windy(new THREE.MeshLambertMaterial({ flatShading: true }), 11, 0.32), cottonwoods));
   const juniperGeo = merge([
     new THREE.CylinderGeometry(0.15, 0.25, 1.4, 5, 1, true).translate(0, 0.7, 0),
     new THREE.IcosahedronGeometry(1.5, 0).scale(1, 1.25, 1).translate(0, 2.4, 0),
     new THREE.IcosahedronGeometry(1.0, 0).translate(0.8, 3.4, 0.3),
   ]);
-  const junMat = new THREE.MeshLambertMaterial({ flatShading: true });
+  const junMat = windy(new THREE.MeshLambertMaterial({ flatShading: true }), 4, 0.08);
   out.push(chunkedInstances(route, juniperGeo, junMat, junipers));
   out.push(chunkedInstances(route, juniperGeo, junMat, rimTrees, { shadow: false }));
-  out.push(chunkedInstances(route, new THREE.IcosahedronGeometry(1, 0).scale(1, 0.65, 1).translate(0, 0.35, 0), new THREE.MeshLambertMaterial({ flatShading: true }), brush, { shadow: false }));
+  out.push(chunkedInstances(route, new THREE.IcosahedronGeometry(1, 0).scale(1, 0.65, 1).translate(0, 0.35, 0), windy(new THREE.MeshLambertMaterial({ flatShading: true }), 0.8, 0.06), brush, { shadow: false }));
   out.push(chunkedInstances(route, new THREE.DodecahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ flatShading: true }), boulders, { shadow: true, receive: true }));
   return out;
 }
