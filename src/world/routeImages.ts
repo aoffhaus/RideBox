@@ -5,6 +5,7 @@ import bigsur from '../assets/routes/bigsur.jpg';
 import redwoods from '../assets/routes/redwoods.jpg';
 import zion from '../assets/routes/zion.jpg';
 import synthwave from '../assets/routes/synthwave.jpg';
+import aurora from '../assets/routes/aurora.jpg';
 import crystal from '../assets/routes/crystal.jpg';
 
-export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, crystal };
+export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, crystal };

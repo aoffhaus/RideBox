@@ -7,6 +7,10 @@ import * as THREE from 'three';
 
 /** Seconds since start; updated once per frame by the world view. */
 export const fxTime = { value: 0 };
+/** Sustained-effort level 0..1 (see effort.ts): slow to build, slow to relax. */
+export const fxBuild = { value: 0 };
+/** Sprint surge 0..1: near-instant attack, fades over a few seconds. */
+export const fxSurge = { value: 0 };
 
 export interface WindParams {
   /** Local-space height (m) of the top of the plant: sway grows with (y / height)^2. */
@@ -30,6 +34,8 @@ export interface WorldFxOptions {
 
 const NOISE = /* glsl */ `
 uniform float fxTime;
+uniform float fxBuild;
+uniform float fxSurge;
 varying vec3 vFxWorld;
 float fxHash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float fxNoise(vec2 p){
@@ -58,6 +64,8 @@ function patchMaterial(mat: THREE.Material, opts: WorldFxOptions) {
   mat.onBeforeCompile = (shader, renderer) => {
     prev?.call(mat, shader, renderer);
     shader.uniforms.fxTime = fxTime;
+    shader.uniforms.fxBuild = fxBuild;
+    shader.uniforms.fxSurge = fxSurge;
     let vs = shader.vertexShader.replace('#include <common>', `#include <common>\n${NOISE}`);
     if (wind) {
       vs = vs.replace(
@@ -74,7 +82,8 @@ function patchMaterial(mat: THREE.Material, opts: WorldFxOptions) {
           // a broad gust front rolling across the landscape + a quicker per-plant flutter
           float gust = 0.55 + 0.45 * sin(dot(fxRoot.xz, vec2(0.021, 0.013)) - fxTime * 0.9);
           float sway = sin(fxTime * 1.7 + fxRoot.x * 0.37 + fxRoot.z * 0.23) * 0.7 + sin(fxTime * 3.1 + fxRoot.z * 0.51) * 0.3;
-          float a = ${wind.amp.toFixed(3)} * fxH * (0.35 + gust) * sway;
+          // the wind picks up as a sustained effort builds, and whips on a sprint
+          float a = ${wind.amp.toFixed(3)} * fxH * (0.35 + gust) * sway * (1.0 + 1.8 * fxBuild + 0.9 * fxSurge);
           transformed.x += a;
           transformed.z += a * 0.6 * sin(fxTime * 1.3 + fxRoot.x);
         }`,
@@ -102,7 +111,9 @@ function patchMaterial(mat: THREE.Material, opts: WorldFxOptions) {
             // two octaves of value noise, drifting with the wind; thresholded into cloud patches
             vec2 cp = vFxWorld.xz / 420.0 + vec2(fxTime * 0.011, fxTime * 0.006);
             float c = fxNoise(cp) * 0.65 + fxNoise(cp * 2.3 + 7.1) * 0.35;
-            float shade = smoothstep(0.52, 0.68, c) * ${clouds.toFixed(3)};
+            // cloud cover thickens as a long effort builds: the sky turns moodier
+            float cover = 0.52 - 0.14 * fxBuild;
+            float shade = smoothstep(cover, cover + 0.16, c) * ${clouds.toFixed(3)} * (1.0 + 0.35 * fxBuild);
             reflectedLight.directDiffuse *= 1.0 - shade;
             reflectedLight.directSpecular *= 1.0 - shade;
           }`,
@@ -133,8 +144,9 @@ export function applyWorldFx(root: THREE.Object3D, opts: WorldFxOptions) {
 export function breathingShafts(mat: THREE.MeshBasicMaterial) {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.fxTime = fxTime;
+    shader.uniforms.fxBuild = fxBuild;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float fxTime;\nvarying float vBreath;')
+      .replace('#include <common>', '#include <common>\nuniform float fxTime;\nuniform float fxBuild;\nvarying float vBreath;')
       .replace(
         '#include <begin_vertex>',
         /* glsl */ `#include <begin_vertex>
@@ -143,7 +155,7 @@ export function breathingShafts(mat: THREE.MeshBasicMaterial) {
         #else
           vec3 fxRoot = vec3(0.0);
         #endif
-        vBreath = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(fxTime * 0.35 + fxRoot.x * 0.11 + fxRoot.z * 0.07), 2.0);`,
+        vBreath = (0.35 + 0.65 * pow(0.5 + 0.5 * sin(fxTime * 0.35 + fxRoot.x * 0.11 + fxRoot.z * 0.07), 2.0)) * (1.0 + 1.4 * fxBuild);`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vBreath;')
@@ -176,6 +188,7 @@ export function buildDustMotes(opts: { count: number; box: number; color: string
     blending: THREE.AdditiveBlending,
     uniforms: {
       fxTime,
+      fxBuild,
       box: { value: opts.box },
       color: { value: new THREE.Color(opts.color) },
       size: { value: opts.size },
@@ -183,7 +196,7 @@ export function buildDustMotes(opts: { count: number; box: number; color: string
       pixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
     },
     vertexShader: /* glsl */ `
-      uniform float fxTime; uniform float box; uniform float size; uniform float pixelRatio;
+      uniform float fxTime; uniform float fxBuild; uniform float box; uniform float size; uniform float pixelRatio;
       attribute float seed;
       varying float vFade;
       void main(){
@@ -198,6 +211,7 @@ export function buildDustMotes(opts: { count: number; box: number; color: string
         vec3 q = abs(p - cameraPosition) / half_;
         vFade = (1.0 - smoothstep(0.6, 1.0, max(q.x, max(q.y, q.z)))) * smoothstep(0.5, 2.0, dist);
         vFade *= 0.55 + 0.45 * sin(fxTime * (0.8 + seed) + seed * 17.0); // twinkle as they turn in the light
+        vFade *= 1.0 + 1.2 * fxBuild;
         gl_PointSize = size * pixelRatio * (40.0 / max(dist, 0.5));
       }`,
     fragmentShader: /* glsl */ `

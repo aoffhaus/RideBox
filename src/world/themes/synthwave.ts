@@ -27,6 +27,7 @@ import {
   jitterAlong,
 } from './common';
 import type { ThemeBuildOptions } from './index';
+import type { EffortState } from '../effort';
 
 // ---------------------------------------------------------------------------
 // Palette (sRGB hex; THREE.Color converts to linear)
@@ -44,9 +45,18 @@ export const SYNTH = {
 
 /** Shared by every synthwave material: one object, so `update` needs no bookkeeping across rebuilds. */
 const uTime = { value: 0 };
+/** Phase of the grid's energy ripples: advances faster the harder you ride (no jumps). */
+const uWave = { value: 0 };
+const uEffort = { value: 0 };
+let lastT = 0;
 
-export function synthwaveUpdate(time: number) {
+export function synthwaveUpdate(time: number, effort?: EffortState) {
+  const dt = Math.min(0.1, Math.max(0, time - lastT));
+  lastT = time;
   uTime.value = time;
+  const e = effort ? Math.min(1, effort.build + 0.5 * effort.surge) : 0;
+  uEffort.value = e;
+  uWave.value += dt * 2.4 * (1 + 2.5 * e); // ripples race outward on a big effort
 }
 
 const neon = (hex: string, k: number) => new THREE.Color(hex).multiplyScalar(k);
@@ -202,6 +212,8 @@ function gridMaterial(): THREE.ShaderMaterial {
       uniform vec3 uMinor;
       uniform vec3 uMajor;
       uniform float uTime;
+      uniform float uWave;
+      uniform float uEffort;
       varying vec3 vWorld;
       #include <common>
       #include <fog_pars_fragment>
@@ -214,8 +226,8 @@ function gridMaterial(): THREE.ShaderMaterial {
         minor *= 1.0 - major;
         // energy ripples rolling outward from the rider
         float d = length(vWorld.xz - cameraPosition.xz);
-        float wave = pow(0.5 + 0.5 * sin(d * 0.035 - uTime * 2.4), 6.0);
-        float pulse = 0.8 + 0.2 * sin(uTime * 1.3) + 0.9 * wave;
+        float wave = pow(0.5 + 0.5 * sin(d * 0.035 - uWave), 6.0 - 3.0 * uEffort);
+        float pulse = (0.8 + 0.2 * sin(uTime * 1.3) + 0.9 * wave) * (1.0 + 0.45 * uEffort);
         vec3 col = uBase + uMinor * minor * pulse + uMajor * major * (0.9 + 0.5 * wave);
         // faint glow on the ground around each line
         col += uMinor * 0.05 * pulse;
@@ -225,6 +237,8 @@ function gridMaterial(): THREE.ShaderMaterial {
       }`,
   });
   mat.uniforms.uTime = uTime; // shared (merge() above clones, so attach afterwards)
+  mat.uniforms.uWave = uWave;
+  mat.uniforms.uEffort = uEffort;
   return mat;
 }
 
