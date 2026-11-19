@@ -8,6 +8,7 @@ import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
 import { AURORA, auroraRoad, buildAurora } from './aurora';
+import { PATAGONIA_SUN, buildPatagonia, patagoniaRoad } from './patagonia';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -184,7 +185,31 @@ const AURORA_NIGHT: Theme = {
   headlamp: true,
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT };
+const PATAGONIA: Theme = {
+  id: 'patagonia',
+  skyTop: '#1f5fc8',
+  skyHorizon: '#b8d0e6',
+  haze: '#b4cbe4',
+  fogNear: 500,
+  fogFar: 22000,
+  hemiSky: '#d6e5ff',
+  hemiGround: '#a58d5a',
+  hemiIntensity: 0.85,
+  sunColor: '#fff3e0',
+  sunIntensity: 2.6,
+  exposure: 1.0,
+  groundColor: '#b39760',
+  clouds: false, // the theme brings its own cumulus (above the towers) and lenticulars
+  build: buildPatagonia,
+  roadTexture: patagoniaRoad,
+  // crisp, clear austral light: deep blue scattering sky, sun about 35 degrees up
+  sun: PATAGONIA_SUN,
+  sky: { turbidity: 1.0, rayleigh: 2.0, mieCoefficient: 0.001, mieDirectionalG: 0.75, exposure: 0.24 },
+  cloudShadows: 0.55,
+  posts: false,
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT, patagonia: PATAGONIA };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;
