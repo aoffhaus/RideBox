@@ -109,6 +109,11 @@ export class RideSession {
     return this.opts.trainer;
   }
 
+  /** performance.now() of the last ride-clock tick (the 3D view extrapolates between ticks) */
+  get tickAt() {
+    return this.lastTick;
+  }
+
   /** The rider's FTP from settings (used even in free rides, where there is no workout engine). */
   get ftp() {
     return this.opts.settings.ftp;

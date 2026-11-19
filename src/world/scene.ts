@@ -10,6 +10,7 @@ import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
 import { EffortMeter } from './effort';
 import { PostFX, DEFAULT_BLOOM } from './postfx';
 import { AdaptiveQuality, qualityLevels } from './adaptive';
+import { ArchFollower } from './arches';
 import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './sky';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
@@ -745,6 +746,8 @@ export class WorldView {
   private effortMeter = new EffortMeter();
   private reactivity = 1;
   private sprintK = 1;
+  private archFollow = new ArchFollower();
+  private nextArchFollow = new ArchFollower();
   /** lowers resolution (then AO) when the frame rate drops; see adaptive.ts */
   private adaptive: AdaptiveQuality;
   /** headlamp + rider fill (night themes); separate from the rider so it stays on in first person */
@@ -1051,12 +1054,18 @@ export class WorldView {
     this.sun.position.set(p.x, p.y, p.z).addScaledVector(this.sunDir, 170);
     this.sun.target.position.set(p.x, p.y, p.z);
 
-    // --- arches (positions are relative to the smoothed rider distance)
+    // --- arches: placed from the smoothed rider distance and the workout clock run
+    // forward to this frame (it only ticks at 10 Hz), so they hold still in the world
+    // instead of creeping forward with you and snapping back every tick.
     const st = s.workout;
-    const shift = d - s.distance;
-    if (st && s.archDistance != null && st.interval) {
+    const vArch = this.session.arch.projectedSpeed;
+    const age = s.started && !s.paused ? Math.min(0.2, Math.max(0, (now - this.session.tickAt) / 1000)) : 0;
+    const archAt = (remaining: number) => d + vArch * Math.max(0, remaining - age);
+    const archD = this.archFollow.update(dt, st && s.archDistance != null && st.interval ? archAt(st.remaining) : undefined);
+    const nextD = this.nextArchFollow.update(dt, st && s.nextArchDistance != null && st.next ? archAt(st.remaining + st.next.duration) : undefined);
+    if (st && archD != null && st.interval) {
       this.arch.group.visible = true;
-      this.place(this.arch.group, s.archDistance + shift);
+      this.place(this.arch.group, archD);
       const next = st.next;
       const color = next ? (next.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(next, ftp)).color) : '#ffffff';
       this.arch.mat.color.set(color);
@@ -1068,9 +1077,9 @@ export class WorldView {
           : `Next: ${formatDuration(next.duration)} @ ${Math.round(toWatts((next.powerStart + next.powerEnd) / 2, next.unit, ftp) * intensity)} W`
         : 'Workout complete!';
       drawLabel(this.arch, formatDuration(Math.ceil(st.remaining)), nextTxt, color);
-      if (s.nextArchDistance != null && next) {
+      if (nextD != null && next) {
         this.nextArch.group.visible = true;
-        this.place(this.nextArch.group, s.nextArchDistance + shift);
+        this.place(this.nextArch.group, nextD);
         const nn = this.session.engine!.intervals[next.index + 1];
         const c2 = nn ? (nn.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(nn, ftp)).color) : '#ffffff';
         this.nextArch.mat.color.set(c2);
