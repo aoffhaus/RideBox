@@ -107,7 +107,7 @@ function vnoise(u: number, v: number, P: number, seed: number) {
 
 /** Palette for the painted rhyolite bands (cycled through by height + warp). */
 const BAND_COUNT = 12;
-const BANDS = ['#ad5030', '#c9823e', '#d4b052', '#ddcdb0', '#b5835a', '#78977f', '#9c452e', '#cca066', '#5f8473', '#c0623a', '#d6c4a0', '#86685a'].map((c) => new THREE.Color(c));
+const BANDS = ['#ad5030', '#c9823e', '#d4b052', '#cbb894', '#b5835a', '#78977f', '#9c452e', '#cca066', '#5f8473', '#c0623a', '#c4ad86', '#86685a'].map((c) => new THREE.Color(c));
 
 export function buildIceland(route: Route, opts: ThemeBuildOptions): THREE.Object3D[] {
   const L = loopInfo(route);
@@ -273,6 +273,10 @@ export function buildIceland(route: Route, opts: ThemeBuildOptions): THREE.Objec
   let bandT = 0;
   let bandW = 0;
   const white = C('#ffffff');
+  const bandAvg = C('#9a7a5c'); // what the painted bands average to (blends overlays in without whitening)
+  // per-vertex massif tint for the bands, in the exact order buildTerrainMesh visits vertices
+  const tints: number[] = [];
+  const bandTint = C('#ffffff');
 
   const model: TerrainModel = {
     ...(() => {
@@ -311,6 +315,7 @@ export function buildIceland(route: Route, opts: ThemeBuildOptions): THREE.Objec
       // --- rhyolite hills
       const hill = smooth(a0 - 6, a0 + 50, a);
       bandW = 0;
+      bandTint.copy(white);
       if (hill > 0) {
         const rel = dy - (side === riverSide ? P.D : 0);
         const warp = 2.4 * N(i, off, 280, 31) + 0.8 * N(i, off, 110, 32, 2);
@@ -318,8 +323,10 @@ export function buildIceland(route: Route, opts: ThemeBuildOptions): THREE.Objec
         // the bands themselves are painted per pixel (bandTexture); vertex colours carry a
         // massif tint: cooler teal/grey-green or warmer rust
         const cool = smooth(0.45, 0.7, N(i, off, 600, 35, 2));
-        tmp.copy(white).lerp(tmp2.set('#b4d6ca'), cool * 0.4).lerp(tmp2.set('#ffd9bf'), (1 - cool) * smooth(0.5, 0.8, N(i, off, 450, 34)) * 0.5);
-        tmp.multiplyScalar(0.84 + 0.2 * N(i, off, 70, 44, 2));
+        bandTint.copy(white).lerp(tmp2.set('#b4d6ca'), cool * 0.4).lerp(tmp2.set('#ffd9bf'), (1 - cool) * smooth(0.5, 0.8, N(i, off, 450, 34)) * 0.5);
+        bandTint.multiplyScalar(0.9 + 0.2 * N(i, off, 70, 44, 2));
+        // vertex colour = what covers the bands (moss, scree, snow), starting from their average tone
+        tmp.copy(bandAvg);
         let w = 1;
         // soft green moss on the gentle lower slopes
         const gm = (1 - smooth(0.25, 0.5, slope)) * (1 - smooth(10, 60, rel)) * smooth(0.4, 0.65, N(i, off, 60, 36)) * 0.75;
@@ -348,6 +355,7 @@ export function buildIceland(route: Route, opts: ThemeBuildOptions): THREE.Objec
       // painterly brightness variation
       out.multiplyScalar(0.92 + 0.14 * N(i, off, 20, 43, 2));
       if (a < EDGE + 0.85) out.copy(shoulder);
+      tints.push(bandTint.r, bandTint.g, bandTint.b);
     },
     uv(_i, _off, _dy, _x, _z, o) {
       o[0] = bandT;
@@ -355,7 +363,7 @@ export function buildIceland(route: Route, opts: ThemeBuildOptions): THREE.Objec
     },
   };
   const terrain = buildTerrainMesh(route, model);
-  paintTerrain(terrain);
+  paintTerrain(terrain, tints);
   const out: THREE.Object3D[] = [terrain];
 
   out.push(buildRiver(route, prof, riverSide, height));
@@ -565,14 +573,17 @@ function grainTexture() {
  * Terrain material patch: uv carries (band coordinate, band weight), so the strata are
  * painted per pixel from the band strip; a world-space grain texture adds ground detail.
  */
-function paintTerrain(terrain: THREE.Group) {
+function paintTerrain(terrain: THREE.Group, tints: number[]) {
   const grain = grainTexture();
   let mat: THREE.MeshLambertMaterial | null = null;
+  let t0 = 0;
   terrain.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     mat = m.material as THREE.MeshLambertMaterial;
     const pos = m.geometry.getAttribute('position');
+    m.geometry.setAttribute('aTint', new THREE.BufferAttribute(new Float32Array(tints.slice(t0, t0 + pos.count * 3)), 3));
+    t0 += pos.count * 3;
     const det = new Float32Array(pos.count * 2);
     for (let k = 0; k < pos.count; k++) {
       det[k * 2] = pos.getX(k) / 6;
@@ -585,15 +596,41 @@ function paintTerrain(terrain: THREE.Group) {
   tm.onBeforeCompile = (shader) => {
     shader.uniforms.grainMap = { value: grain };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 aDet;\nvarying vec2 vDet;\nvarying vec2 vBand;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDet = aDet;\nvBand = uv;');
+      .replace('#include <common>', '#include <common>\nattribute vec2 aDet;\nattribute vec3 aTint;\nvarying vec2 vDet;\nvarying vec2 vBand;\nvarying vec3 vTint;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDet = aDet;\nvBand = uv;\nvTint = aTint;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D grainMap;\nvarying vec2 vDet;\nvarying vec2 vBand;')
       .replace(
-        '#include <map_fragment>',
-        /* glsl */ `{
-          vec3 bandC = texture2D(map, vec2(vBand.x / ${BAND_COUNT.toFixed(1)}, 0.5)).rgb;
-          diffuseColor.rgb *= mix(vec3(1.0), bandC, clamp(vBand.y, 0.0, 1.0));
+        '#include <common>',
+        /* glsl */ `#include <common>
+        uniform sampler2D grainMap;
+        varying vec2 vDet;
+        varying vec2 vBand;
+        varying vec3 vTint;
+        float icH(vec2 p){ p = fract(p * vec2(127.1, 311.7)); p += dot(p, p + 19.19); return fract(p.x * p.y); }
+        float icN(vec2 p){
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(icH(i), icH(i + vec2(1.0, 0.0)), u.x), mix(icH(i + vec2(0.0, 1.0)), icH(i + vec2(1.0, 1.0)), u.x), u.y);
+        }`,
+      )
+      .replace('#include <map_fragment>', '')
+      .replace(
+        '#include <color_fragment>',
+        /* glsl */ `#include <color_fragment>
+        {
+          // erosion gullies: noise over the horizontal world position (constant down the
+          // fall line) nudges the strata up and down and shades the runnels, so the bands
+          // break into vertical rills instead of smooth horizontal smears
+          vec2 wp = vDet * 6.0; // world x/z in metres
+          float g1 = icN(wp * vec2(0.11, 0.11));
+          float g2 = icN(wp * vec2(0.37, 0.37) + 13.0);
+          float g3 = icN(wp * vec2(1.3, 1.3) + 41.0);
+          float gully = g1 * 0.5 + g2 * 0.35 + g3 * 0.15;
+          float w = clamp(vBand.y, 0.0, 1.0);
+          float t = vBand.x + (gully - 0.5) * 0.55;
+          vec3 bandC = texture2D(map, vec2(t / ${BAND_COUNT.toFixed(1)}, 0.5)).rgb * vTint;
+          bandC *= 0.78 + 0.32 * smoothstep(0.25, 0.75, g2 * 0.6 + g3 * 0.4); // dark runnels, matte ridges
+          diffuseColor.rgb = mix(diffuseColor.rgb, bandC, w);
           float gr = texture2D(grainMap, vDet).r * 2.0;
           diffuseColor.rgb *= mix(1.0, gr, 0.8);
         }`,
