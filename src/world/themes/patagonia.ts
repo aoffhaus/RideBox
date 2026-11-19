@@ -183,7 +183,7 @@ function spireGeometry(s: SpireSpec, hi: boolean): THREE.BufferGeometry {
     if (s.kind === 'spire') prof = (1 - 0.38 * t) * (t > 0.84 ? Math.sqrt(Math.max(0, 1 - ((t - 0.84) / 0.16) ** 2)) : 1);
     else if (s.kind === 'horn') prof = Math.pow(Math.max(0, 1 - t), 0.7) * (1 + 0.12 * Math.sin(t * 8 + ph[0]));
     else prof = (1 - 0.15 * t) * (t > 0.72 ? Math.pow(Math.max(0, 1 - ((t - 0.72) / 0.28) ** 3), 0.5) : 1);
-    const flare = 1 + 0.75 * Math.pow(1 - smooth(0, 0.2, t), 2);
+    const flare = 1 + 0.5 * Math.pow(1 - smooth(0, 0.16, t), 2);
     let ledge = 1;
     if (s.kind !== 'block') for (const lh of ledgeH) ledge -= 0.05 * smooth(lh, lh + 0.012, t) * (1 - smooth(lh + 0.04, lh + 0.06, t));
     const cx = s.lean * s.H * t * t;
@@ -241,7 +241,7 @@ function spireGeometry(s: SpireSpec, hi: boolean): THREE.BufferGeometry {
     }
     if (t < 0.12) c.lerp(SCREE, smooth(0.12, 0.04, t));
     let snow = 0;
-    if (ny > 0.58 && t > 0.06) snow = 1;
+    if (ny > (s.kind === 'block' && t < 0.86 ? 0.85 : 0.7) && t > 0.06) snow = 1;
     else if (g > 0.5 && t > 0.12 && t < 0.93) snow = v < 0.85 ? 1 : 0;
     else if (ny > 0.3 && t > 0.3 && v < 0.3) snow = 0.85;
     if (s.kind === 'block' && t > 0.86 && ny > 0.15) snow = 1;
@@ -384,12 +384,12 @@ function lenticularMaterial(haze: THREE.Color) {
         float str = 0.94 + 0.06 * pgNoise(vec2(vLocal.x * 2.0, vLocal.z * 26.0 + fxTime * 0.03));
         vec3 N = normalize(vN);
         float lit = 0.62 + 0.38 * clamp(N.y * 0.8 + 0.2, 0.0, 1.0) + 0.35 * max(dot(N, uSun), 0.0);
-        vec3 under = vec3(0.62, 0.68, 0.78);
+        vec3 under = vec3(0.5, 0.56, 0.67);
         vec3 top = vec3(1.25, 1.22, 1.18);
         vec3 col = mix(under, top, clamp(lit - 0.45, 0.0, 1.0)) * str;
         float dist = length(cameraPosition - vWorld);
         col = mix(col, uHaze, smoothstep(2000.0, 14000.0, dist) * 0.6);
-        gl_FragColor = vec4(col, a * 0.92);
+        gl_FragColor = vec4(col, a * 0.85);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
@@ -419,7 +419,7 @@ export function buildPatagonia(route: Route, opts: ThemeBuildOptions): THREE.Obj
   const inward = L.inward;
   const out: THREE.Object3D[] = [];
   const hi = opts.high;
-  const haze = new THREE.Color('#b4cbe4');
+  const haze = new THREE.Color('#a6c1e2');
 
   // --- road radius from the centre, binned by angle (inner and outer envelopes)
   const BINS = 360;
@@ -594,7 +594,8 @@ export function buildPatagonia(route: Route, opts: ThemeBuildOptions): THREE.Obj
     /** back > 0: that far in from the inner edge of the road; back < 0: that far out beyond the outer edge. */
     const place = (ang: number, back: number, s: Omit<SpireSpec, 'seed'>) => {
       const rad = back > 0 ? Math.max(200, roadInner(ang) - back) : roadOuter(ang) - back;
-      specs.push({ s: { ...s, seed: seed++ }, x: L.cx + Math.cos(ang) * rad, z: L.cz + Math.sin(ang) * rad, rot: r() * Math.PI * 2, H: back > 0 ? massifH : outerH });
+      // everything at hero scale: tall enough to fill the upper half of the frame from the road
+      specs.push({ s: { ...s, H: s.H * 1.4, R: s.R * 1.1, seed: seed++ }, x: L.cx + Math.cos(ang) * rad, z: L.cz + Math.sin(ang) * rad, rot: r() * Math.PI * 2, H: back > 0 ? massifH : outerH });
     };
     const spread = (back: number) => 1 / (1 + Math.abs(back) / 4000);
     const towers = (ang: number, back: number, sgn: number) => {
@@ -620,17 +621,20 @@ export function buildPatagonia(route: Route, opts: ThemeBuildOptions): THREE.Obj
     };
     // inside the loop: the hero massif
     const a0 = r() * Math.PI * 2;
-    towers(a0, 1850, 1);
-    horns(a0 + 1.9, 1700, 1);
-    block(a0 + 3.6, 2300);
-    needles(a0 + 5.0, 1800, 1);
+    towers(a0, 1450, 1);
+    needles(a0 + 1.0, 1400, 1);
+    horns(a0 + 1.9, 1350, 1);
+    towers(a0 + 2.8, 1450, 1);
+    block(a0 + 3.6, 1900);
+    horns(a0 + 4.4, 1350, 1);
+    needles(a0 + 5.3, 1400, 1);
     // outside the loop: more groups all round, so one is usually ahead of the rider
-    const groups = [towers, horns, needles, towers, horns, needles];
+    const groups = [towers, horns, needles, towers, horns, needles, towers, horns];
     const b0 = r() * Math.PI * 2;
     groups.forEach((fn, k) => {
       const ang = b0 + ((k + (r() - 0.5) * 0.4) / groups.length) * Math.PI * 2;
-      if (k === 5) block(ang + 0.15, -2600);
-      fn(ang, -(2100 + r() * 500), -1);
+      if (k === 5) block(ang + 0.15, -2200);
+      fn(ang, -(1600 + r() * 400), -1);
     });
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
     for (const { s, x, z, rot, H } of specs) {
@@ -1037,37 +1041,65 @@ export function buildPatagonia(route: Route, opts: ThemeBuildOptions): THREE.Obj
     for (let k = 0; k < 3; k++) {
       const a = r() * Math.PI * 2;
       const d = 300 + r() * 1100;
-      stack(L.cx + Math.cos(a) * d, L.cz + Math.sin(a) * d, G0 + 2600 + r() * 300, 1200 + r() * 500, -WIND_YAW + (r() - 0.5) * 0.3);
+      stack(L.cx + Math.cos(a) * d, L.cz + Math.sin(a) * d, G0 + 3000 + r() * 300, 1300 + r() * 500, -WIND_YAW + (r() - 0.5) * 0.3);
     }
     for (let k = 0; k < 6; k++) {
       const a = ((k + r() * 0.6) / 6) * Math.PI * 2;
       const d = rOut[binOf(a)] + 4300 + r() * 1500;
-      stack(L.cx + Math.cos(a) * d, L.cz + Math.sin(a) * d, G0 + 2150 + r() * 400, 1600 + r() * 700, -WIND_YAW + (r() - 0.5) * 0.3);
+      stack(L.cx + Math.cos(a) * d, L.cz + Math.sin(a) * d, G0 + 2700 + r() * 400, 1700 + r() * 700, -WIND_YAW + (r() - 0.5) * 0.3);
     }
   }
 
   // --- fair-weather cumulus, kept well above the summits (the shared clouds would sit among the towers)
   {
+    // wind-stretched cumulus: soft billowy tops over a flat, grey-shaded base
+    const W = 512;
+    const Hh = 128;
+    const BASE = 92;
     const tex = canvasTex(
-      256,
-      128,
+      W,
+      Hh,
       (g) => {
         const cr = rng(21);
-        for (let k = 0; k < 26; k++) {
-          const x = 40 + cr() * 176;
-          const y = 50 + cr() * 40 - Math.sin(((x - 40) / 176) * Math.PI) * 22;
-          const rad = 14 + cr() * 26;
+        for (let k = 0; k < 70; k++) {
+          const u = cr();
+          const x = 40 + u * (W - 80);
+          const hump = Math.sin(u * Math.PI);
+          const rad = (10 + cr() * 22) * (0.5 + hump);
+          const y = BASE - rad * (0.3 + cr() * 0.5) - hump * 14;
           const gr = g.createRadialGradient(x, y, 0, x, y, rad);
-          gr.addColorStop(0, 'rgba(255,255,255,0.9)');
-          gr.addColorStop(0.6, 'rgba(250,252,255,0.55)');
-          gr.addColorStop(1, 'rgba(240,244,250,0)');
+          gr.addColorStop(0, 'rgba(255,255,255,0.5)');
+          gr.addColorStop(0.5, 'rgba(250,252,255,0.3)');
+          gr.addColorStop(1, 'rgba(245,248,252,0)');
           g.fillStyle = gr;
-          g.fillRect(0, 0, 256, 128);
+          g.beginPath();
+          g.ellipse(x, y, rad * 1.6, rad, 0, 0, Math.PI * 2);
+          g.fill();
         }
-        // flat bases
+        // shade the underside grey-blue, then fade the flat base out
+        g.globalCompositeOperation = 'source-atop';
+        const sh = g.createLinearGradient(0, BASE - 40, 0, BASE);
+        sh.addColorStop(0, 'rgba(150,165,190,0)');
+        sh.addColorStop(1, 'rgba(150,165,190,0.55)');
+        g.fillStyle = sh;
+        g.fillRect(0, 0, W, Hh);
         g.globalCompositeOperation = 'destination-out';
-        g.fillStyle = 'rgba(0,0,0,1)';
-        g.fillRect(0, 100, 256, 28);
+        const cut = g.createLinearGradient(0, BASE - 4, 0, BASE + 6);
+        cut.addColorStop(0, 'rgba(0,0,0,0)');
+        cut.addColorStop(1, 'rgba(0,0,0,1)');
+        g.fillStyle = cut;
+        g.fillRect(0, BASE - 4, W, Hh);
+        // soft ends
+        for (const [x0, x1] of [
+          [0, 60],
+          [W, W - 60],
+        ]) {
+          const e = g.createLinearGradient(x0, 0, x1, 0);
+          e.addColorStop(0, 'rgba(0,0,0,1)');
+          e.addColorStop(1, 'rgba(0,0,0,0)');
+          g.fillStyle = e;
+          g.fillRect(Math.min(x0, x1), 0, 60, Hh);
+        }
       },
       false,
     );
@@ -1076,9 +1108,9 @@ export function buildPatagonia(route: Route, opts: ThemeBuildOptions): THREE.Obj
       const sp = new THREE.Sprite(mat);
       const a = r() * Math.PI * 2;
       const d = 1500 + r() * 8000;
-      sp.position.set(L.cx + Math.cos(a) * d, G0 + 2350 + r() * 900, L.cz + Math.sin(a) * d);
-      const sc = 600 + r() * 900;
-      sp.scale.set(sc * 2, sc, 1);
+      sp.position.set(L.cx + Math.cos(a) * d, G0 + 2800 + r() * 900, L.cz + Math.sin(a) * d);
+      const sc = 450 + r() * 600;
+      sp.scale.set(sc * (4.5 + r() * 2), sc, 1);
       sp.name = 'cumulus';
       out.push(sp);
     }
