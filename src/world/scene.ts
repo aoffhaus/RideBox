@@ -487,10 +487,13 @@ function buildMountains(route: Route): THREE.Group {
   return g;
 }
 
-function buildClouds(route: Route, height = 500): THREE.Group {
+/**
+ * Cumulus layer: 40 camera-facing quads in ONE draw call (40 sprites were 40 draws).
+ * All clouds are the same white, so blending them unsorted gives the same result.
+ */
+function buildClouds(route: Route, height = 500): THREE.Mesh {
   const r = rng(route.seed + 5);
   const tex = cloudTexture();
-  const g = new THREE.Group();
   let cx = 0;
   let cz = 0;
   let maxY = -Infinity;
@@ -501,17 +504,67 @@ function buildClouds(route: Route, height = 500): THREE.Group {
   }
   cx /= route.x.length;
   cz /= route.x.length;
-  for (let k = 0; k < 40; k++) {
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.75 + r() * 0.2, fog: false, depthWrite: false });
-    const s = new THREE.Sprite(mat);
+  const N = 40;
+  const corner = new Float32Array(N * 4 * 3);
+  const uv = new Float32Array(N * 4 * 2);
+  const center = new Float32Array(N * 4 * 3);
+  const size = new Float32Array(N * 4 * 2);
+  const alpha = new Float32Array(N * 4);
+  const idx: number[] = [];
+  const CORNERS = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
+  for (let k = 0; k < N; k++) {
+    const op = 0.75 + r() * 0.2;
     const a = r() * Math.PI * 2;
     const d = 800 + r() * 4500;
-    s.position.set(cx + Math.cos(a) * d, maxY + height + r() * 700, cz + Math.sin(a) * d);
+    const px = cx + Math.cos(a) * d;
+    const py = maxY + height + r() * 700;
+    const pz = cz + Math.sin(a) * d;
     const sc = 500 + r() * 900;
-    s.scale.set(sc * 1.8, sc * 0.7, 1);
-    g.add(s);
+    for (let v = 0; v < 4; v++) {
+      const o = k * 4 + v;
+      corner.set([CORNERS[v * 2], CORNERS[v * 2 + 1], 0], o * 3);
+      uv.set([CORNERS[v * 2] + 0.5, CORNERS[v * 2 + 1] + 0.5], o * 2);
+      center.set([px, py, pz], o * 3);
+      size.set([sc * 1.8, sc * 0.7], o * 2);
+      alpha[o] = op;
+    }
+    const b = k * 4;
+    idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
   }
-  return g;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(corner, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('center', new THREE.BufferAttribute(center, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(size, 2));
+  geo.setAttribute('alpha', new THREE.BufferAttribute(alpha, 1));
+  geo.setIndex(idx);
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    uniforms: { map: { value: tex } },
+    vertexShader: /* glsl */ `
+      attribute vec3 center; attribute vec2 size; attribute float alpha;
+      varying vec2 vUv; varying float vAlpha;
+      void main(){
+        vUv = uv; vAlpha = alpha;
+        vec4 mv = modelViewMatrix * vec4(center, 1.0);
+        mv.xy += position.xy * size; // billboard: offset in view space, like a sprite
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      varying vec2 vUv; varying float vAlpha;
+      void main(){
+        vec4 t = texture2D(map, vUv);
+        gl_FragColor = vec4(t.rgb, t.a * vAlpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.frustumCulled = false; // one draw for the whole sky; bounds would only be approximate anyway
+  return m;
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +599,7 @@ function buildRider(): RiderModel {
     return m;
   };
   const V = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
+  const small = <T extends THREE.Object3D>(o: T) => ((o.userData.noShadow = true), o);
 
   // wheels with visible spokes so rotation reads clearly
   const wheels: THREE.Group[] = [];
@@ -554,13 +608,13 @@ function buildRider(): RiderModel {
     w.position.set(x, 0.34, 0);
     const tyre = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.025, 8, 32), black);
     tyre.castShadow = true;
-    w.add(tyre, new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 32), silver));
+    w.add(tyre, small(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 32), silver)));
     for (let k = 0; k < 6; k++) {
-      const s = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.6, 0.008), silver);
+      const s = small(new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.6, 0.008), silver));
       s.rotation.z = (k / 6) * Math.PI;
       w.add(s);
     }
-    w.add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.08, 10).rotateX(Math.PI / 2), silver));
+    w.add(small(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.08, 10).rotateX(Math.PI / 2), silver)));
     bike.add(w);
     wheels.push(w);
   }
@@ -578,22 +632,22 @@ function buildRider(): RiderModel {
     [headBot, V(0.5, 0.34), 0.016],
     [headTop, headBot, 0.026],
   ].forEach(([a, b, r]) => bike.add(bar(a as THREE.Vector3, b as THREE.Vector3, r as number, frameMat)));
-  bike.add(bar(V(-0.17, 0.82), V(-0.2, 0.92), 0.012, silver)); // seatpost
+  bike.add(small(bar(V(-0.17, 0.82), V(-0.2, 0.92), 0.012, silver))); // seatpost
   const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.04, 0.12), black);
   saddle.position.set(-0.19, 0.94, 0);
   bike.add(saddle);
-  bike.add(bar(V(0.36, 0.8), V(0.42, 0.95), 0.014, silver)); // stem
-  bike.add(bar(V(0.42, 0.95, -0.21), V(0.42, 0.95, 0.21), 0.012, black)); // bars
-  for (const z of [-0.21, 0.21]) bike.add(bar(V(0.42, 0.95, z), V(0.5, 0.83, z), 0.012, black)); // drops
+  bike.add(small(bar(V(0.36, 0.8), V(0.42, 0.95), 0.014, silver))); // stem
+  bike.add(small(bar(V(0.42, 0.95, -0.21), V(0.42, 0.95, 0.21), 0.012, black))); // bars
+  for (const z of [-0.21, 0.21]) bike.add(small(bar(V(0.42, 0.95, z), V(0.5, 0.83, z), 0.012, black))); // drops
 
   // crank + pedals
   const crank = new THREE.Group();
   crank.position.copy(bb);
   bike.add(crank);
-  crank.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 20).rotateX(Math.PI / 2).translate(0, 0, 0.06), silver));
+  crank.add(small(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.01, 20).rotateX(Math.PI / 2).translate(0, 0, 0.06), silver)));
   const pedals: THREE.Object3D[] = [];
   for (const side of [1, -1]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.17, 0.015), silver);
+    const arm = small(new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.17, 0.015), silver));
     arm.position.set(0, (0.17 / 2) * side, 0.08 * side);
     crank.add(arm);
     const pedal = new THREE.Object3D();
@@ -626,7 +680,8 @@ function buildRider(): RiderModel {
     bike.add(m);
     legs.push(m);
   }
-  group.traverse((o) => ((o as THREE.Mesh).castShadow = true));
+  // only the parts big enough to read in a shadow cast one (spokes, cockpit and crank don't)
+  group.traverse((o) => ((o as THREE.Mesh).castShadow = !o.userData.noShadow));
   return { group, bike, wheels, crank, pedals, legs, torso };
 }
 
@@ -703,10 +758,24 @@ function disposeTree(root: THREE.Object3D) {
     const mats = Array.isArray(mat) ? mat : mat ? [mat] : [];
     mats.forEach((x) => {
       (x as THREE.MeshBasicMaterial).map?.dispose();
+      // custom shaders hold their textures in uniforms
+      const u = (x as THREE.ShaderMaterial).uniforms;
+      if (u) for (const k in u) (u[k]?.value as THREE.Texture | undefined)?.isTexture && (u[k].value as THREE.Texture).dispose();
       x.dispose();
     });
     if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
   });
+}
+
+// scratch objects for the per-frame rider animation (no garbage per frame)
+const LEG_TMP = { hip: new THREE.Vector3(), foot: new THREE.Vector3(), knee: new THREE.Vector3(), dir: new THREE.Vector3(), fwd: new THREE.Vector3(), inv: new THREE.Matrix4() };
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const _limbDir = new THREE.Vector3();
+/** Stretch a unit-length, y-aligned cylinder between a and b. */
+function setLimb(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
+  m.position.addVectors(a, b).multiplyScalar(0.5);
+  m.scale.set(1, a.distanceTo(b), 1);
+  m.quaternion.setFromUnitVectors(Y_AXIS, _limbDir.subVectors(b, a).normalize());
 }
 
 /** The 3D world view. Reads the session each frame; never changes it. */
@@ -738,6 +807,8 @@ export class WorldView {
   private ro: ResizeObserver;
   private camPos = new THREE.Vector3();
   private camLook = new THREE.Vector3();
+  /** reused output of cameraTargets */
+  private camTgt = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
   private crankAngle = 0;
   private wheelAngle = 0;
   private last = performance.now();
@@ -954,31 +1025,25 @@ export class WorldView {
 
   private updateLegs() {
     const r = this.rider;
-    const set = (m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) => {
-      m.position.copy(a).add(b).multiplyScalar(0.5);
-      m.scale.set(1, a.distanceTo(b), 1);
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-    };
+    const { hip, foot, knee, dir, fwd, inv } = LEG_TMP;
     r.bike.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(r.bike.matrixWorld).invert();
+    inv.copy(r.bike.matrixWorld).invert();
     r.pedals.forEach((pd, k) => {
       const side = k === 0 ? 1 : -1;
-      const foot = new THREE.Vector3();
       pd.getWorldPosition(foot);
       foot.applyMatrix4(inv);
       foot.z = 0.11 * side;
       // hip follows the torso (which moves forward when standing / pushing)
-      const hip = new THREE.Vector3(-0.17 + r.torso.position.x + 0.17, r.torso.position.y - 0.02, 0.09 * side);
+      hip.set(-0.17 + r.torso.position.x + 0.17, r.torso.position.y - 0.02, 0.09 * side);
       const L = 0.45;
       const d = Math.min(hip.distanceTo(foot), 2 * L - 0.002);
-      const mid = hip.clone().add(foot).multiplyScalar(0.5);
       const hgt = Math.sqrt(Math.max(0, L * L - (d / 2) * (d / 2)));
-      const dir = foot.clone().sub(hip).normalize();
-      const fwd = new THREE.Vector3(-dir.y, dir.x, 0); // knee points forward/up
+      dir.subVectors(foot, hip).normalize();
+      fwd.set(-dir.y, dir.x, 0); // knee points forward/up
       if (fwd.x < 0) fwd.negate();
-      const knee = mid.add(fwd.multiplyScalar(hgt));
-      set(r.legs[k], hip, knee);
-      set(r.legs[k + 2], knee, foot);
+      knee.addVectors(hip, foot).multiplyScalar(0.5).addScaledVector(fwd, hgt);
+      setLimb(r.legs[k], hip, knee);
+      setLimb(r.legs[k + 2], knee, foot);
     });
   }
 
@@ -1029,7 +1094,7 @@ export class WorldView {
     // climbs look like climbs; smoothed so it glides rather than snaps.
     const rig = CAMERA_RIGS[this.camMode];
     this.rider.group.visible = rig.showRider;
-    const tgt = cameraTargets(route, d, 1.7, rig);
+    const tgt = cameraTargets(route, d, 1.7, rig, this.camTgt);
     // Follow exactly along the road (d is already smooth, so no lag at speed);
     // only ease the heights so bumps in the terrain don't jolt the view.
     const k = 1 - Math.exp(-dt * (this.camMode === 'first' ? 12 : 5));
