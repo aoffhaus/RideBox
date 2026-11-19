@@ -1,7 +1,7 @@
 import type { RideRecord } from '../app/recorder';
 import type { Settings } from '../storage/db';
 import { deleteRide } from '../storage/db';
-import { downloadBlob, rideFileName, rideToFit } from '../export/fit';
+import { downloadBlob, rideFileName, rideToFit, sendToGarmin } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { distUnit, fmtDist, r0 } from './format';
 import { StravaButton } from './StravaButton';
@@ -47,6 +47,7 @@ export function History({ rides, settings, stravaConnected, onOpen, onChange }: 
               <td className="row">
                 <StravaButton ride={r} connected={stravaConnected} onUpload={onOpen} compact />
                 <button onClick={() => downloadBlob(rideToFit(r), rideFileName(r))}>.fit</button>
+                <button className="garmin" title="Download the .fit and open Garmin Connect's Import Data page" onClick={() => sendToGarmin(r)}>Garmin</button>
                 <button
                   className="danger-text"
                   onClick={async () => {

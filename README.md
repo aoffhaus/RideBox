@@ -10,7 +10,7 @@ There are no accounts, servers, social features, or game mechanics. Everything r
 2. Click **Connect trainer** → pick your KICKR, then **Connect HRM** → pick your strap.
    macOS asks once whether Chrome can use Bluetooth (System Settings → Privacy & Security → Bluetooth).
 3. On **Ride**, pick a workout (or Free ride) and a route, then **Start ride**. The workout clock starts when you pedal.
-4. After the ride, rename it if you like and click **Upload to Strava** (once connected, see below), or delete it. You can also download the **.fit** and upload it to intervals.icu, TrainingPeaks, or TrainerRoad.
+4. After the ride, rename it if you like and click **Upload to Strava** (once connected, see below), or delete it. **Garmin Connect ↗** downloads the .fit and opens Garmin Connect's Import Data page so you can drop it in (Garmin has no upload API for personal apps). You can also download the **.fit** and upload it to intervals.icu, TrainingPeaks, or TrainerRoad.
 
 No trainer nearby? Click **Simulator** to try everything with a fake trainer and heart-rate strap.
 
