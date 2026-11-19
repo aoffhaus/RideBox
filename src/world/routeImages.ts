@@ -7,5 +7,6 @@ import zion from '../assets/routes/zion.jpg';
 import synthwave from '../assets/routes/synthwave.jpg';
 import aurora from '../assets/routes/aurora.jpg';
 import alien from '../assets/routes/alien.jpg';
+import neoncity from '../assets/routes/neoncity.jpg';
 
-export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, alien };
+export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, alien, neoncity };

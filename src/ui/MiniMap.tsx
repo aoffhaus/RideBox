@@ -41,6 +41,7 @@ const PALETTES: Record<string, Palette> = {
   synthwave: { ground: [38, 14, 62], light: [58, 22, 88], dark: [22, 8, 40], patch: 'rgba(255,43,214,0.22)', water: '#12062a', shore: '#19f3ff' },
   aurora: { ground: [196, 210, 222], light: [226, 236, 244], dark: [150, 168, 186], patch: 'rgba(60,72,90,0.35)', water: '#0e2438', shore: '#5fe0a8' },
   alien: { ground: [72, 40, 110], light: [96, 58, 140], dark: [48, 26, 82], patch: 'rgba(64,224,200,0.3)', water: '#1b8f9a', shore: '#8ffff0' },
+  neoncity: { ground: [30, 27, 40], light: [46, 40, 60], dark: [18, 16, 26], patch: 'rgba(255,47,142,0.2)', water: '#0b1830', shore: '#21e4ff' },
 };
 
 interface Blob {
