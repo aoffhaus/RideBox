@@ -160,7 +160,7 @@ function crystalMaterial(sunDir: THREE.Vector3): THREE.ShaderMaterial {
       varying vec3 vCol;
       varying float vH;
       varying float vSeed;
-      varying vec3 vN;
+      flat varying vec3 vN; // flat: one exact normal per facet (interpolation noise made the facet hash speckle)
       #include <fog_pars_vertex>
       void main() {
         vBary = bary;
@@ -198,7 +198,7 @@ function crystalMaterial(sunDir: THREE.Vector3): THREE.ShaderMaterial {
       varying vec3 vCol;
       varying float vH;
       varying float vSeed;
-      varying vec3 vN;
+      flat varying vec3 vN; // flat: one exact normal per facet (interpolation noise made the facet hash speckle)
       #include <common>
       #include <fog_pars_fragment>
       float h13(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -215,7 +215,7 @@ function crystalMaterial(sunDir: THREE.Vector3): THREE.ShaderMaterial {
         col += vCol * vCol * 0.8 * smoothstep(0.6, 1.0, h); // hot inner glow near the tip
 
         // each facet a slightly different brightness, like a cut gem
-        float facet = h13(floor(N * 5.0 + 0.5) + vSeed * 7.0);
+        float facet = h13(floor(N * 5.0 + 0.137) + vSeed * 7.0); // offset keeps exact normal components off cell boundaries
         col *= 0.5 + 0.8 * facet;
 
         // fake internal refraction: bands that slide with view angle and time
@@ -249,9 +249,9 @@ function crystalMaterial(sunDir: THREE.Vector3): THREE.ShaderMaterial {
         col += mix(vec3(1.0), vCol, 0.35) * (line * (0.25 + 2.2 * tw) * mix(0.3, 1.0, far) + glow * 0.12);
 
         // facet glints: random facets flash as the view moves
-        float g = h13(floor(N * 9.0) + floor(vWorld * 0.12));
-        float flash = pow(0.5 + 0.5 * sin(dot(V, vec3(23.0, 31.0, 17.0)) + fxTime * 1.3 + g * 60.0), 40.0);
-        col += vec3(1.0) * flash * step(0.82, g) * 1.4 * far;
+        float g = h13(floor(N * 9.0 + 0.371) + floor(vWorld * 0.12 + 0.29));
+        float flash = pow(0.5 + 0.5 * sin(dot(cameraPosition, vec3(0.21, 0.17, 0.23)) + fxTime * 0.9 + g * 60.0), 30.0); // whole facets flash as you ride past
+        col += mix(vCol, vec3(1.0), 0.6) * flash * step(0.8, g) * 0.9 * far;
 
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
@@ -902,6 +902,23 @@ export function buildCrystal(route: Route, opts: ThemeBuildOptions): THREE.Objec
         const rad = 6 + r() * 12;
         crystal(r() < 0.5 ? columns : spikes, i, p, rad, rad * (3 + r() * 3.5), r() * 0.45, -side, (r() - 0.5) * 2, gemColor(i, side));
       }
+      // mid-size spires dotted across the wider parts of the canyon floor
+      if (r() < 0.1 * density && pr.W > 40) {
+        const a = 14 + r() * (pr.W - 30);
+        if (!(side === streamSide && Math.abs(a - streamOff(i)) < SH + 2.5)) {
+          const { off, p } = spot(i, side * a, 0.3);
+          const c = gemColor(i, side);
+          const k = 1 + Math.floor(r() * 3);
+          for (let m = 0; m < k; m++) {
+            const pp = p.clone();
+            pp.x += (r() - 0.5) * 3;
+            pp.z += (r() - 0.5) * 3;
+            const rad = 0.6 + r() * 1.6;
+            crystal(r() < 0.5 ? spikes : columns, i, pp, rad, rad * (3 + r() * 4), r() * 0.5, r() < 0.5 ? -1 : 1, r() * 6.3, c);
+          }
+          pools.push({ i, off, rad: 7 + r() * 3, c, k: 0.7 });
+        }
+      }
       // scattered floor shards and geode clusters near the road
       if (r() < 0.38 * density) {
         const lim = pr.W - 14;
@@ -929,16 +946,15 @@ export function buildCrystal(route: Route, opts: ThemeBuildOptions): THREE.Objec
   const archEvery = Math.round(330 / route.step);
   for (let i = Math.round(120 / route.step); i < n - archEvery / 2; i += archEvery + Math.floor(r() * 30)) {
     const arch = r() < 0.45;
-    console.warn('CRYSTAL-ARCH', Math.round(i * route.step), arch);
     const sides = arch ? [-1, 1] : [r() < 0.5 ? -1 : 1];
     for (const side of sides) {
-      const baseOff = 14 + r() * 5;
-      if (side === streamSide && Math.abs(baseOff - streamOff(i)) < SH + 3) continue;
+      let baseOff = 13 + r() * 4;
+      if (side === streamSide && Math.abs(baseOff - streamOff(i)) < SH + 3) baseOff = streamOff(i) + SH + 3.5; // root beyond the stream
       const { off, p } = spot(i, side * baseOff, 0.8);
-      const tilt = arch ? 0.98 + r() * 0.06 : 0.85 + r() * 0.12;
+      const tilt = arch ? 0.9 + r() * 0.08 : 0.8 + r() * 0.12;
       const reach = Math.abs(off) + (arch ? 2 : 4 + r() * 6);
       const len = reach / Math.sin(tilt);
-      const rad = 1.8 + r() * 1.4;
+      const rad = 2.2 + r() * 2;
       const c = gemColor(i, side);
       crystal(arch || r() < 0.5 ? spikes : columns, i, p, rad, len, tilt, -side, (r() - 0.5) * 0.25, c);
       // a cluster of companions around the root
@@ -970,11 +986,16 @@ export function buildCrystal(route: Route, opts: ThemeBuildOptions): THREE.Objec
     }
   }
 
-  out.push(chunkedInstances(route, columnGeo, crysMat, columns, { shadow: false }));
-  out.push(chunkedInstances(route, spikeGeo, crysMat, spikes, { shadow: false }));
-  out.push(chunkedInstances(route, columnGeo, crysMat, smallCols, { shadow: false }));
-  out.push(chunkedInstances(route, spikeGeo, crysMat, smallSpikes, { shadow: false }));
-  out.push(chunkedInstances(route, spikeGeo, crysMat, markers, { shadow: false }));
+  const glowing = (g: THREE.Group) => {
+    // self-lit glass: keep it out of the AO pass (its noise speckles the big flat facets)
+    g.traverse((o) => (o.userData.noAO = true));
+    return g;
+  };
+  out.push(glowing(chunkedInstances(route, columnGeo, crysMat, columns, { shadow: false })));
+  out.push(glowing(chunkedInstances(route, spikeGeo, crysMat, spikes, { shadow: false })));
+  out.push(glowing(chunkedInstances(route, columnGeo, crysMat, smallCols, { shadow: false })));
+  out.push(glowing(chunkedInstances(route, spikeGeo, crysMat, smallSpikes, { shadow: false })));
+  out.push(glowing(chunkedInstances(route, spikeGeo, crysMat, markers, { shadow: false })));
 
   // dark geode rocks / boulders on the floor (faceted)
   const rocks: Inst[] = [];
