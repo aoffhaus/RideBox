@@ -34,7 +34,7 @@ The arch ahead of you sits where you'll be when the current interval ends. Its p
 
 ## Getting workouts in
 
-- **TrainerRoad:** in **Settings**, drag the **TR → RideBox** bookmarklet to your bookmarks bar. Open any workout on trainerroad.com while logged in and click it. It downloads `TR - <name>.json`; drop that file on the **Workouts** tab. It uses the undocumented endpoint TrainerRoad's own page uses (the same one the open-source *trzwo* extension uses), so it could break if TrainerRoad changes its site.
+- **TrainerRoad:** in **Settings**, drag the **TR → RideBox** bookmarklet to your bookmarks bar. Open any workout on trainerroad.com while logged in and click it. It copies the workout JSON to your clipboard; paste it into the box on the **Workouts** tab. (If the browser blocks clipboard access, it downloads `TR - <name>.json` instead; drop that file on the Workouts tab.) It uses the undocumented endpoint TrainerRoad's own page uses (the same one the open-source *trzwo* extension uses), so it could break if TrainerRoad changes its site.
 - **Files:** `.zwo` (Zwift), `.erg` (watts), `.mrc` (% FTP), and RideBox `.json`.
 - **Claude:** copy the prompt from **Settings → Workouts from Claude**, describe the session you want, and paste Claude's answer into the Workouts tab.
 - **Builder:** build workouts from blocks, or type shorthand:
