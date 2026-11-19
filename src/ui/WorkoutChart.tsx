@@ -12,6 +12,8 @@ interface Props {
   currentIndex?: number;
   intensity?: number; // percent
   compact?: boolean;
+  /** Interval index to highlight (e.g. from a hovered row in a list). Mouse hover takes precedence. */
+  highlight?: number | null;
 }
 
 /** Workout profile: zone-coloured intervals, progress marker, live power + HR lines. */
@@ -25,6 +27,7 @@ export const WorkoutChart = memo(function WorkoutChart({
   currentIndex,
   intensity = 100,
   compact,
+  highlight,
 }: Props) {
   const W = 1000;
   const H = height;
@@ -36,6 +39,8 @@ export const WorkoutChart = memo(function WorkoutChart({
   const y = (w: number) => H - (Math.max(0, w) / yMax) * (H - 4);
 
   const [hover, setHover] = useState<number | null>(null);
+
+  const active = hover ?? highlight ?? null;
 
   const onMove = (e: MouseEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -109,8 +114,8 @@ export const WorkoutChart = memo(function WorkoutChart({
             d={b.d}
             fill={b.color}
             opacity={currentIndex == null ? 0.9 : i === currentIndex ? 1 : elapsed != null && b.iv.start + b.iv.duration <= elapsed ? 0.35 : 0.7}
-            stroke={i === hover ? '#fff' : 'rgba(0,0,0,0.35)'}
-            strokeWidth={i === hover ? 2 : compact ? 0 : 1}
+            stroke={i === active ? '#fff' : 'rgba(0,0,0,0.35)'}
+            strokeWidth={i === active ? 2 : compact ? 0 : 1}
             vectorEffect="non-scaling-stroke"
           />
         ))}
@@ -120,24 +125,25 @@ export const WorkoutChart = memo(function WorkoutChart({
           <line x1={x(elapsed)} x2={x(elapsed)} y1={0} y2={H} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" />
         )}
       </svg>
-      {hover != null && intervals[hover] && (
-        <IntervalTooltip iv={intervals[hover]} ftp={ftp} k={k} leftPct={((intervals[hover].start + intervals[hover].duration / 2) / total) * 100} />
+      {active != null && intervals[active] && (
+        <IntervalTooltip iv={intervals[active]} ftp={ftp} k={k} leftPct={((intervals[active].start + intervals[active].duration / 2) / total) * 100} />
       )}
     </div>
   );
 });
 
+/** Human-readable target power for an interval, e.g. "260 W · 130% FTP". */
+export function intervalPowerText(iv: Interval, ftp: number, k = 1): string {
+  if (iv.free) return 'Free ride';
+  const w0 = Math.round(toWatts(iv.powerStart, iv.unit, ftp) * k);
+  const w1 = Math.round(toWatts(iv.powerEnd, iv.unit, ftp) * k);
+  const p0 = Math.round((w0 / ftp) * 100);
+  const p1 = Math.round((w1 / ftp) * 100);
+  return w0 === w1 ? `${w0} W · ${p0}% FTP` : `${w0} → ${w1} W · ${p0} → ${p1}% FTP`;
+}
+
 function IntervalTooltip({ iv, ftp, k, leftPct }: { iv: Interval; ftp: number; k: number; leftPct: number }) {
-  let power: string;
-  if (iv.free) {
-    power = 'Free ride';
-  } else {
-    const w0 = Math.round(toWatts(iv.powerStart, iv.unit, ftp) * k);
-    const w1 = Math.round(toWatts(iv.powerEnd, iv.unit, ftp) * k);
-    const p0 = Math.round((w0 / ftp) * 100);
-    const p1 = Math.round((w1 / ftp) * 100);
-    power = w0 === w1 ? `${w0} W · ${p0}% FTP` : `${w0} → ${w1} W · ${p0} → ${p1}% FTP`;
-  }
+  const power = intervalPowerText(iv, ftp, k);
   const shift = leftPct < 15 ? '0%' : leftPct > 85 ? '-100%' : '-50%';
   return (
     <div className="chart-tooltip" style={{ left: `${leftPct}%`, transform: `translateX(${shift})` }}>

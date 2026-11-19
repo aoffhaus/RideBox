@@ -5,6 +5,7 @@ import { flatten, formatDuration, plannedStats } from '../workout/model';
 import { parseWorkout, toMrc, toRideBoxJson, toZwo } from '../workout/parsers';
 import { WorkoutChart } from './WorkoutChart';
 import { downloadBlob } from '../export/fit';
+import { WorkoutView } from './WorkoutView';
 
 interface Props {
   workouts: StoredWorkout[];
@@ -20,6 +21,7 @@ export function Library({ workouts, ftp, onChange, onRide, onEdit }: Props) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [drag, setDrag] = useState(false);
   const [filter, setFilter] = useState('');
+  const [viewing, setViewing] = useState<StoredWorkout | null>(null);
 
   async function importTexts(items: { name: string; text: string }[]) {
     const ok: string[] = [];
@@ -95,7 +97,14 @@ export function Library({ workouts, ftp, onChange, onRide, onEdit }: Props) {
           const iv = flatten(sw.workout);
           const st = plannedStats(iv, ftp);
           return (
-            <div key={sw.id} className="card">
+            <div
+              key={sw.id}
+              className="card clickable"
+              title="Click to view workout"
+              onClick={(e) => {
+                if (!(e.target as HTMLElement).closest('button')) setViewing(sw);
+              }}
+            >
               <div className="card-head">
                 <div>
                   <div className="card-title">{sw.workout.name}</div>
@@ -128,6 +137,22 @@ export function Library({ workouts, ftp, onChange, onRide, onEdit }: Props) {
           );
         })}
       </div>
+
+      {viewing && (
+        <WorkoutView
+          workout={viewing}
+          ftp={ftp}
+          onClose={() => setViewing(null)}
+          onRide={(w) => {
+            setViewing(null);
+            onRide(w);
+          }}
+          onEdit={(w) => {
+            setViewing(null);
+            onEdit(w);
+          }}
+        />
+      )}
     </div>
   );
 }
