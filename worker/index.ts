@@ -5,8 +5,9 @@
 
 import { verifyAccess, type AuthEnv } from './auth';
 import { blob, pull, push, type SyncEnv } from './sync';
+import { coach, type CoachEnv } from './coach';
 
-export interface Env extends AuthEnv, SyncEnv {
+export interface Env extends AuthEnv, SyncEnv, CoachEnv {
   ASSETS: Fetcher;
 }
 
@@ -21,7 +22,7 @@ function denied(status: number, reason: string, api: boolean) {
   return new Response(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
-async function api(req: Request, env: Env, url: URL, email: string): Promise<Response> {
+async function api(req: Request, env: Env, url: URL, email: string, ctx: ExecutionContext): Promise<Response> {
   const route = `${req.method} ${url.pathname}`;
   switch (route) {
     case 'GET /api/me':
@@ -33,18 +34,20 @@ async function api(req: Request, env: Env, url: URL, email: string): Promise<Res
     case 'GET /api/blob':
       return blob(env, url);
   }
+  const m = /^POST \/api\/coach\/(plan|adapt|today)$/.exec(route);
+  if (m) return coach(env, req, m[1], ctx);
   return json({ error: 'Not found' }, 404);
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const isApi = url.pathname.startsWith('/api/');
     const auth = await verifyAccess(req, env);
     if (!auth.ok) return denied(auth.status, auth.reason, isApi);
     if (isApi) {
       try {
-        return await api(req, env, url, auth.email);
+        return await api(req, env, url, auth.email, ctx);
       } catch (e) {
         console.error(`${req.method} ${url.pathname}`, e);
         return json({ error: 'Server error' }, 500);
