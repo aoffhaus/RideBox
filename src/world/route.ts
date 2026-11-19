@@ -1,9 +1,9 @@
 // Procedurally generated looping routes.
 
-export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
+export type RoutePresetId = 'rolling' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'neoncity';
 
 /** Visual theme of the 3D world (sky, terrain, scenery). Defaults to 'countryside'. */
-export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave';
+export type ThemeId = 'countryside' | 'bigsur' | 'redwoods' | 'zion' | 'synthwave' | 'neoncity';
 
 export interface RoutePreset {
   id: RoutePresetId;
@@ -57,6 +57,16 @@ export const ROUTE_PRESETS: RoutePreset[] = [
     harmonics: [6, 24],
     bendiness: 0.4,
     theme: 'synthwave',
+  },
+  {
+    id: 'neoncity',
+    name: 'Neon Rain',
+    description: 'Night streets in steady rain: neon mirrored in wet asphalt, canyons of lit towers and a couple of overpass ramps',
+    lengthKm: 14,
+    maxGrade: 0.035,
+    harmonics: [6, 22],
+    bendiness: 0.35,
+    theme: 'neoncity',
   },
 ];
 

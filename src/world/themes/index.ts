@@ -6,6 +6,7 @@ import { buildBigSur, bigSurRoad } from './bigsur';
 import { buildRedwoods, redwoodsRoad } from './redwoods';
 import { SYNTH, buildSynthwave, synthwaveRoad, synthwaveUpdate } from './synthwave';
 import { buildZion, zionRoad } from './zion';
+import { NEON_CITY, buildNeonCity, neonCityRoad, neonCityUpdate } from './neoncity';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -150,7 +151,32 @@ const SYNTHWAVE: Theme = {
   posts: false, // the neon pylons replace them
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE };
+const NEONCITY: Theme = {
+  id: 'neoncity',
+  skyTop: NEON_CITY.skyTop,
+  skyHorizon: NEON_CITY.skyHorizon,
+  haze: NEON_CITY.haze,
+  fogNear: NEON_CITY.fogNear,
+  fogFar: NEON_CITY.fogFar,
+  hemiSky: '#6f58b8',
+  hemiGround: '#ff4f8a',
+  hemiIntensity: 0.6,
+  sunColor: '#6fd6ff', // no sun: a cool wash of city light from one side
+  sunIntensity: 0.65,
+  exposure: 1.1,
+  groundColor: '#0a090e',
+  clouds: false,
+  cloudShadows: 0,
+  build: buildNeonCity,
+  roadTexture: neonCityRoad,
+  bloom: { strength: 0.75, radius: 0.55, threshold: 1.0 },
+  physicalSky: false,
+  update: neonCityUpdate,
+  sun: { elevation: 30, azimuth: 140 },
+  posts: false, // street lamps and kerbs instead
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, neoncity: NEONCITY };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;
