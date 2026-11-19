@@ -15,8 +15,10 @@ import { mergeSteady } from './erg';
 
 type Json = any;
 
-const TIME_KEYS = ['seconds', 'second', 'time', 'timeseconds', 't', 'offset'];
-const PCT_KEYS = ['memberftppercent', 'ftppercent', 'ftp_percent', 'percentftp', 'targetftppercent', 'percent', 'power'];
+const TIME_KEYS = ['tick', 'seconds', 'second', 'time', 'timeseconds', 't', 'offset'];
+// FtpPercent must come first. Despite its name, TR's MemberFtpPercent is the target
+// in watts at the member's FTP (FtpPercent × FTP / 100), so it is not used at all.
+const PCT_KEYS = ['ftppercent', 'ftp_percent', 'percentftp', 'targetftppercent', 'percent'];
 const NAME_KEYS = ['workoutname', 'name', 'title', 'displayname'];
 const DESC_KEYS = ['workoutdescription', 'description', 'goaldescription'];
 
@@ -35,6 +37,14 @@ interface Series {
 }
 
 function findSeries(root: Json): Series | undefined {
+  // Prefer the main workout's data: the response also holds an outdoor "Alternate"
+  // with its own WorkoutData.
+  const main = root?.Workout?.WorkoutData;
+  if (Array.isArray(main) && main.length > 1 && main[0] && typeof main[0] === 'object') {
+    const tk = keyOf(main[0], TIME_KEYS);
+    const pk = keyOf(main[0], PCT_KEYS);
+    if (tk && pk) return { t: main.map((x: Json) => Number(x[tk])), v: main.map((x: Json) => Number(x[pk])) };
+  }
   let best: Series | undefined;
   const seen = new Set<Json>();
   const visit = (o: Json, depth: number) => {
@@ -129,8 +139,9 @@ export function parseTrainerRoadJson(src: string | Json): Workout {
   if (!series) throw new Error("Couldn't find TrainerRoad workout data in this file");
   const steps = seriesToSteps(series);
   if (!steps.length) throw new Error('TrainerRoad workout has no intervals');
-  // Known shape (2024+): { Workout: { Details: { WorkoutName, WorkoutDescription, GoalDescription },
-  //                                   WorkoutData: [{ Seconds: <ms>, FtpPercent }] } }
+  // Known shapes: { Workout: { Details: { WorkoutName, WorkoutDescription, GoalDescription },
+  //                            WorkoutData: [{ Tick: <s>, FtpPercent, MemberFtpPercent }] } }
+  // (older captures used Seconds: <ms> instead of Tick)
   const details = j?.Workout?.Details ?? j?.Details;
   const strip = (h?: string) => h?.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
   const desc = [strip(details?.WorkoutDescription), strip(details?.GoalDescription)].filter(Boolean).join('\n\n');

@@ -158,6 +158,26 @@ describe('trainerroad json', () => {
     // auto-detected by parseWorkout
     expect(flatten(parseWorkout(JSON.stringify(raw), 'tr.json')).length).toBe(3);
   });
+
+  it('handles the Tick/MemberFtpPercent shape and ignores the outdoor alternate', () => {
+    // MemberFtpPercent is really watts at the member's FTP (252 here), not a percent
+    const series = (pcts: [number, number][]) => {
+      const out: { Tick: number; MemberFtpPercent: number; FtpPercent: number }[] = [];
+      let t = 0;
+      for (const [secs, pct] of pcts) for (let i = 0; i < secs; i++) out.push({ Tick: t++, MemberFtpPercent: pct * 2.52, FtpPercent: pct });
+      out.push({ Tick: t, MemberFtpPercent: out[out.length - 1].MemberFtpPercent, FtpPercent: out[out.length - 1].FtpPercent });
+      return out;
+    };
+    const raw = {
+      Workout: { Details: { WorkoutName: 'Nunburnholme', MemberFtp: 252 }, WorkoutData: series([[180, 50], [240, 110], [240, 40]]) },
+      Alternate: { Details: { WorkoutName: 'Nunburnholme' }, WorkoutData: series([[100, 60], [100, 120], [100, 30], [100, 60], [100, 30], [100, 60], [100, 30]]) },
+    };
+    const w = parseWorkout(JSON.stringify(raw));
+    expect(w.name).toBe('Nunburnholme');
+    const iv = flatten(w);
+    expect(iv.map((x) => x.duration)).toEqual([180, 240, 241]);
+    expect(iv.map((x) => x.powerStart)).toEqual([0.5, 1.1, 0.4]);
+  });
 });
 
 describe('engine', () => {
