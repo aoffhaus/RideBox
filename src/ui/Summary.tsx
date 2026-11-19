@@ -51,7 +51,7 @@ function StravaPanel({ ride, connected, onUpload }: { ride: RideRecord; connecte
         </div>
         {st.error && <div className="small strava-error">{st.error}</div>}
         <div className="muted small strava-status">
-          Renaming the ride here renames it on Strava too. To make it private (Only You) or delete it, open it on Strava and use the ⋯ menu: Strava doesn&apos;t let apps do either.
+          Renaming the ride here renames it on Strava too.
         </div>
       </div>
     );
@@ -105,7 +105,7 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
   };
   const del = () => {
     const onStrava = ride.strava?.status === 'done';
-    if (confirm(onStrava ? 'Delete this ride from RideBox? It stays on Strava (delete it there if you want it gone).' : 'Delete this ride?')) onDelete(ride);
+    if (confirm(onStrava ? 'Delete this ride from RideBox? (The Strava activity is not affected.)' : 'Delete this ride from RideBox?')) onDelete(ride);
   };
   return (
     <div className="page">

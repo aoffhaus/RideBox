@@ -46,7 +46,7 @@ Nothing uploads automatically. On a ride's summary (open it from History any tim
 - **Upload to Strava** sends it as a virtual (trainer) ride with one lap per interval. Tick **Hide from followers' feeds** to mute it.
 - **Delete ride** removes it from RideBox.
 
-Strava's API doesn't let apps upload an activity as *Only You* or delete one. To keep uploads private, set Strava's **Privacy Controls → Activities** to *Only You* (new uploads use that default). To delete an uploaded activity, use the ⋯ menu on Strava. Re-uploading a ride that's already on Strava links the existing activity rather than creating a duplicate.
+Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads private, set Strava's **Privacy Controls → Activities** to *Only You* (new uploads use that default). Re-uploading a ride that's already on Strava links the existing activity rather than creating a duplicate.
 
 The client secret and tokens stay in the browser's IndexedDB and are only sent to strava.com.
 
