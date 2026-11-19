@@ -28,6 +28,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const [showHelp, setShowHelp] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const closeSettings = useCallback(() => setShowSettings(false), []);
+  const getStats = useCallback(() => worldRef.current?.stats, []);
   const [winH, setWinH] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setWinH(window.innerHeight);
@@ -41,29 +42,43 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const engine = session.engine;
   const ftp = settings.ftp;
 
+  // In-ride settings: apply visuals live, then persist like the Settings page.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const camModeRef = useRef<CameraMode>('chase');
+
   useEffect(() => {
     // dev aid: ?d=4500 starts the ride 4.5 km into the lap (handy for checking scenery)
     const d0 = Number(new URLSearchParams(window.location.search).get('d'));
     if (d0 > 0 && session.distance === 0) session.distance = d0;
-    const view = new WorldView(viewRef.current!, session, settings.graphics, settings.gradeExaggeration);
-    worldRef.current = view;
-    view.setEffortReactions(settings.effortReactions);
     session.start();
     const id = window.setInterval(() => setSnap(session.snapshot()), 200);
     return () => {
       window.clearInterval(id);
       session.stop();
-      view.dispose();
     };
   }, [session]);
 
-  // In-ride settings: apply visuals live, then persist like the Settings page.
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
+  // The 3D view; rebuilt when the graphics quality changes (the ride keeps going).
+  useEffect(() => {
+    const cur = settingsRef.current;
+    const view = new WorldView(viewRef.current!, session, settings.graphics, cur.gradeExaggeration);
+    worldRef.current = view;
+    view.setEffortReactions(cur.effortReactions);
+    view.setSprintEffect(cur.sprintEffect);
+    view.setCamera(camModeRef.current);
+    return () => {
+      camModeRef.current = view.cameraMode;
+      worldRef.current = null;
+      view.dispose();
+    };
+  }, [session, settings.graphics]);
   const applyRideSettings = useCallback(
     (patch: RideSettingsPatch) => {
       if (patch.gradeExaggeration != null) worldRef.current?.setGradeExaggeration(patch.gradeExaggeration);
       if (patch.effortReactions != null) worldRef.current?.setEffortReactions(patch.effortReactions);
+      if (patch.sprintEffect != null) worldRef.current?.setSprintEffect(patch.sprintEffect);
+      // a graphics change rebuilds the view via the effect above once the setting is saved
       onSettingsChange?.({ ...settingsRef.current, ...patch });
     },
     [onSettingsChange],
@@ -222,7 +237,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
         </div>
       )}
 
-      {showSettings && <RideSettings settings={settings} onChange={applyRideSettings} onClose={closeSettings} />}
+      {showSettings && <RideSettings settings={settings} onChange={applyRideSettings} onClose={closeSettings} getStats={getStats} />}
 
       {showHelp && (
         <div className="modal-bg" onClick={() => setShowHelp(false)}>

@@ -9,6 +9,7 @@ import { themeFor } from './themes';
 import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
 import { EffortMeter } from './effort';
 import { PostFX, DEFAULT_BLOOM } from './postfx';
+import { AdaptiveQuality, qualityLevels } from './adaptive';
 import { DEFAULT_SKY, bakeEnvironment, buildPhysicalSky, sunDirection } from './sky';
 import { formatDuration, intervalFtpFraction, toWatts, zoneFor } from '../workout/model';
 
@@ -743,6 +744,9 @@ export class WorldView {
   /** live effort → world reactions (wind, clouds, grading, glow, camera) */
   private effortMeter = new EffortMeter();
   private reactivity = 1;
+  private sprintK = 1;
+  /** lowers resolution (then AO) when the frame rate drops; see adaptive.ts */
+  private adaptive: AdaptiveQuality;
   /** headlamp + rider fill (night themes); separate from the rider so it stays on in first person */
   private lampRig: THREE.Group | null = null;
   private raf = 0;
@@ -777,7 +781,8 @@ export class WorldView {
     this.route = exaggerateRoute(session.route, exaggeration);
     const high = quality === 'high';
     this.renderer = new THREE.WebGLRenderer({ antialias: high, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(high ? Math.min(window.devicePixelRatio, 2) : 1);
+    this.adaptive = new AdaptiveQuality(qualityLevels(quality, window.devicePixelRatio));
+    this.renderer.setPixelRatio(this.adaptive.level.pixelRatio);
     this.renderer.shadowMap.enabled = high;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -896,6 +901,27 @@ export class WorldView {
     this.buildWorld();
     // the camera eases its height toward the new road (see loop), so no pop
   }
+  /** Sprint "rush" strength (speed blur, FOV kick, glow flare): 0 = off, 1 = normal, up to 1.5. */
+  setSprintEffect(k: number) {
+    this.sprintK = Math.min(1.5, Math.max(0, k));
+  }
+
+  /** Live render stats for the in-ride FPS readout. */
+  get stats() {
+    const l = this.adaptive.level;
+    return { fps: this.adaptive.fps, pixelRatio: l.pixelRatio, ao: !!this.post && l.ao, level: this.adaptive.index, levels: this.adaptive.levels.length };
+  }
+
+  private applyQuality() {
+    const l = this.adaptive.level;
+    this.renderer.setPixelRatio(l.pixelRatio);
+    if (this.post) {
+      this.post.composer.setPixelRatio(l.pixelRatio);
+      this.post.ao.enabled = l.ao;
+    }
+    this.resize();
+  }
+
   /** How strongly the world reacts to effort: 0 = off, 1 = normal, up to 1.5 = dramatic. */
   setEffortReactions(k: number) {
     this.reactivity = Math.min(1.5, Math.max(0, k));
@@ -962,8 +988,10 @@ export class WorldView {
   private loop = () => {
     this.raf = requestAnimationFrame(this.loop);
     const now = performance.now();
-    const dt = Math.min(0.1, (now - this.last) / 1000);
+    const rawDt = (now - this.last) / 1000;
+    const dt = Math.min(0.1, rawDt);
     this.last = now;
+    if (this.adaptive.frame(rawDt)) this.applyQuality();
     const s = this.session.snapshot();
     const route = this.route;
 
@@ -1060,7 +1088,7 @@ export class WorldView {
     const effort = this.effortMeter.update(dt, s.paused ? 0 : s.power3s || 0, ftp);
     const kR = this.reactivity;
     fxBuild.value = Math.min(1, effort.build * kR);
-    fxSurge.value = Math.min(1, effort.surge * kR);
+    fxSurge.value = Math.min(1, effort.surge * this.sprintK);
     this.theme.update?.(time, { ...effort, build: fxBuild.value, surge: fxSurge.value, level: Math.max(fxBuild.value, fxSurge.value) });
     if (this.post) this.post.render(dt);
     else this.renderer.render(this.scene, this.camera);
