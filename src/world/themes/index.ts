@@ -11,6 +11,7 @@ import { AURORA, auroraRoad, buildAurora } from './aurora';
 import { ALIEN, alienRoad, alienUpdate, buildAlien } from './alien';
 import { NEON_CITY, buildNeonCity, neonCityRoad, neonCityUpdate } from './neoncity';
 import { ICELAND_SUN, buildIceland, icelandRoad } from './iceland';
+import { CRYSTAL, buildCrystal, crystalRoad } from './crystal';
 
 export interface ThemeBuildOptions {
   high: boolean;
@@ -261,7 +262,31 @@ const ICELAND: Theme = {
   cloudShadows: 0.55,
 };
 
-const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT, alien: ALIEN_WORLD, neoncity: NEONCITY, iceland: ICELAND };
+const CRYSTAL_CANYON: Theme = {
+  id: 'crystal',
+  skyTop: CRYSTAL.skyTop,
+  skyHorizon: CRYSTAL.skyHorizon,
+  haze: CRYSTAL.haze,
+  fogNear: 120,
+  fogFar: 1700,
+  hemiSky: '#c4b2ff',
+  hemiGround: '#3b2c52',
+  hemiIntensity: 2.6,
+  sunColor: '#ffc9a3',
+  sunIntensity: 2.2,
+  exposure: 1.0,
+  groundColor: '#3a2f4a',
+  clouds: false, // the theme brings its own faceted clouds
+  build: buildCrystal,
+  roadTexture: crystalRoad,
+  bloom: { strength: 0.55, radius: 0.55, threshold: 1.0 },
+  physicalSky: false, // stylised dusk gradient dome
+  sun: CRYSTAL.sun,
+  cloudShadows: 0,
+  posts: false, // glowing crystal markers replace them
+};
+
+const THEMES: Record<ThemeId, Theme> = { countryside: COUNTRYSIDE, bigsur: BIGSUR, redwoods: REDWOODS, zion: ZION, synthwave: SYNTHWAVE, aurora: AURORA_NIGHT, alien: ALIEN_WORLD, neoncity: NEONCITY, iceland: ICELAND, crystal: CRYSTAL_CANYON };
 
 export function themeFor(route: Route): Theme {
   return THEMES[route.preset.theme ?? 'countryside'] ?? COUNTRYSIDE;

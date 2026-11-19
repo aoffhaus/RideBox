@@ -43,6 +43,7 @@ const PALETTES: Record<string, Palette> = {
   alien: { ground: [72, 40, 110], light: [96, 58, 140], dark: [48, 26, 82], patch: 'rgba(64,224,200,0.3)', water: '#1b8f9a', shore: '#8ffff0' },
   neoncity: { ground: [30, 27, 40], light: [46, 40, 60], dark: [18, 16, 26], patch: 'rgba(255,47,142,0.2)', water: '#0b1830', shore: '#21e4ff' },
   iceland: { ground: [120, 112, 98], light: [176, 150, 106], dark: [70, 68, 66], patch: 'rgba(112,150,64,0.45)', water: '#a6cfd8', shore: '#d6e6e8' },
+  crystal: { ground: [52, 42, 72], light: [74, 60, 102], dark: [34, 28, 50], patch: 'rgba(154,91,255,0.3)', water: '#2fd9c8', shore: '#bff7f0' },
 };
 
 interface Blob {

@@ -9,5 +9,6 @@ import aurora from '../assets/routes/aurora.jpg';
 import alien from '../assets/routes/alien.jpg';
 import neoncity from '../assets/routes/neoncity.jpg';
 import iceland from '../assets/routes/iceland.jpg';
+import crystal from '../assets/routes/crystal.jpg';
 
-export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, alien, neoncity, iceland };
+export const ROUTE_IMAGES: Record<RoutePresetId, string> = { rolling, bigsur, redwoods, zion, synthwave, aurora, alien, neoncity, iceland, crystal };
