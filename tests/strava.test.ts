@@ -6,7 +6,7 @@ vi.mock('../src/storage/db', () => ({
   setFlag: async (k: string, v: unknown) => void kv.set(k, v),
 }));
 
-import { updateActivity, authorizeUrl, canReadActivities, completeOAuth, interpretUpload, loadStrava, parseOAuthReturn, redirectUri, uploadFit, DEFAULT_STRAVA } from '../src/strava/strava';
+import { updateActivity, authorizeUrl, canReadActivities, initStrava, isConnected, parseServerReturn, stravaMode, completeOAuth, interpretUpload, loadStrava, parseOAuthReturn, redirectUri, uploadFit, DEFAULT_STRAVA } from '../src/strava/strava';
 
 afterEach(() => {
   kv.clear();
@@ -77,7 +77,7 @@ describe('strava upload', () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push(`${init?.method ?? 'GET'} ${url}`);
         if (url.endsWith('/oauth/token')) return new Response(JSON.stringify({ access_token: 'new', refresh_token: 'R2', expires_at: 2e9 }));
-        expect((init?.headers as any).Authorization).toBe('Bearer new');
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer new');
         if (url.endsWith('/uploads')) {
           const f = init!.body as FormData;
           expect(f.get('data_type')).toBe('fit');
@@ -109,7 +109,7 @@ describe('strava activity update', () => {
     const [url, init] = fetchMock.mock.calls[0] as any;
     expect(url).toBe('https://www.strava.com/api/v3/activities/99');
     expect(init.method).toBe('PUT');
-    expect(init.headers.Authorization).toBe('Bearer A');
+    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer A');
     expect(JSON.parse(init.body)).toEqual({ name: 'New name', hide_from_home: true });
   });
 
@@ -117,5 +117,36 @@ describe('strava activity update', () => {
     kv.set('strava', { ...DEFAULT_STRAVA, clientId: '1', clientSecret: 's', accessToken: 'A', refreshToken: 'R', expiresAt: 2e9 });
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 404 })));
     await expect(updateActivity(1, { name: 'x' })).rejects.toThrow(/no longer on Strava/);
+  });
+});
+
+// keep last: switches the module into server mode
+describe('strava held by the Worker', () => {
+  it('detects the Worker, wipes browser-held secrets, and calls Strava through the proxy', async () => {
+    kv.set('strava', { clientId: '1', clientSecret: 'old-secret', refreshToken: 'R' });
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (u: string) => {
+        calls.push(u);
+        if (u === 'api/strava/status') return new Response(JSON.stringify({ configured: true, connected: true, athleteName: 'Pat', scope: 'activity:write' }), { headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ id: 7, error: null, status: 'ready', activity_id: 99 }), { headers: { 'Content-Type': 'application/json' } });
+      }),
+    );
+    await initStrava();
+    expect(stravaMode()).toBe('server');
+    expect(kv.get('strava')).toEqual({});
+    const c = await loadStrava();
+    expect(isConnected(c)).toBe(true);
+    expect(c.clientSecret).toBe('');
+    expect(await uploadFit(new Uint8Array([1]), { name: 'r', externalId: 'x', fileName: 'r.fit' })).toEqual({ status: 'done', activityId: 99 });
+    expect(calls).toContain('api/strava/proxy/uploads');
+    expect(calls.some((u) => u.includes('strava.com'))).toBe(false);
+  });
+
+  it('reads the Worker sign-in result', () => {
+    expect(parseServerReturn('?strava=connected')).toEqual({ ok: true });
+    expect(parseServerReturn('?strava=error&message=nope')).toEqual({ error: 'nope' });
+    expect(parseServerReturn('')).toBeNull();
   });
 });

@@ -34,11 +34,14 @@ The arch ahead of you sits where you'll be when the current interval ends. Its p
 
 ## Strava upload
 
-You connect Strava through your own free Strava API app (one-time setup):
+On your private Cloudflare site, Strava is held by the server: your Strava API app's secret is a Worker secret, the Worker keeps your Strava sign-in, and the browser never sees either. One-time setup:
 
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app (any name, category and website).
-2. Set **Authorization Callback Domain** to the host RideBox is served from, e.g. `ridebox.<you>.workers.dev` (or `localhost` for `npm run dev`).
-3. In RideBox **Settings → Strava**, paste the app's **Client ID** and **Client Secret** and click **Connect Strava**. Allow uploads on Strava's page.
+2. Set **Authorization Callback Domain** to your RideBox host, e.g. `ridebox.<you>.workers.dev`.
+3. In the Cloudflare dashboard → Workers & Pages → **ridebox** → Settings → Variables and Secrets, add the secrets `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` from that Strava page.
+4. In RideBox **Settings → Strava**, click **Connect Strava** and allow uploads and reading your activities.
+
+(Running RideBox without the Worker, e.g. `npm run dev`, falls back to pasting the Client ID and Secret into Settings; they then stay in that browser.)
 
 Nothing uploads automatically. On a ride's summary (open it from History any time):
 
@@ -48,7 +51,6 @@ Nothing uploads automatically. On a ride's summary (open it from History any tim
 
 Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads private, set Strava's **Privacy Controls → Activities** to *Only You* (new uploads use that default). Re-uploading a ride that's already on Strava links the existing activity rather than creating a duplicate.
 
-The client secret and tokens are stored in the browser's IndexedDB and in your private, Access-protected Cloudflare database (so every browser stays connected). They are only ever sent to strava.com.
 
 ## Calendar, plans and the Claude coach
 
@@ -138,6 +140,8 @@ One-time setup:
    npx wrangler secret put ACCESS_AUD           # the AUD tag from step 4
    npx wrangler secret put ALLOWED_EMAILS       # your email (comma-separate to add more)
    npx wrangler secret put ANTHROPIC_API_KEY    # for the Claude coach
+   npx wrangler secret put STRAVA_CLIENT_ID     # see "Strava upload"
+   npx wrangler secret put STRAVA_CLIENT_SECRET
    ```
 6. **Automatic deploys:** in GitHub → Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *D1: Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
 7. **Move your data, then retire the old public copy.** Browsers keep data per site address, so rides saved on the GitHub Pages copy don't appear on the new domain by themselves:

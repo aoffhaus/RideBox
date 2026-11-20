@@ -17,7 +17,7 @@ import { History } from './ui/History';
 import { SettingsPage } from './ui/SettingsPage';
 import { WorkoutChart } from './ui/WorkoutChart';
 import { distUnit, elevUnit, fmtDist, fmtElev } from './ui/format';
-import { DEFAULT_STRAVA, canReadActivities, completeOAuth, isConnected, loadStrava, parseOAuthReturn, type StravaConfig } from './strava/strava';
+import { DEFAULT_STRAVA, canReadActivities, completeOAuth, initStrava, isConnected, loadStrava, parseOAuthReturn, parseServerReturn, type StravaConfig } from './strava/strava';
 import { renameRide, uploadRide } from './strava/uploadRide';
 import { sync, type SyncStatus } from './storage/sync';
 import { importStravaActivities } from './strava/activities';
@@ -37,7 +37,9 @@ import { Fitness } from './ui/Fitness';
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
 let pendingOAuth = parseOAuthReturn(location.search);
-if (pendingOAuth) history.replaceState(null, '', location.pathname);
+// on the private site the Worker runs the sign-in and comes back with ?strava=connected|error
+let serverReturn = parseServerReturn(location.search);
+if (pendingOAuth || serverReturn) history.replaceState(null, '', location.pathname);
 
 const SYNC_LABEL: Record<SyncStatus, string> = { off: '', syncing: '⟳ Syncing', synced: '✓ Synced', offline: '⚠ Offline', error: '⚠ Sync error' };
 
@@ -151,9 +153,17 @@ export function App() {
     (async () => {
       // pull from the private backend first so this browser starts from the shared data
       await sync.start();
+      await initStrava();
       setSettings(await loadSettings());
       let sc = await loadStrava();
       setStrava(sc);
+      const sret = serverReturn;
+      serverReturn = null;
+      if (sret) {
+        setTab('settings');
+        if ('error' in sret) setError(`Strava: ${sret.error}`);
+        else setNotice(`Strava connected${sc.athleteName ? ` as ${sc.athleteName}` : ''}. Upload rides from their summary page.`);
+      }
       // returning from Strava's authorization page?
       const ret = pendingOAuth;
       pendingOAuth = null;

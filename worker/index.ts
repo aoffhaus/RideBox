@@ -6,8 +6,9 @@
 import { verifyAccess, type AuthEnv } from './auth';
 import { blob, pull, push, type SyncEnv } from './sync';
 import { coach, type CoachEnv } from './coach';
+import { strava, type StravaEnv } from './strava';
 
-export interface Env extends AuthEnv, SyncEnv, CoachEnv {
+export interface Env extends AuthEnv, SyncEnv, CoachEnv, StravaEnv {
   ASSETS: Fetcher;
 }
 
@@ -36,6 +37,7 @@ async function api(req: Request, env: Env, url: URL, email: string, ctx: Executi
   }
   const m = /^POST \/api\/coach\/(plan|adapt|today)$/.exec(route);
   if (m) return coach(env, req, m[1], ctx);
+  if (url.pathname.startsWith('/api/strava/')) return strava(env, req, url, url.pathname.slice('/api/strava/'.length));
   return json({ error: 'Not found' }, 404);
 }
 

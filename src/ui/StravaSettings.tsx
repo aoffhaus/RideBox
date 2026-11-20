@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authorizeUrl, canReadActivities, disconnect, isConnected, redirectUri, saveStrava, type StravaConfig } from '../strava/strava';
+import { authorizeUrl, canReadActivities, connectUrl, disconnect, isConnected, redirectUri, saveStrava, type StravaConfig } from '../strava/strava';
 
 /** Settings → Strava: API app credentials, connect / disconnect, auto-upload. */
 export function StravaSettings({ config, onChange }: { config: StravaConfig; onChange: (c: StravaConfig) => void }) {
@@ -17,6 +17,30 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
     // save the credentials first: the page reloads when Strava sends us back
     await update({ ...config, clientId: clientId.trim(), clientSecret: clientSecret.trim() });
     location.href = authorizeUrl(clientId);
+  }
+
+  // the private site: the Worker holds the Strava app's secret and the tokens
+  if (config.server && !config.server.configured) {
+    return (
+      <>
+        <h2>Strava</h2>
+        <p className="muted">Strava is set up on your private Cloudflare site, once:</p>
+        <ol className="steps">
+          <li>
+            On{' '}
+            <a href="https://www.strava.com/settings/api" target="_blank" rel="noreferrer">
+              strava.com/settings/api
+            </a>
+            , create an app (or use your existing one) and set <b>Authorization Callback Domain</b> to <code>{callbackDomain}</code>.
+          </li>
+          <li>
+            In the Cloudflare dashboard: Workers &amp; Pages → <b>ridebox</b> → Settings → Variables and Secrets, add two secrets:{' '}
+            <code>STRAVA_CLIENT_ID</code> and <code>STRAVA_CLIENT_SECRET</code> (from that Strava page). Then reload this page.
+          </li>
+        </ol>
+        <p className="muted small">The secret and your Strava sign-in stay on the server; this browser never sees them.</p>
+      </>
+    );
   }
 
   return (
@@ -40,10 +64,18 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
             <p className="small">
               <b>Reconnect to import activities:</b> this connection can only upload. Click <b>Reconnect</b> and allow “View data about your private
               activities” so outdoor rides count toward fitness and training plans.{' '}
-              <button onClick={() => (location.href = authorizeUrl(config.clientId))}>Reconnect</button>
+              <button onClick={() => (location.href = connectUrl(config))}>Reconnect</button>
             </p>
           )}
         </div>
+      ) : config.server ? (
+        <>
+          <p className="muted">Connect your Strava account to upload rides and count outdoor rides toward fitness.</p>
+          <button className="strava" onClick={() => (location.href = connectUrl(config))}>
+            Connect Strava
+          </button>
+          <p className="muted small">Strava asks you to allow uploads and reading your activities. Your sign-in is kept on your private server, not in this browser.</p>
+        </>
       ) : (
         <>
           <p className="muted">

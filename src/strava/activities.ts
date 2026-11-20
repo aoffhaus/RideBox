@@ -3,7 +3,7 @@
 
 import { getFlag, listAll, putOne, setFlag } from '../storage/db';
 import type { StravaActivity } from '../training/model';
-import { API, accessToken, describeError } from './strava';
+import { describeError, stravaFetch } from './strava';
 
 const CURSOR_KEY = 'strava-import-after';
 /** How far back the first import reaches. */
@@ -49,14 +49,13 @@ export function toActivity(a: SummaryActivity): StravaActivity {
 
 /** Fetches activities newer than the last import. Returns how many were added or updated. */
 export async function importStravaActivities(): Promise<number> {
-  const token = await accessToken();
   const stored = (await getFlag(CURSOR_KEY)) as number | undefined;
   // re-read the last 2 days each time: activities can be edited or arrive late
   const after = Math.floor((stored ? stored - 2 * 86_400_000 : Date.now() - FIRST_IMPORT_DAYS * 86_400_000) / 1000);
   let newest = stored ?? 0;
   let n = 0;
   for (let page = 1; page <= 20; page++) {
-    const res = await fetch(`${API}/athlete/activities?after=${after}&per_page=100&page=${page}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await stravaFetch(`athlete/activities?after=${after}&per_page=100&page=${page}`);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new Error('Strava didn’t allow reading activities. Disconnect and connect Strava again in Settings to grant it.');
