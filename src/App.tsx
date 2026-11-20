@@ -31,7 +31,7 @@ import { adaptSuggestion, type CoachState, type PlanResult } from './training/co
 import type { AdaptInput } from './training/coachSchema';
 import { addDays } from './training/load';
 import { newPlanned } from './training/calendar';
-import { AdaptReview, PlanBuilder, TodayCard } from './ui/Coach';
+import { AdaptReview, PlanBuilder, PlannedCoach, TodayCard } from './ui/Coach';
 import { PlanManager } from './ui/Plans';
 import { invalidateStreams, syncMissingStreams } from './strava/streams';
 import type { Workout } from './workout/model';
@@ -726,6 +726,7 @@ export function App() {
           levels={levels}
           onSave={saveCalendar}
           onDelete={deleteCalendar}
+          coachPanel={coachOn ? (p, onSwap) => <PlannedCoach key={p.id} state={coachState} planned={p} onSwap={onSwap} /> : undefined}
           onRide={(p) => {
             setSelected(`cal:${p.id}`);
             setTab('ride');
