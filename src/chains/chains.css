@@ -9,7 +9,8 @@
   --ct-radius: 12px;
   font-size: 15px;
 }
-.ct-phone { padding: 4px var(--m-gutter, 16px) 0; }
+.ct-phone .ct-body { padding: 12px var(--m-gutter, 16px) 0; }
+.ct-phone .m-head .ct-subnav { margin: 0; }
 
 .ct h2, .ct h3 { margin: 0 0 8px; line-height: 1.25; }
 .ct h2 { font-size: 17px; }
