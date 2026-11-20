@@ -4,7 +4,7 @@
 import type { RideRecord } from '../app/recorder';
 import { uid } from '../storage/db';
 import type { Step, Workout } from '../workout/model';
-import { addDays, dayKey, dayStart } from './load';
+import { addDays, dayKey, dayStart, stravaCopyChecker } from './load';
 import { isRide, type DayKey, type PlannedWorkout, type StravaActivity } from './model';
 
 /** Monday of the week containing `k`. */
@@ -34,7 +34,7 @@ export function reconcile(
 ): PlannedWorkout[] {
   const usedRides = new Set(cal.map((p) => p.rideId).filter(Boolean));
   const usedActs = new Set(cal.map((p) => p.stravaId).filter(Boolean));
-  const uploaded = new Set(rides.map((r) => r.strava?.activityId).filter(Boolean).map(String));
+  const isCopy = stravaCopyChecker(rides);
   const changed: PlannedWorkout[] = [];
   const open = cal
     .filter((p) => (p.status === 'planned' || p.status === 'missed') && p.date <= todayKey)
@@ -64,7 +64,7 @@ export function reconcile(
         dayKey(a.start) === p.date &&
         isRide(a.sportType) &&
         !usedActs.has(a.id) &&
-        !uploaded.has(String(a.stravaId)) &&
+        !isCopy(a) &&
         a.movingTime >= plannedSeconds(p) / 3,
     );
     if (act) {

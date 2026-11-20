@@ -97,3 +97,21 @@ describe('scaleWorkout', () => {
     expect(scaleWorkout(e, 1.05).name).toBe('Threshold (harder)');
   });
 });
+
+describe('Strava copies of RideBox rides', () => {
+  it('never links the Strava copy of an in-app ride to another planned workout', () => {
+    const cal = [pw('a', '2026-11-10'), pw('b', '2026-11-10')];
+    // same ride reached Strava another way (not uploaded by RideBox): starts within 2 minutes
+    const copy = { ...act(77, '2026-11-10'), start: at('2026-11-10') + 60_000 };
+    const out = reconcile(cal, [ride('r1', '2026-11-10', 'a')], [copy], secs, '2026-11-19');
+    expect(out.find((p) => p.id === 'a')).toMatchObject({ status: 'done', rideId: 'r1' });
+    expect(out.find((p) => p.id === 'b')).toMatchObject({ status: 'missed' });
+  });
+
+  it('only downloads streams for activities that are not copies and not saved yet', async () => {
+    const { streamCandidates } = await import('../src/strava/streams');
+    const r = ride('r1', '2026-11-10', 'a', 55);
+    const acts = [act(55, '2026-11-10'), { ...act(56, '2026-11-11'), start: at('2026-11-10') + 30_000 }, act(57, '2026-11-12'), act(58, '2026-11-13')];
+    expect(streamCandidates(acts, [r], new Set(['strava-58'])).map((a) => a.stravaId)).toEqual([57]);
+  });
+});

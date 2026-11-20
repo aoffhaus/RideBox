@@ -24,6 +24,7 @@ interface SummaryActivity {
   device_watts?: boolean;
   kilojoules?: number;
   average_heartrate?: number;
+  average_cadence?: number;
   max_heartrate?: number;
   trainer?: boolean;
 }
@@ -43,6 +44,7 @@ export function toActivity(a: SummaryActivity): StravaActivity {
     deviceWatts: a.device_watts,
     kj: a.kilojoules,
     avgHr: a.average_heartrate,
+    avgCadence: a.average_cadence,
     maxHr: a.max_heartrate,
     trainer: a.trainer,
   };
@@ -77,21 +79,20 @@ export async function importStravaActivities(): Promise<number> {
 
 export const listStravaActivities = () => listAll<StravaActivity>('strava_acts');
 
-const streamCache = new Map<number, Promise<StravaStreams>>();
-
-/** Second-by-second power, heart rate and cadence for one activity (fetched on demand, kept for the session). */
-export function fetchStreams(stravaId: number): Promise<StravaStreams> {
-  let p = streamCache.get(stravaId);
-  if (!p) {
-    p = (async () => {
-      const res = await stravaFetch(`activities/${stravaId}/streams?keys=time,watts,heartrate,cadence,moving&key_by_type=true`);
-      const json = await res.json().catch(() => ({}));
-      if (res.status === 404) return {};
-      if (!res.ok) throw new Error(`Couldn’t load the activity from Strava (${res.status}): ${describeError(json)}`);
-      return json as StravaStreams;
-    })();
-    p.catch(() => streamCache.delete(stravaId));
-    streamCache.set(stravaId, p);
+export class StravaHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
   }
-  return p;
+}
+
+/** Second-by-second power, heart rate and cadence for one activity. Empty when Strava has none (manual entries). */
+export async function fetchStreams(stravaId: number): Promise<StravaStreams> {
+  const res = await stravaFetch(`activities/${stravaId}/streams?keys=time,watts,heartrate,cadence,moving&key_by_type=true`);
+  const json = await res.json().catch(() => ({}));
+  if (res.status === 404) return {};
+  if (!res.ok) {
+    const msg = res.status === 429 ? 'Strava’s request limit was reached; try again in 15 minutes.' : describeError(json);
+    throw new StravaHttpError(`Couldn’t load the activity from Strava (${res.status}): ${msg}`, res.status);
+  }
+  return json as StravaStreams;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings, StoredWorkout } from '../storage/db';
-import { copyTo, monthWeeks, moveTo, newPlanned, scaleWorkout, weekStart } from '../training/calendar';
+import { copyTo, monthWeeks, moveTo, newPlanned, scaleWorkout } from '../training/calendar';
 import { addDays, dayKey, dayStart, loadEntries, today, type LoadEntry } from '../training/load';
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../training/model';
 import { flatten, formatDuration, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
@@ -9,6 +9,7 @@ import { WorkoutChart } from './WorkoutChart';
 import { rateWorkout, type Levels } from '../training/levels';
 import { LevelBadge } from './Levels';
 import { ActualDetail } from './ActualDetail';
+import { CardActual } from './CardActual';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PHASE_COLORS: Record<string, string> = { base: '#2f80ed', build: '#27ae60', specialty: '#f2994a', peak: '#f2994a', taper: '#9b8afb', recovery: '#8a8f98', race: '#eb5757' };
@@ -44,7 +45,6 @@ function workoutColor(w: Workout, ftp: number) {
 export function Calendar(props: CalendarProps) {
   const { calendar, plans, rides, acts, workouts, settings, levels, onSave, onDelete, onRide, onOpenRide } = props;
   const t = today();
-  const [view, setView] = useState<'month' | 'week'>(() => (window.innerWidth < 700 ? 'week' : 'month'));
   const [anchor, setAnchor] = useState<DayKey>(t);
   const [open, setOpen] = useState<string | null>(null);
   const [picker, setPicker] = useState<DayKey | null>(null);
@@ -53,7 +53,7 @@ export function Calendar(props: CalendarProps) {
   const [openAct, setOpenAct] = useState<LoadEntry | null>(null);
 
   const a = dayStart(anchor);
-  const weeks = view === 'month' ? monthWeeks(a.getFullYear(), a.getMonth()) : [weekStart(anchor)];
+  const weeks = monthWeeks(a.getFullYear(), a.getMonth());
   const byDay = useMemo(() => {
     const m = new Map<DayKey, PlannedWorkout[]>();
     for (const p of calendar) m.set(p.date, [...(m.get(p.date) ?? []), p]);
@@ -68,17 +68,15 @@ export function Calendar(props: CalendarProps) {
     return m;
   }, [entries]);
   const stats = useMemo(() => new Map(calendar.map((p) => [p.id, plannedStats(flatten(p.workout), settings.ftp)])), [calendar, settings.ftp]);
+  const intervalsById = useMemo(() => new Map(calendar.map((p) => [p.id, flatten(p.workout)])), [calendar]);
+  const ridesById = useMemo(() => new Map(rides.map((r) => [r.id, r])), [rides]);
+  const actsById = useMemo(() => new Map(acts.map((x) => [x.id, x])), [acts]);
+  const tssById = useMemo(() => new Map(entries.map((e) => [e.id, e.tss])), [entries]);
   const activePlan = plans.find((p) => p.active);
   const phaseOn = (k: DayKey) => activePlan?.phases.find((ph) => ph.start <= k && k <= ph.end);
 
-  const shift = (n: number) => {
-    if (view === 'week') setAnchor(addDays(anchor, 7 * n));
-    else setAnchor(dayKey(new Date(a.getFullYear(), a.getMonth() + n, 1)));
-  };
-  const title =
-    view === 'month'
-      ? a.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-      : `${dayStart(weeks[0]).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${dayStart(addDays(weeks[0], 6)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const shift = (n: number) => setAnchor(dayKey(new Date(a.getFullYear(), a.getMonth() + n, 1)));
+  const title = a.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
   function drop(date: DayKey, id: string, copy: boolean) {
     const p = calendar.find((x) => x.id === id);
@@ -100,10 +98,6 @@ export function Calendar(props: CalendarProps) {
         </div>
         <div className="row">
           {props.toolbar}
-          <div className="seg">
-            <button className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Month</button>
-            <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Week</button>
-          </div>
         </div>
       </div>
       {props.banner}
@@ -114,7 +108,7 @@ export function Calendar(props: CalendarProps) {
         </div>
       )}
 
-      <div className={`cal cal-view-${view}`}>
+      <div className="cal cal-view-month">
         <div className="cal-head">
           {DOW.map((d) => <div key={d}>{d}</div>)}
           <div>Week</div>
@@ -142,7 +136,7 @@ export function Calendar(props: CalendarProps) {
               {days.map((d) => {
                 const items = byDay.get(d) ?? [];
                 const extra = (actsByDay.get(d) ?? []).filter((e) => !linked.has(e.id));
-                const out = view === 'month' && dayStart(d).getMonth() !== a.getMonth();
+                const out = dayStart(d).getMonth() !== a.getMonth();
                 const phase = phaseOn(d);
                 return (
                   <div
@@ -174,6 +168,9 @@ export function Calendar(props: CalendarProps) {
                     </div>
                     {items.map((p) => {
                       const s = stats.get(p.id)!;
+                      const ride = p.rideId ? ridesById.get(p.rideId) : undefined;
+                      const act = p.stravaId ? actsById.get(p.stravaId) : undefined;
+                      const ridden = p.status === 'done' && (ride || act);
                       return (
                         <div
                           key={p.id}
@@ -201,14 +198,27 @@ export function Calendar(props: CalendarProps) {
                             {p.status === 'done' ? '✓ ' : p.status === 'missed' ? '✕ ' : p.status === 'skipped' ? '⤼ ' : ''}
                             {p.workout.name}
                           </div>
-                          <div className="cal-card-meta">
-                            {formatDuration(s.duration)} · TSS {Math.round(s.tss)}
-                            {p.origin === 'adapt' && <span className="tag">adapted</span>}
-                          </div>
-                          <div className="cal-card-meta">
-                            <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} compact={view === 'month'} />
-                          </div>
-                          {view === 'week' && <WorkoutChart intervals={flatten(p.workout)} ftp={settings.ftp} height={36} />}
+                          {ridden ? (
+                            <CardActual
+                              ride={ride}
+                              act={act}
+                              intervals={intervalsById.get(p.id)}
+                              ftp={settings.ftp}
+                              tss={tssById.get(ride?.id ?? act?.id ?? '')}
+                              plannedTss={s.tss}
+                            />
+                          ) : (
+                            <>
+                              <div className="cal-card-meta">
+                                {formatDuration(s.duration)} · TSS {Math.round(s.tss)}
+                                {p.origin === 'adapt' && <span className="tag">adapted</span>}
+                              </div>
+                              <div className="cal-card-meta">
+                                <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} compact />
+                              </div>
+                              <WorkoutChart intervals={intervalsById.get(p.id)!} ftp={settings.ftp} height={30} />
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -224,7 +234,12 @@ export function Calendar(props: CalendarProps) {
                         title={e.kind === 'strava' ? 'From Strava' : 'RideBox ride'}
                       >
                         <div className="cal-card-name">{e.kind === 'strava' ? '◆ ' : '● '}{e.name}</div>
-                        <div className="cal-card-meta">{formatDuration(e.seconds)} · TSS {Math.round(e.tss)}</div>
+                        <CardActual
+                          ride={e.kind === 'ridebox' ? ridesById.get(e.id) : undefined}
+                          act={e.kind === 'strava' ? actsById.get(e.id) : undefined}
+                          ftp={settings.ftp}
+                          tss={e.tss}
+                        />
                       </div>
                     ))}
                   </div>

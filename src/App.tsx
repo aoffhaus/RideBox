@@ -33,6 +33,7 @@ import { addDays } from './training/load';
 import { newPlanned } from './training/calendar';
 import { AdaptReview, PlanBuilder, TodayCard } from './ui/Coach';
 import { PlanManager } from './ui/Plans';
+import { invalidateStreams, syncMissingStreams } from './strava/streams';
 import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
 import { MobileApp } from './mobile/MobileApp';
@@ -175,7 +176,8 @@ export function App() {
   useEffect(() => sync.onStatus(setSyncStatus), []);
   useEffect(
     () =>
-      sync.onRemoteChange(async () => {
+      sync.onRemoteChange(async (stores) => {
+        if (stores.has('strava_streams')) invalidateStreams();
         // another browser changed something: reload what's on screen
         setSettings(await loadSettings());
         setStrava(await loadStrava());
@@ -223,7 +225,10 @@ export function App() {
       if (canReadActivities(sc)) {
         importStravaActivities()
           .then((n) => (n ? refresh() : undefined))
-          .catch((e) => console.warn('Strava import', e));
+          .catch((e) => console.warn('Strava import', e))
+          // then download second-by-second data for activities that don't have it yet
+          .then(async () => syncMissingStreams(await listAll<StravaActivity>('strava_acts'), await listRides()))
+          .catch((e) => console.warn('Strava streams', e));
       }
     })();
   }, [refresh]);

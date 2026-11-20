@@ -72,6 +72,7 @@ export interface StravaActivity {
   kj?: number;
   avgHr?: number;
   maxHr?: number;
+  avgCadence?: number;
   trainer?: boolean;
 }
 

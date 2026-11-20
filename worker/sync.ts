@@ -25,7 +25,7 @@ export async function deleteBlob(db: D1Database, key: string) {
   await db.prepare('DELETE FROM blob_chunks WHERE key = ?').bind(key).run();
 }
 
-export const SYNCED_STORES = ['workouts', 'rides', 'kv', 'calendar', 'plans', 'strava_acts'] as const;
+export const SYNCED_STORES = ['workouts', 'rides', 'kv', 'calendar', 'plans', 'strava_acts', 'strava_streams'] as const;
 const STORES = new Set<string>(SYNCED_STORES);
 
 /** Records above this size are chunked instead of stored in one row. */
