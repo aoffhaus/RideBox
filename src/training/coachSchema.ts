@@ -90,28 +90,21 @@ export type CoachRequest =
 
 // ---------- responses ----------
 
-/** A workout in RideBox JSON form: power/from/to in % FTP, duration in seconds. */
-export interface CoachStep {
-  type: 'steady' | 'ramp' | 'free' | 'repeat';
-  duration?: number;
-  power?: number;
-  from?: number;
-  to?: number;
-  cadence?: number;
-  label?: string;
-  count?: number;
-  steps?: CoachStep[];
-}
+/**
+ * A new workout written in RideBox shorthand (one step per line, see
+ * src/workout/parsers/text.ts), e.g. "10m 45-70%\n3x(12m @90% \"Sweet spot\", 4m @50%)\n8m 60-40%".
+ * Text keeps the answer schema simple enough for structured outputs.
+ */
 export interface CoachWorkout {
   name: string;
   description: string;
-  steps: CoachStep[];
+  text: string;
 }
 
-/** Either a library workout by exact name, or a new one. */
+/** Either a library workout by exact name, or a new one. Unused fields are empty strings. */
 export interface WorkoutChoice {
-  library_name?: string;
-  workout?: CoachWorkout;
+  library_name: string;
+  workout: CoachWorkout;
 }
 
 export interface PlanOutput {
@@ -124,10 +117,10 @@ export interface PlanOutput {
 
 export interface AdaptChange extends WorkoutChoice {
   op: 'replace' | 'move' | 'remove' | 'add';
-  /** calendar item id (replace / move / remove) */
-  id?: string;
-  /** new date (move / add, or replace on another day) */
-  date?: string;
+  /** calendar item id (replace / move / remove), "" for add */
+  id: string;
+  /** new date (move / add, or replace on another day), "" to keep the date */
+  date: string;
   reason: string;
 }
 export interface AdaptOutput {
@@ -142,53 +135,25 @@ export interface TodayOutput {
 
 // ---------- JSON schemas (structured outputs) ----------
 
-const INNER_STEP = {
-  type: 'object',
-  properties: {
-    type: { type: 'string', enum: ['steady', 'ramp', 'free'] },
-    duration: { type: 'integer', description: 'seconds' },
-    power: { type: 'integer', description: 'steady target, % of FTP' },
-    from: { type: 'integer', description: 'ramp start, % of FTP' },
-    to: { type: 'integer', description: 'ramp end, % of FTP' },
-    cadence: { type: 'integer', description: 'rpm, only when it matters' },
-    label: { type: 'string' },
-  },
-  required: ['type', 'duration'],
-  additionalProperties: false,
-} as const;
-
-const STEP = {
-  type: 'object',
-  properties: {
-    type: { type: 'string', enum: ['steady', 'ramp', 'free', 'repeat'] },
-    duration: { type: 'integer', description: 'seconds (not for repeat)' },
-    power: { type: 'integer', description: 'steady target, % of FTP' },
-    from: { type: 'integer', description: 'ramp start, % of FTP' },
-    to: { type: 'integer', description: 'ramp end, % of FTP' },
-    cadence: { type: 'integer' },
-    label: { type: 'string' },
-    count: { type: 'integer', description: 'repeat only: number of repetitions' },
-    steps: { type: 'array', items: INNER_STEP, description: 'repeat only: the steps repeated' },
-  },
-  required: ['type'],
-  additionalProperties: false,
-} as const;
-
+// Every property is required (no optional fields or unions): structured
+// outputs compiles the schema into a grammar, and optional nested fields make
+// that grammar too big. "Not applicable" is an empty string instead.
 const WORKOUT = {
   type: 'object',
   properties: {
-    name: { type: 'string' },
+    name: { type: 'string', description: 'empty when using a library workout' },
     description: { type: 'string', description: 'one or two sentences: purpose and how to ride it' },
-    steps: { type: 'array', items: STEP },
+    text: { type: 'string', description: 'RideBox shorthand, one step per line; empty when using a library workout' },
   },
-  required: ['name', 'description', 'steps'],
+  required: ['name', 'description', 'text'],
   additionalProperties: false,
 } as const;
 
 const CHOICE_PROPS = {
-  library_name: { type: 'string', description: 'exact name of a library workout to reuse' },
+  library_name: { type: 'string', description: 'exact name of a library workout to reuse, or empty to write a new workout' },
   workout: WORKOUT,
 } as const;
+const CHOICE_REQ = ['library_name', 'workout'] as const;
 
 export const PLAN_SCHEMA = {
   type: 'object',
@@ -224,7 +189,7 @@ export const PLAN_SCHEMA = {
       items: {
         type: 'object',
         properties: { date: { type: 'string', format: 'date' }, ...CHOICE_PROPS, rationale: { type: 'string' } },
-        required: ['date', 'rationale'],
+        required: ['date', ...CHOICE_REQ, 'rationale'],
         additionalProperties: false,
       },
     },
@@ -243,12 +208,12 @@ export const ADAPT_SCHEMA = {
         type: 'object',
         properties: {
           op: { type: 'string', enum: ['replace', 'move', 'remove', 'add'] },
-          id: { type: 'string', description: 'calendar item id for replace / move / remove' },
-          date: { type: 'string', format: 'date' },
+          id: { type: 'string', description: 'calendar item id for replace / move / remove; empty for add' },
+          date: { type: 'string', description: 'YYYY-MM-DD for move / add (or to replace on another day); empty to keep the date' },
           ...CHOICE_PROPS,
           reason: { type: 'string' },
         },
-        required: ['op', 'reason'],
+        required: ['op', 'id', 'date', ...CHOICE_REQ, 'reason'],
         additionalProperties: false,
       },
     },
@@ -266,7 +231,7 @@ export const TODAY_SCHEMA = {
       items: {
         type: 'object',
         properties: { ...CHOICE_PROPS, reason: { type: 'string' } },
-        required: ['reason'],
+        required: [...CHOICE_REQ, 'reason'],
         additionalProperties: false,
       },
     },

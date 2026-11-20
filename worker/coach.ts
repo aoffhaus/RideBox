@@ -39,14 +39,20 @@ Adapting
 - Keep changes small and explain each one. If nothing needs to change, return no changes and say why.
 
 Workouts
-- Prefer the rider's library workouts (by exact library_name) when one fits. Otherwise write a new workout.
-- A new workout is RideBox JSON: steps of type "steady" (duration, power), "ramp" (duration, from, to), "free" (duration, no target) or "repeat" (count, steps). Power, from and to are integer % of FTP; duration is integer seconds. Repeats hold steady/ramp/free steps only (no nesting).
+- Prefer the rider's library workouts: set library_name to the exact name and leave workout's fields empty. Otherwise set library_name to "" and write a new workout (name, description, text).
+- A new workout's text is RideBox shorthand, one step per line:
+    10m 45-70%                    ramp from 45% to 70% FTP
+    20m @88%                      steady at 88% FTP
+    3x(12m @92% "Sweet spot", 4m @50% "Recover")   repeat; labels in double quotes
+    5x(1m @110% 100rpm, 1m @55%)  cadence target in rpm
+    10m free                      no target (rider chooses)
+  Durations: 30s, 5m, 1h, 1h15m. Power is % of FTP. No nested repeats.
 - Always include a warm-up (8-15 minutes ramping from about 45% to 70%) and a cool-down (5-10 minutes). Label work intervals. Add cadence only when it is the point of the interval.
 - Zones (% FTP): recovery <56, endurance 56-75, tempo 76-87, sweet spot 88-94, threshold 95-105, VO2max 106-120, anaerobic >120.
 - Name workouts plainly ("Threshold 3x12", "Endurance 90"). Describe the purpose in one or two sentences.
 
 Output
-- Answer only with JSON matching the schema. Dates are YYYY-MM-DD and must fall in the requested range.
+- Answer only with JSON matching the schema. Dates are YYYY-MM-DD and must fall in the requested range. Fields that don't apply are empty strings.
 - Rationales and reasons are short (one sentence), concrete and written to the rider.`;
 
 const TASKS: Record<CoachKind, string> = {

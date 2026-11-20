@@ -5,7 +5,7 @@
 import type { RideRecord } from '../app/recorder';
 import type { Settings } from '../storage/db';
 import { uid } from '../storage/db';
-import { parseRideBoxJson } from '../workout/parsers';
+import { parseText } from '../workout/parsers';
 import { flatten, plannedStats, type Workout } from '../workout/model';
 import { newPlanned } from './calendar';
 import type { AdaptChange, AdaptOutput, CoachContext, CoachEvent, CoachRequest, PlanInput, PlanOutput, TodayOutput, WorkoutChoice } from './coachSchema';
@@ -120,15 +120,18 @@ export async function askCoach<T>(req: CoachRequest, onEvent: (e: CoachEvent) =>
   throw new Error('The coach stopped before answering. Please try again.');
 }
 
-/** A library workout by name, or Claude's own workout checked by the RideBox JSON parser. */
+/** A library workout by name, or Claude's own workout checked by the RideBox shorthand parser. */
 export function resolveChoice(c: WorkoutChoice, library: Workout[]): Workout {
-  if (c.library_name) {
-    const w = library.find((x) => x.name === c.library_name) ?? library.find((x) => x.name.toLowerCase() === c.library_name!.toLowerCase());
+  const lib = c.library_name?.trim();
+  const text = c.workout?.text?.trim();
+  if (lib) {
+    const w = library.find((x) => x.name === lib) ?? library.find((x) => x.name.toLowerCase() === lib.toLowerCase());
     if (w) return w;
-    if (!c.workout) throw new Error(`No library workout named “${c.library_name}”.`);
+    if (!text) throw new Error(`No library workout named “${lib}”.`);
   }
-  if (!c.workout) throw new Error('No workout given.');
-  const w = parseRideBoxJson(c.workout);
+  if (!text) throw new Error('No workout given.');
+  const parsed = parseText(text, c.workout.name?.trim() || 'Coach workout');
+  const w: Workout = { ...parsed, name: c.workout.name?.trim() || parsed.name, description: c.workout.description?.trim() || undefined };
   const ivs = flatten(w);
   const total = ivs.reduce((a, iv) => a + iv.duration, 0);
   if (!ivs.length || total < 10 * 60) throw new Error(`“${w.name}” is too short.`);
@@ -200,12 +203,13 @@ export function reviewAdaptation(out: AdaptOutput, calendar: PlannedWorkout[], l
   const all = [...calendar];
   return out.changes.map((change): ReviewedChange => {
     const before = change.id ? calendar.find((p) => p.id === change.id) : undefined;
+    const newDate = change.date?.trim() || undefined;
     try {
       if (change.op !== 'add') {
         if (!before) throw new Error('That workout isn’t on the calendar any more.');
         if (before.status === 'done') throw new Error('That workout is already done.');
       }
-      const date = change.date ?? before?.date;
+      const date = newDate ?? before?.date;
       if (change.op !== 'remove') {
         if (!validDate(date)) throw new Error('No date given.');
         if (date < from || date > to) throw new Error(`${date} is outside ${from} – ${to}.`);

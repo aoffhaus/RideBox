@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/storage/db';
 import { adaptSuggestion, buildContext, planFromOutput, readEvents, resolveChoice, reviewAdaptation, todayOptions } from '../src/training/coach';
-import type { CoachWorkout, PlanInput, PlanOutput } from '../src/training/coachSchema';
+import { SCHEMAS, type CoachWorkout, type PlanInput, type PlanOutput } from '../src/training/coachSchema';
 import type { PlannedWorkout } from '../src/training/model';
 import { BUILTIN_WORKOUTS } from '../src/workout/builtin';
 
@@ -9,26 +9,28 @@ const lib = BUILTIN_WORKOUTS;
 const claudeWorkout: CoachWorkout = {
   name: 'Threshold 3x10',
   description: 'Three threshold efforts.',
-  steps: [
-    { type: 'ramp', duration: 600, from: 45, to: 70 },
-    { type: 'repeat', count: 3, steps: [{ type: 'steady', duration: 600, power: 98, label: 'Threshold' }, { type: 'steady', duration: 300, power: 50 }] },
-    { type: 'ramp', duration: 300, from: 60, to: 40 },
-  ],
+  text: '10m 45-70%\n3x(10m @98% "Threshold", 5m @50%)\n5m 60-40%',
 };
+const NONE: CoachWorkout = { name: '', description: '', text: '' };
+const lib_ = (name: string) => ({ library_name: name, workout: NONE });
+const own = (w: CoachWorkout) => ({ library_name: '', workout: w });
 const pw = (id: string, date: string, status: PlannedWorkout['status'] = 'planned'): PlannedWorkout => ({ id, date, workout: lib[0], status, origin: 'plan', createdAt: 0 });
 
 describe('resolveChoice', () => {
   it('uses library workouts by name (case-insensitive) and parses new ones', () => {
-    expect(resolveChoice({ library_name: 'sweet spot 3x12' }, lib).name).toBe('Sweet Spot 3x12');
-    const w = resolveChoice({ workout: claudeWorkout }, lib);
+    expect(resolveChoice(lib_('sweet spot 3x12'), lib).name).toBe('Sweet Spot 3x12');
+    const w = resolveChoice(own(claudeWorkout), lib);
+    expect(w.name).toBe('Threshold 3x10');
+    expect(w.description).toBe('Three threshold efforts.');
     expect(w.author).toBe('RideBox Coach');
     expect(w.steps).toHaveLength(3);
   });
   it('rejects unknown names, tiny or absurd workouts', () => {
-    expect(() => resolveChoice({ library_name: 'Nope' }, lib)).toThrow(/No library workout/);
-    expect(() => resolveChoice({ workout: { ...claudeWorkout, steps: [{ type: 'steady', duration: 60, power: 60 }] } }, lib)).toThrow(/too short/);
-    expect(() => resolveChoice({ workout: { ...claudeWorkout, steps: [{ type: 'steady', duration: 1200, power: 900 }] } }, lib)).toThrow(/unrealistic/);
-    expect(() => resolveChoice({ workout: { ...claudeWorkout, steps: [{ type: 'steady', power: 90 }] } }, lib)).toThrow(/duration/);
+    expect(() => resolveChoice(lib_('Nope'), lib)).toThrow(/No library workout/);
+    expect(() => resolveChoice(own({ ...claudeWorkout, text: '1m @60%' }), lib)).toThrow(/too short/);
+    expect(() => resolveChoice(own({ ...claudeWorkout, text: '20m @900%' }), lib)).toThrow(/unrealistic/);
+    expect(() => resolveChoice(own({ ...claudeWorkout, text: 'ride hard' }), lib)).toThrow();
+    expect(() => resolveChoice(own(NONE), lib)).toThrow(/No workout/);
   });
 });
 
@@ -50,10 +52,10 @@ describe('planFromOutput', () => {
     phases: [{ name: 'Base', start: '2026-11-23', end: '2027-01-17', focus: 'aerobic' }],
     weeks: [{ start: '2026-11-23', focus: 'Base 1', target_tss: 350, target_hours: 6, notes: '' }],
     workouts: [
-      { date: '2026-11-24', library_name: 'Sweet Spot 3x12', rationale: 'r' },
-      { date: '2026-11-25', workout: claudeWorkout, rationale: 'r' },
-      { date: '2026-11-26', library_name: 'Missing', rationale: 'r' },
-      { date: '2026-10-01', library_name: 'Endurance 60', rationale: 'r' },
+      { date: '2026-11-24', ...lib_('Sweet Spot 3x12'), rationale: 'r' },
+      { date: '2026-11-25', ...own(claudeWorkout), rationale: 'r' },
+      { date: '2026-11-26', ...lib_('Missing'), rationale: 'r' },
+      { date: '2026-10-01', ...lib_('Endurance 60'), rationale: 'r' },
     ],
   };
   it('builds the plan and calendar items, skipping bad workouts with a reason', () => {
@@ -74,12 +76,12 @@ describe('reviewAdaptation', () => {
       {
         summary: 's',
         changes: [
-          { op: 'move', id: 'a', date: '2026-11-22', reason: 'rest first' },
-          { op: 'replace', id: 'b', library_name: 'Endurance 60', reason: 'tired' },
-          { op: 'add', date: '2026-11-24', workout: claudeWorkout, reason: 'fill' },
-          { op: 'remove', id: 'd', reason: 'x' },
-          { op: 'move', id: 'zz', date: '2026-11-22', reason: 'x' },
-          { op: 'add', date: '2027-05-01', library_name: 'Endurance 60', reason: 'x' },
+          { op: 'move', id: 'a', date: '2026-11-22', ...lib_(''), reason: 'rest first' },
+          { op: 'replace', id: 'b', date: '', ...lib_('Endurance 60'), reason: 'tired' },
+          { op: 'add', id: '', date: '2026-11-24', ...own(claudeWorkout), reason: 'fill' },
+          { op: 'remove', id: 'd', date: '', ...lib_(''), reason: 'x' },
+          { op: 'move', id: 'zz', date: '2026-11-22', ...lib_(''), reason: 'x' },
+          { op: 'add', id: '', date: '2027-05-01', ...lib_('Endurance 60'), reason: 'x' },
         ],
       },
       cal,
@@ -99,7 +101,7 @@ describe('reviewAdaptation', () => {
 
 describe('todayOptions', () => {
   it('keeps valid options', () => {
-    const r = todayOptions({ summary: 's', options: [{ library_name: 'Endurance 60', reason: 'easy' }, { library_name: 'nope', reason: 'x' }] }, lib);
+    const r = todayOptions({ summary: 's', options: [{ ...lib_('Endurance 60'), reason: 'easy' }, { ...lib_('nope'), reason: 'x' }] }, lib);
     expect(r.options).toHaveLength(1);
     expect(r.problems).toHaveLength(1);
   });
@@ -149,5 +151,27 @@ describe('adaptSuggestion', () => {
   it('stays quiet without an active plan or after it ends', () => {
     expect(adaptSuggestion(undefined, [], '2026-11-19')).toBeNull();
     expect(adaptSuggestion(plan, [], '2027-03-01')).toBeNull();
+  });
+});
+
+describe('answer schemas', () => {
+  // structured outputs rejects schemas whose grammar gets too big; optional
+  // fields and unions are what blow it up, so keep them at zero
+  it('have no optional properties or unions', () => {
+    const walk = (node: unknown, path: string): string[] => {
+      if (!node || typeof node !== 'object') return [];
+      const n = node as { type?: unknown; properties?: Record<string, unknown>; required?: string[]; items?: unknown; anyOf?: unknown };
+      const bad: string[] = [];
+      if (n.anyOf || Array.isArray(n.type)) bad.push(`${path}: union`);
+      if (n.properties) {
+        for (const k of Object.keys(n.properties)) {
+          if (!n.required?.includes(k)) bad.push(`${path}.${k}: optional`);
+          bad.push(...walk(n.properties[k], `${path}.${k}`));
+        }
+      }
+      if (n.items) bad.push(...walk(n.items, `${path}[]`));
+      return bad;
+    };
+    for (const [kind, schema] of Object.entries(SCHEMAS)) expect(walk(schema, kind)).toEqual([]);
   });
 });
