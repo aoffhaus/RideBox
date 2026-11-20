@@ -3,8 +3,16 @@
 
 import type { Workout } from '../workout/model';
 
+/** An FTP that took effect on a day (and lasted until the next change). */
+export interface FtpChange {
+  from: string; // DayKey
+  ftp: number;
+}
+
 export interface Settings {
   ftp: number;
+  /** past FTP changes, oldest first; Strava rides are judged at the FTP of their day */
+  ftpHistory?: FtpChange[];
   riderKg: number;
   bikeKg: number;
   maxHr: number;

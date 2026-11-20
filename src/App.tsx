@@ -23,7 +23,8 @@ import { sync, type SyncStatus } from './storage/sync';
 import { importStravaActivities } from './strava/activities';
 import type { PlannedWorkout, StravaActivity, TrainingPlan } from './training/model';
 import { reconcile } from './training/calendar';
-import { today } from './training/load';
+import { dayKey, today } from './training/load';
+import { ftpOn, withFtpHistory } from './training/ftp';
 import { Calendar } from './ui/Calendar';
 import { computeLevels, ZONE_NAMES } from './training/levels';
 import { LevelsCard } from './ui/Levels';
@@ -266,7 +267,7 @@ export function App() {
     };
   }, [hrm, session]);
   const { levels, history: levelHistory } = useMemo(
-    () => computeLevels(rides, acts, calendar, workouts.map((w) => w.workout), settings.ftp),
+    () => computeLevels(rides, acts, calendar, workouts.map((w) => w.workout), settings.ftp, Date.now(), (t) => ftpOn(settings, dayKey(t))),
     [rides, acts, calendar, workouts, settings.ftp],
   );
   // the coach runs in the private Worker, so it's only offered when the site is served from there
@@ -417,8 +418,9 @@ export function App() {
   }
 
   async function updateSettings(s: Settings) {
-    setSettings(s);
-    await saveSettings(s);
+    const next = withFtpHistory(settings, s, dayKey(Date.now()));
+    setSettings(next);
+    await saveSettings(next);
   }
 
   const coachOverlays = (

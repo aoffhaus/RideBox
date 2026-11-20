@@ -8,8 +8,8 @@
 //   - a zone you haven't trained in for 4+ weeks slowly decays.
 
 import type { RideRecord } from '../app/recorder';
-import { flatten, intervalFtpFraction, plannedStats, type Workout } from '../workout/model';
-import { dayKey } from './load';
+import { flatten, intervalFtpFraction, intervalPowerAt, plannedStats, toWatts, type Workout } from '../workout/model';
+import { dayKey, stravaCopyChecker } from './load';
 import type { PlannedWorkout, StravaActivity } from './model';
 import { isRide } from './model';
 
@@ -59,7 +59,8 @@ interface Block {
 /**
  * Back-to-back work intervals (≥ 76% FTP, no recovery between) merge into one
  * block, so over-unders read as one threshold effort. Many short blocks above
- * threshold but below 150% (30/30s, 40/20s) are VO2max work.
+ * threshold but below 150% (30/30s, 40/20s) are VO2max work, and so are efforts
+ * of 90 s or more up to 150% (anaerobic work is shorter).
  */
 export function workBlocks(w: Workout, ftp: number): Block[] {
   const blocks: Block[] = [];
@@ -83,6 +84,8 @@ export function workBlocks(w: Workout, ftp: number): Block[] {
   flush();
   const micro = blocks.filter((b) => b.duration < 60 && b.frac >= 1.06 && b.frac < 1.5);
   if (micro.length >= 6) for (const b of micro) b.zone = 'vo2max';
+  // efforts of 90 s or more just above VO2max pace (2 min at 124%) are still VO2max work
+  for (const b of blocks) if (b.zone === 'anaerobic' && b.duration >= 90 && b.frac < 1.5) b.zone = 'vo2max';
   return blocks;
 }
 
@@ -167,6 +170,77 @@ export function rideOutcome(ride: RideRecord, plannedSeconds: number): { outcome
   return { outcome, compliance, coverage };
 }
 
+/**
+ * A workout name the way other apps put it on Strava, normalized for matching:
+ * "Zwift - TrainerRoad: Warlow -1" and "Warlow -1" both become "warlow -1".
+ */
+export function normalizeWorkoutName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/^zwift\s*[-–:]\s*/, '')
+    .replace(/^trainerroad\s*[-–:]\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The workout a Strava ride was, by name: the calendar workout it completed if
+ * the names match, else a library or calendar workout with the same name.
+ */
+export function stravaWorkout(a: StravaActivity, calendar: PlannedWorkout[], library: Workout[]): Workout | undefined {
+  if (!isRide(a.sportType)) return undefined;
+  const key = normalizeWorkoutName(a.name);
+  if (!key) return undefined;
+  const linked = calendar.find((p) => p.stravaId === a.id)?.workout;
+  if (linked && normalizeWorkoutName(linked.name) === key) return linked;
+  return library.find((w) => normalizeWorkoutName(w.name) === key) ?? calendar.find((p) => normalizeWorkoutName(p.workout.name) === key)?.workout;
+}
+
+/**
+ * A workout's normalized power computed the standard way (and the way Strava
+ * computes a ride's): the fourth-power mean of the 30-second rolling average.
+ * Unlike plannedStats' NP, this smooths short on/off efforts the same way the
+ * ride's NP was smoothed, so the two compare like for like. Free steps count as 0 W.
+ */
+export function smoothedNp(w: Workout, ftp: number): number {
+  const secs: number[] = [];
+  for (const iv of flatten(w)) {
+    const n = Math.round(iv.duration);
+    for (let i = 0; i < n; i++) secs.push(iv.free ? 0 : toWatts(intervalPowerAt(iv, i + 0.5), iv.unit, ftp));
+  }
+  if (secs.length < 30) return 0;
+  let win = 0;
+  let sum4 = 0;
+  let count = 0;
+  for (let i = 0; i < secs.length; i++) {
+    win += secs[i];
+    if (i >= 30) win -= secs[i - 30];
+    if (i >= 29) {
+      sum4 += Math.pow(win / 30, 4);
+      count++;
+    }
+  }
+  return Math.pow(sum4 / count, 0.25);
+}
+
+/**
+ * How a Strava ride went against its workout, from the summary alone (no laps):
+ * normalized power against the workout's planned NP (smoothed the same way), and moving time against its
+ * length. Same thresholds as rideOutcome. Undefined without power-meter data.
+ */
+export function activityOutcome(a: StravaActivity, w: Workout, ftp: number): { outcome: Outcome; compliance: number; coverage: number } | undefined {
+  if (!a.deviceWatts || !a.weightedWatts) return undefined;
+  const planned = plannedStats(flatten(w), ftp);
+  const np = smoothedNp(w, ftp);
+  if (!np || !planned.duration) return undefined;
+  const compliance = Math.min(1.05, a.weightedWatts / np);
+  const coverage = Math.min(1, a.movingTime / planned.duration);
+  const score = Math.min(compliance, coverage + 0.02);
+  const outcome: Outcome = score >= 0.95 ? 'pass' : score >= 0.85 ? 'struggle' : 'fail';
+  return { outcome, compliance, coverage };
+}
+
 export function applyOutcome(levels: Levels, r: WorkoutRating, outcome: Outcome, feel = 3): Levels {
   if (r.zone === 'recovery' || r.zone === 'test') return levels;
   const L = levels[r.zone];
@@ -184,12 +258,16 @@ export function applyOutcome(levels: Levels, r: WorkoutRating, outcome: Outcome,
   return { ...levels, [r.zone]: clamp(next) };
 }
 
-/** Untrained zones lose 0.1 per week after 4 weeks. */
-function decay(levels: Levels, lastTrained: Partial<Record<LevelZone, number>>, now: number): Levels {
-  const out = { ...levels };
+/**
+ * Untrained zones lose 0.1 per week after 4 weeks. `trained` holds each zone's
+ * level as of the last workout in it, so decay is always measured from that
+ * level, never from an already-decayed one.
+ */
+function decay(trained: Levels, lastTrained: Partial<Record<LevelZone, number>>, now: number): Levels {
+  const out = { ...trained };
   for (const z of LEVEL_ZONES) {
     const last = lastTrained[z];
-    const L = levels[z];
+    const L = trained[z];
     if (last == null || L == null) continue;
     const weeks = (now - last) / (7 * 86_400_000) - 4;
     if (weeks > 0) out[z] = clamp(L - 0.1 * Math.floor(weeks));
@@ -210,7 +288,9 @@ export interface LevelEvent {
 /**
  * Replays every ride (oldest first) to get today's levels. A ride's workout is
  * the calendar workout it completed, or a library workout with the same name.
- * Long, steady outdoor rides from Strava count as endurance work.
+ * Strava rides whose name matches a workout (e.g. "Zwift - TrainerRoad: Warlow -1")
+ * are rated as that workout, judged from their summary power and duration at the
+ * FTP in effect that day (`ftpAt`). Other long, steady Strava rides count as endurance work.
  */
 export function computeLevels(
   rides: RideRecord[],
@@ -219,6 +299,8 @@ export function computeLevels(
   library: Workout[],
   ftp: number,
   now = Date.now(),
+  /** FTP in effect at a time, for rides that didn't save theirs (Strava); defaults to `ftp` */
+  ftpAt: (t: number) => number = () => ftp,
 ): { levels: Levels; history: LevelEvent[] } {
   const byRide = new Map(calendar.filter((p) => p.rideId).map((p) => [p.rideId!, p.workout]));
   const byName = new Map(library.map((w) => [w.name, w]));
@@ -232,27 +314,40 @@ export function computeLevels(
     const { outcome } = rideOutcome(r, plannedStats(flatten(w), rideFtp).duration);
     evs.push({ t: r.startTime, name: r.name, rating, outcome, feel: r.feel });
   }
-  const uploaded = new Set(rides.map((r) => r.strava?.activityId).filter(Boolean));
+  const isCopy = stravaCopyChecker(rides);
   for (const a of acts) {
-    if (!isRide(a.sportType) || uploaded.has(a.stravaId) || a.movingTime < 75 * 60) continue;
+    if (!isRide(a.sportType) || isCopy(a)) continue;
+    const actFtp = ftpAt(a.start);
+    // a workout ridden in another app (TrainerRoad, Zwift…) and matched by name
+    const w = stravaWorkout(a, calendar, library);
+    if (w) {
+      const rating = rateWorkout(w, actFtp);
+      const res = activityOutcome(a, w, actFtp);
+      if (res) evs.push({ t: a.start, name: a.name, rating, outcome: res.outcome });
+      if (res || rating.zone === 'test' || rating.zone === 'recovery') continue;
+    }
+    if (a.movingTime < 75 * 60) continue;
     const np = a.weightedWatts && a.deviceWatts ? a.weightedWatts : undefined;
-    if (!np || np / ftp >= 0.78) continue;
+    if (!np || np / actFtp >= 0.78) continue;
     const minutes = a.movingTime / 60;
     evs.push({ t: a.start, name: a.name, rating: { zone: 'endurance', level: clamp(1 + (minutes - 45) / 22) }, outcome: 'pass' });
   }
   evs.sort((x, y) => x.t - y.t);
-  let levels = startLevels();
+  // each zone's level as of its last workout (undecayed)
+  let trained = startLevels();
   const last: Partial<Record<LevelZone, number>> = {};
   const history: LevelEvent[] = [];
   for (const e of evs) {
-    levels = decay(levels, last, e.t);
     if (e.rating.zone === 'recovery' || e.rating.zone === 'test') continue;
-    const before = levels[e.rating.zone];
-    levels = applyOutcome(levels, e.rating, e.outcome, e.feel);
-    last[e.rating.zone] = e.t;
-    history.push({ date: dayKey(e.t), name: e.name, zone: e.rating.zone, workoutLevel: e.rating.level, outcome: e.outcome, before, after: levels[e.rating.zone]! });
+    const z = e.rating.zone;
+    const current = decay(trained, last, e.t);
+    const before = current[z];
+    const after = applyOutcome(current, e.rating, e.outcome, e.feel)[z]!;
+    trained = { ...trained, [z]: after };
+    last[z] = e.t;
+    history.push({ date: dayKey(e.t), name: e.name, zone: z, workoutLevel: e.rating.level, outcome: e.outcome, before, after });
   }
-  return { levels: decay(levels, last, now), history };
+  return { levels: decay(trained, last, now), history };
 }
 
 /** How a workout compares with the rider's current level in its zone. */

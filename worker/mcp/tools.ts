@@ -8,7 +8,8 @@ import { lapStats, type RideRecord } from '../../src/app/recorder';
 import { uid, type Settings, type StoredWorkout } from '../../src/storage/types';
 import { moveTo, newPlanned, scaleWorkout } from '../../src/training/calendar';
 import { buildContext, resolveChoice } from '../../src/training/coach';
-import { computeLevels, difficultyLabel, rateWorkout, rideOutcome, ZONE_NAMES, type Levels } from '../../src/training/levels';
+import { ftpOn, validFtpHistory, withFtpHistory } from '../../src/training/ftp';
+import { activityOutcome, computeLevels, difficultyLabel, rateWorkout, rideOutcome, stravaWorkout, ZONE_NAMES, type Levels } from '../../src/training/levels';
 import { addDays, dayKey, dayStart, estimateFtp, fitnessSeries, formLabel, loadEntries, plannedLoad, stravaTss, weeklyTotals, type LoadEntry } from '../../src/training/load';
 import type { DayKey, PlanPhase, PlannedWorkout, StravaActivity, TrainingPlan } from '../../src/training/model';
 import { normalizePlan, setActive } from '../../src/training/plans';
@@ -64,7 +65,7 @@ function derive(d: RiderData): Derived {
     const workouts = d.library.map((w) => w.workout);
     x = {
       workouts,
-      levels: computeLevels(d.rides, d.acts, d.calendar, workouts, d.settings.ftp, d.now).levels,
+      levels: computeLevels(d.rides, d.acts, d.calendar, workouts, d.settings.ftp, d.now, (t) => ftpOn(d.settings, dayKey(t))).levels,
       entries: loadEntries(d.rides, d.acts, d.settings.ftp, d.settings.maxHr),
     };
     derivedCache.set(d, x);
@@ -212,6 +213,7 @@ const getTrainingSummary: Tool<ToolCtx> = {
       timezone: d.timezone,
       athlete: {
         ftp: d.settings.ftp,
+        ftp_history: d.settings.ftpHistory,
         ftp_estimate: est ? { ftp: est.ftp, best_20min_watts: est.best20, date: est.date, method: '95% of best 20 minutes in the last 90 days of RideBox rides' } : null,
         weight_kg: d.settings.riderKg,
         max_hr: d.settings.maxHr,
@@ -343,6 +345,11 @@ function rideDetails(r: RideRecord, d: RiderData) {
 
 function actDetails(a: StravaActivity, d: RiderData) {
   const t = stravaTss(a, d.settings.ftp, d.settings.maxHr);
+  // a workout ridden in another app, matched by name (rated at the FTP of that day)
+  const w = stravaWorkout(a, d.calendar, derive(d).workouts);
+  const actFtp = ftpOn(d.settings, dayKey(a.start));
+  const rating = w ? rateWorkout(w, actFtp) : undefined;
+  const outcome = w ? activityOutcome(a, w, actFtp) : undefined;
   return {
     activity_id: a.id,
     source: 'strava',
@@ -361,6 +368,12 @@ function actDetails(a: StravaActivity, d: RiderData) {
     max_hr: a.maxHr,
     avg_cadence: a.avgCadence != null ? Math.round(a.avgCadence) : undefined,
     indoor: a.trainer,
+    ftp_that_day: w ? actFtp : undefined,
+    workout: w?.name,
+    zone: rating ? ZONE_NAMES[rating.zone] : undefined,
+    workout_level: rating?.level,
+    outcome: outcome?.outcome,
+    compliance: outcome ? r2(outcome.compliance) : undefined,
   };
 }
 
@@ -369,7 +382,7 @@ const listActivities: Tool<ToolCtx> = {
   title: 'Activities',
   description:
     'Completed activities between two dates, newest first: RideBox rides (with the workout, outcome pass / struggle / fail, compliance with targets, how it felt 1-5, NP, IF, TSS) ' +
-    'and Strava activities (sport, distance, climbing, power, heart rate, TSS). Strava copies of RideBox rides are left out. Defaults to the last 14 days.',
+    'and Strava activities (sport, distance, climbing, power, heart rate, TSS; workouts ridden in other apps that match a workout by name also get zone, level, outcome and compliance, judged from NP vs. plan). Strava copies of RideBox rides are left out. Defaults to the last 14 days.',
   inputSchema: {
     properties: { from: date('First day (default: 13 days ago)'), to: date('Last day (default: today)'), limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Max activities (default 50)' } },
     additionalProperties: false,
@@ -712,26 +725,50 @@ const updatePlan: Tool<ToolCtx> = {
 const updateSettings: Tool<ToolCtx> = {
   name: 'update_athlete_settings',
   title: 'Update FTP, weight or max HR',
-  description: "Changes the rider's FTP (watts), weight (kg) or max heart rate. FTP sets every ERG target, so confirm a new FTP with the rider first.",
+  description:
+    "Changes the rider's FTP (watts), weight (kg) or max heart rate. FTP sets every ERG target, so confirm a new FTP with the rider first. " +
+    'A new FTP is recorded in the FTP history from today. ftp_history replaces the record of past FTP changes (used to judge workouts ridden in other apps at the FTP of their day); the current FTP always applies from the last change on.',
   inputSchema: {
     properties: {
       ftp: { type: 'integer', minimum: 50, maximum: 600, description: 'FTP in watts' },
       weight_kg: { type: 'number', minimum: 30, maximum: 200, description: 'Rider weight in kg' },
       max_hr: { type: 'integer', minimum: 120, maximum: 230, description: 'Max heart rate (bpm)' },
+      ftp_history: {
+        type: 'array',
+        description: 'Past FTP changes, replacing the stored history: each FTP and the day it took effect, e.g. [{"from":"2026-01-01","ftp":233},{"from":"2026-11-10","ftp":252}]',
+        items: {
+          type: 'object',
+          required: ['from', 'ftp'],
+          properties: { from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }, ftp: { type: 'integer', minimum: 50, maximum: 600 } },
+          additionalProperties: false,
+        },
+        maxItems: 100,
+      },
     },
     additionalProperties: false,
   },
   annotations: { ...WRITE, idempotentHint: true },
   async run(args, ctx) {
     const d = await ctx.data();
-    const next: Settings = { ...d.settings };
-    if (args.ftp != null) next.ftp = Number(args.ftp);
+    let next: Settings = { ...d.settings };
+    if (args.ftp_history != null) {
+      const h = validFtpHistory(args.ftp_history);
+      if (typeof h === 'string') throw new ToolError(h);
+      next.ftpHistory = h;
+    }
+    if (args.ftp != null) next = withFtpHistory(next, { ...next, ftp: Number(args.ftp) }, d.today);
     if (args.weight_kg != null) next.riderKg = r1(Number(args.weight_kg));
     if (args.max_hr != null) next.maxHr = Number(args.max_hr);
-    const what = [args.ftp != null && `FTP ${next.ftp} W`, args.weight_kg != null && `weight ${next.riderKg} kg`, args.max_hr != null && `max HR ${next.maxHr}`].filter(Boolean).join(', ');
-    if (!what) throw new ToolError('Give ftp, weight_kg or max_hr.');
+    const what = [
+      args.ftp != null && `FTP ${next.ftp} W`,
+      args.ftp_history != null && `FTP history (${(next.ftpHistory ?? []).map((c) => `${c.ftp} W from ${c.from}`).join(', ')})`,
+      args.weight_kg != null && `weight ${next.riderKg} kg`,
+      args.max_hr != null && `max HR ${next.maxHr}`,
+    ].filter(Boolean).join(', ');
+    if (!what) throw new ToolError('Give ftp, ftp_history, weight_kg or max_hr.');
     const res = await save(ctx, 'update_athlete_settings', `Set ${what}`, [{ store: 'kv', id: 'settings', value: next }]);
-    return { before: { ftp: d.settings.ftp, weight_kg: d.settings.riderKg, max_hr: d.settings.maxHr }, after: { ftp: next.ftp, weight_kg: next.riderKg, max_hr: next.maxHr }, ...res };
+    const view = (x: Settings) => ({ ftp: x.ftp, ftp_history: x.ftpHistory, weight_kg: x.riderKg, max_hr: x.maxHr });
+    return { before: view(d.settings), after: view(next), ...res };
   },
 };
 
