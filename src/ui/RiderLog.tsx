@@ -2,9 +2,15 @@ import { useState } from 'react';
 import type { Settings } from '../storage/types';
 import { isBeginning, logFtp, logWeight, removeFtp, removeWeight } from '../training/ftp';
 import { dayStart } from '../training/load';
-import { FtpChart } from './FtpChart';
+import { FtpChart, type FtpMetric } from './FtpChart';
 
 const LB = 2.20462;
+const RANGES = [
+  { id: '6w', label: '6w', days: 42 },
+  { id: '3m', label: '3m', days: 91 },
+  { id: '6m', label: '6m', days: 182 },
+  { id: '1y', label: '1y', days: 365 },
+] as const;
 const fmtDay = (k: string) => (isBeginning(k) ? 'Earlier' : dayStart(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }));
 
 /** FTP history chart, plus forms to log a new FTP or weight (dated, today by default) and the lists of what's logged. */
@@ -16,6 +22,8 @@ export function RiderLog({ settings, today, onChange }: { settings: Settings; to
   const [weight, setWeight] = useState('');
   const [weightDate, setWeightDate] = useState(today);
   const [showLists, setShowLists] = useState(false);
+  const [range, setRange] = useState<(typeof RANGES)[number]['id']>('3m');
+  const [metric, setMetric] = useState<FtpMetric>('ftp');
   const ftpVal = Number(ftp);
   const weightVal = Number(weight);
   const ftpOk = ftp !== '' && ftpVal >= 50 && ftpVal <= 600 && !!ftpDate && ftpDate <= today;
@@ -27,10 +35,23 @@ export function RiderLog({ settings, today, onChange }: { settings: Settings; to
   return (
     <div className="card">
       <div className="row space">
-        <div className="card-title">FTP history</div>
-        <button className="link" onClick={() => setShowLists(!showLists)}>{showLists ? 'Hide entries' : 'Show entries'}</button>
+        <div className="card-title">{metric === 'ftp' ? 'FTP' : 'W/kg'} history</div>
+        <div className="row">
+          <div className="seg" role="group" aria-label="Show FTP or W/kg">
+            <button className={metric === 'ftp' ? 'active' : ''} onClick={() => setMetric('ftp')}>FTP</button>
+            <button className={metric === 'wkg' ? 'active' : ''} onClick={() => setMetric('wkg')}>W/kg</button>
+          </div>
+          <div className="seg" role="group" aria-label="Time range">
+            {RANGES.map((r) => (
+              <button key={r.id} className={range === r.id ? 'active' : ''} onClick={() => setRange(r.id)}>{r.label}</button>
+            ))}
+          </div>
+        </div>
       </div>
-      <FtpChart settings={settings} today={today} />
+      <FtpChart settings={settings} today={today} days={RANGES.find((r) => r.id === range)!.days} metric={metric} />
+      <div className="row">
+        <button className="link small" onClick={() => setShowLists(!showLists)}>{showLists ? 'Hide entries' : 'Show entries'}</button>
+      </div>
 
       <div className="rider-log">
         <form
