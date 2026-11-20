@@ -107,10 +107,31 @@ function providerFor(origin: string): OAuthProvider<Env> {
   return p;
 }
 
+/** Someone opened /mcp in a browser (no token): not an MCP client. */
+function isBrowserVisit(req: Request, url: URL) {
+  return url.pathname === '/mcp' && req.method === 'GET' && !req.headers.has('Authorization') && (req.headers.get('Accept') ?? '').includes('text/html');
+}
+
+/** Explains the endpoint instead of a blank 401, keeping the status and the OAuth challenge header. */
+function connectorInfoPage(url: URL, res: Response) {
+  const headers = new Headers(res.headers);
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>RideBox connector</title>
+<body style="font:16px/1.5 system-ui;background:#111;color:#eee;display:grid;place-items:center;min-height:90vh;margin:0 16px">
+<div style="max-width:32rem"><h1>🚴 RideBox connector</h1>
+<p>This address is for Claude, not for a browser, so there's nothing to see here. It's working.</p>
+<p>To connect: in Claude go to <b>Settings → Connectors → Add custom connector</b> and use this URL:</p>
+<p><code style="background:#222;padding:4px 8px;border-radius:6px;word-break:break-all">${url.origin}/mcp</code></p>
+<p>Then click <b>Connect</b>, sign in, and click <b>Allow</b>.</p></div></body>`;
+  return new Response(html, { status: 401, headers });
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
-    return providerFor(url.origin).fetch(req, { ...env, OAUTH_KV: new D1Kv(env.DB) }, ctx);
+    const res = await providerFor(url.origin).fetch(req, { ...env, OAUTH_KV: new D1Kv(env.DB) }, ctx);
+    return res.status === 401 && isBrowserVisit(req, url) ? connectorInfoPage(url, res) : res;
   },
 
   // Cron (wrangler.jsonc): keeps the chain tracker's Strava ride cache fresh and sweeps expired OAuth records.
