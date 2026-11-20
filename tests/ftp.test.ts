@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/storage/types';
-import { ftpOn, validFtpHistory, withFtpHistory } from '../src/training/ftp';
+import { ftpOn, logFtp, logWeight, removeFtp, removeWeight, validFtpHistory, weightOn, withFtpHistory, withRiderHistory } from '../src/training/ftp';
 import { computeLevels, rateWorkout } from '../src/training/levels';
 import { parseText } from '../src/workout/parsers';
 import { flatten, plannedStats } from '../src/workout/model';
@@ -24,6 +24,49 @@ describe('FTP history', () => {
     const b = withFtpHistory(a, { ...a, ftp: 255 }, '2026-11-10'); // same day: replaces
     expect(b.ftpHistory).toEqual([{ from: '0000-01-01', ftp: 233 }, { from: '2026-11-10', ftp: 255 }]);
     expect(withFtpHistory(a, { ...a, riderKg: 70 }, '2026-11-12').ftpHistory).toBe(a.ftpHistory); // no FTP change
+  });
+
+  it('logs a dated FTP: the newest entry becomes current, an earlier date only fills in history', () => {
+    const base = s(255, [{ from: '2026-01-01', ftp: 233 }, { from: '2026-11-10', ftp: 252 }, { from: '2026-11-19', ftp: 255 }]);
+    const now = logFtp(base, '2026-11-20', 262);
+    expect(now.ftp).toBe(262);
+    expect(now.ftpHistory!.at(-1)).toEqual({ from: '2026-11-20', ftp: 262 });
+    const past = logFtp(base, '2026-09-01', 225);
+    expect(past.ftp).toBe(255);
+    expect(ftpOn(past, '2026-09-15')).toBe(225);
+    expect(ftpOn(past, '2026-08-01')).toBe(233);
+    // into an empty history: the current FTP becomes the earlier one, and the log is the newest
+    const fresh = logFtp(s(200), '2026-11-19', 255);
+    expect(fresh.ftp).toBe(255);
+    expect(ftpOn(fresh, '2026-11-01')).toBe(200);
+    expect(fresh.ftpHistory).toEqual([{ from: '0000-01-01', ftp: 200 }, { from: '2026-11-19', ftp: 255 }]);
+  });
+
+  it('removes a logged FTP, making the one before current when it was the latest', () => {
+    const base = s(255, [{ from: '2026-01-01', ftp: 233 }, { from: '2026-11-10', ftp: 252 }, { from: '2026-11-19', ftp: 255 }]);
+    const r = removeFtp(base, '2026-11-19');
+    expect(r.ftp).toBe(252);
+    expect(r.ftpHistory).toHaveLength(2);
+    expect(removeFtp(base, '2026-01-01').ftp).toBe(255);
+  });
+
+  it('keeps a weight history the same way, and saving settings records FTP and weight changes', () => {
+    const base = { ...s(255), riderKg: 80 };
+    const w = logWeight(base, '2026-11-20', 79.37);
+    expect(w.riderKg).toBe(79.4);
+    expect(weightOn(w, '2026-11-20')).toBe(79.4);
+    const back = logWeight(w, '2026-10-01', 82);
+    expect(back.riderKg).toBe(79.4);
+    expect(weightOn(back, '2026-10-15')).toBe(82);
+    expect(removeWeight(back, '2026-11-20').riderKg).toBe(82);
+    const saved = withRiderHistory(base, { ...base, ftp: 260, riderKg: 78 }, '2026-11-21');
+    expect(saved.ftpHistory!.at(-1)).toEqual({ from: '2026-11-21', ftp: 260 });
+    expect(saved.weightHistory!.at(-1)).toEqual({ from: '2026-11-21', kg: 78 });
+    // a dated log already set the history: saving leaves it alone
+    const logged = logFtp(base, '2026-11-18', 258);
+    expect(withRiderHistory(base, logged, '2026-11-21').ftpHistory).toBe(logged.ftpHistory);
+    // lb rounding noise isn't a weight change
+    expect(withRiderHistory(base, { ...base, riderKg: 80.01 }, '2026-11-21').weightHistory).toBeUndefined();
   });
 
   it('validates a history given by the rider', () => {

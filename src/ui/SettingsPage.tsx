@@ -5,11 +5,13 @@ import { CLAUDE_PROMPT } from './claudePrompt';
 import { StravaSettings } from './StravaSettings';
 import type { StravaConfig } from '../strava/strava';
 
-export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
+export function SettingsPage({ settings, onSave, strava, onStravaChange, onImported }: {
   settings: Settings;
   onSave: (s: Settings) => void;
   strava: StravaConfig;
   onStravaChange: (c: StravaConfig) => void;
+  /** after a manual Strava import */
+  onImported?: () => void;
 }) {
   const [s, setS] = useState(settings);
   // settings can change underneath us (saved in another browser and synced here)
@@ -89,7 +91,7 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
       </div>
       <button className="primary" onClick={() => onSave(s)}>Save settings</button>
 
-      <StravaSettings config={strava} onChange={onStravaChange} />
+      <StravaSettings config={strava} onChange={onStravaChange} onImported={onImported} />
 
       <h2>TrainerRoad workouts</h2>
       <ol className="steps">

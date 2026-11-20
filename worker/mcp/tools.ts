@@ -8,7 +8,7 @@ import { lapStats, type RideRecord } from '../../src/app/recorder';
 import { uid, type Settings, type StoredWorkout } from '../../src/storage/types';
 import { moveTo, newPlanned, scaleWorkout } from '../../src/training/calendar';
 import { buildContext, resolveChoice } from '../../src/training/coach';
-import { ftpOn, validFtpHistory, withFtpHistory } from '../../src/training/ftp';
+import { ftpOn, validFtpHistory, withFtpHistory, withWeightHistory } from '../../src/training/ftp';
 import { activityOutcome, computeLevels, difficultyLabel, rateWorkout, rideOutcome, stravaWorkout, ZONE_NAMES, type Levels } from '../../src/training/levels';
 import { addDays, dayKey, dayStart, estimateFtp, fitnessSeries, formLabel, loadEntries, plannedLoad, stravaTss, weeklyTotals, type LoadEntry } from '../../src/training/load';
 import type { DayKey, PlanPhase, PlannedWorkout, StravaActivity, TrainingPlan } from '../../src/training/model';
@@ -214,6 +214,7 @@ const getTrainingSummary: Tool<ToolCtx> = {
       athlete: {
         ftp: d.settings.ftp,
         ftp_history: d.settings.ftpHistory,
+        weight_history: d.settings.weightHistory,
         ftp_estimate: est ? { ftp: est.ftp, best_20min_watts: est.best20, date: est.date, method: '95% of best 20 minutes in the last 90 days of RideBox rides' } : null,
         weight_kg: d.settings.riderKg,
         max_hr: d.settings.maxHr,
@@ -727,7 +728,7 @@ const updateSettings: Tool<ToolCtx> = {
   title: 'Update FTP, weight or max HR',
   description:
     "Changes the rider's FTP (watts), weight (kg) or max heart rate. FTP sets every ERG target, so confirm a new FTP with the rider first. " +
-    'A new FTP is recorded in the FTP history from today. ftp_history replaces the record of past FTP changes (used to judge workouts ridden in other apps at the FTP of their day); the current FTP always applies from the last change on.',
+    'A new FTP or weight is recorded in its history from today. ftp_history replaces the record of past FTP changes (used to judge workouts ridden in other apps at the FTP of their day); the current FTP always applies from the last change on.',
   inputSchema: {
     properties: {
       ftp: { type: 'integer', minimum: 50, maximum: 600, description: 'FTP in watts' },
@@ -757,7 +758,7 @@ const updateSettings: Tool<ToolCtx> = {
       next.ftpHistory = h;
     }
     if (args.ftp != null) next = withFtpHistory(next, { ...next, ftp: Number(args.ftp) }, d.today);
-    if (args.weight_kg != null) next.riderKg = r1(Number(args.weight_kg));
+    if (args.weight_kg != null) next = withWeightHistory(next, { ...next, riderKg: r1(Number(args.weight_kg)) }, d.today);
     if (args.max_hr != null) next.maxHr = Number(args.max_hr);
     const what = [
       args.ftp != null && `FTP ${next.ftp} W`,

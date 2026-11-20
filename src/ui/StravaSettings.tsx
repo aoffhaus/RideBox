@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { importStravaActivities } from '../strava/activities';
 import { authorizeUrl, canReadActivities, connectUrl, disconnect, isConnected, redirectUri, saveStrava, type StravaConfig } from '../strava/strava';
 
-/** Settings → Strava: API app credentials, connect / disconnect, auto-upload. */
-export function StravaSettings({ config, onChange }: { config: StravaConfig; onChange: (c: StravaConfig) => void }) {
+/** Settings → Strava: API app credentials, connect / disconnect, activity import. */
+export function StravaSettings({ config, onChange, onImported }: { config: StravaConfig; onChange: (c: StravaConfig) => void; onImported?: () => void }) {
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState('');
   const [clientId, setClientId] = useState(config.clientId);
   const [clientSecret, setClientSecret] = useState(config.clientSecret);
   const connected = isConnected(config);
@@ -12,6 +15,21 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
     await saveStrava(c);
     onChange(c);
   };
+
+  // activities import by themselves each time RideBox opens; this is for "right now"
+  async function runImport() {
+    setImporting(true);
+    setImportMsg('');
+    try {
+      const n = await importStravaActivities();
+      setImportMsg(n ? `Imported ${n} Strava ${n === 1 ? 'activity' : 'activities'}.` : 'No new Strava activities.');
+      onImported?.();
+    } catch (e) {
+      setImportMsg((e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function connect() {
     // save the credentials first: the page reloads when Strava sends us back
@@ -59,7 +77,16 @@ export function StravaSettings({ config, onChange }: { config: StravaConfig; onC
             virtual rides with one lap per interval, and a ride that&apos;s already on Strava is linked instead of duplicated.
           </p>
           {canReadActivities(config) ? (
-            <p className="muted small">Your Strava activities are imported on the Fitness tab, so outdoor rides count toward fitness and the coach sees them.</p>
+            <div>
+              <p className="muted small">
+                New Strava activities import by themselves each time RideBox opens, so outdoor rides and workouts from other apps count toward fitness and
+                progression levels, and the coach sees them.
+              </p>
+              <div className="row">
+                <button onClick={runImport} disabled={importing}>{importing ? 'Importing…' : 'Import activities now'}</button>
+                {importMsg && <span className="muted small">{importMsg}</span>}
+              </div>
+            </div>
           ) : (
             <p className="small">
               <b>Reconnect to import activities:</b> this connection can only upload. Click <b>Reconnect</b> and allow “View data about your private

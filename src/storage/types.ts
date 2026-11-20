@@ -9,11 +9,19 @@ export interface FtpChange {
   ftp: number;
 }
 
+/** A rider weight (kg) logged on a day. */
+export interface WeightChange {
+  from: string; // DayKey
+  kg: number;
+}
+
 export interface Settings {
   ftp: number;
   /** past FTP changes, oldest first; Strava rides are judged at the FTP of their day */
   ftpHistory?: FtpChange[];
   riderKg: number;
+  /** past weights, oldest first (W/kg over time) */
+  weightHistory?: WeightChange[];
   bikeKg: number;
   maxHr: number;
   units: 'imperial' | 'metric';
