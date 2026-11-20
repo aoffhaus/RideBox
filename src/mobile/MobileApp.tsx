@@ -43,6 +43,7 @@ export interface MobileAppProps {
   onSettingsChange: (s: Settings) => void;
   onStravaChange: (c: StravaConfig) => void;
   onBuildPlan: () => void;
+  onManagePlans: () => void;
   onAdapt: (input: AdaptInput) => void;
   onDismissSuggestion: () => void;
   onAddToday: (w: Workout, reason: string) => Promise<unknown>;
@@ -369,6 +370,18 @@ export function MobileApp(p: MobileAppProps) {
               <b>Adjust my next two weeks</b>
               <span className="muted small">After missed workouts, illness or a hard week.</span>
             </button>
+            {p.plans.length > 0 && (
+              <button
+                className="m-list-item"
+                onClick={() => {
+                  close();
+                  p.onManagePlans();
+                }}
+              >
+                <b>My plans</b>
+                <span className="muted small">Edit, activate or delete a training plan.</span>
+              </button>
+            )}
           </div>
           <TodayCard
             state={p.coachState}

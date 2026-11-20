@@ -688,3 +688,11 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
   .m-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .m-wcard-meta { gap: 10px; }
 }
+.plan-list { display: flex; flex-direction: column; gap: 8px; }
+.plan-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.plan-item.active { border-color: #2f80ed; }
+.plan-confirm { display: flex; flex-direction: column; gap: 6px; }
+.phase-edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.phase-edit input[type="date"] { width: 140px; }
+.phase-edit input:first-child { width: 120px; }
+.phase-edit .grow { flex: 1; min-width: 140px; }

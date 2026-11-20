@@ -32,6 +32,7 @@ import type { AdaptInput } from './training/coachSchema';
 import { addDays } from './training/load';
 import { newPlanned } from './training/calendar';
 import { AdaptReview, PlanBuilder, TodayCard } from './ui/Coach';
+import { PlanManager } from './ui/Plans';
 import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
 import { MobileApp } from './mobile/MobileApp';
@@ -125,6 +126,8 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('off');
   const [planBuilder, setPlanBuilder] = useState(false);
+  /** plan manager: '' for the list, or a plan id to edit */
+  const [planManager, setPlanManager] = useState<string | null>(null);
   const [adapt, setAdapt] = useState<AdaptInput | null>(null);
   const [lastReview, setLastReview] = useState<string | undefined>();
   const isPhone = useIsPhone();
@@ -269,6 +272,18 @@ export function App() {
     setNotice(`Added “${res.plan.name}” to your calendar.`);
     setTab('calendar');
   }
+  async function savePlans(changed: TrainingPlan[], remove: string[]) {
+    for (const p of changed) await putOne('plans', p);
+    const byId = new Map(changed.map((p) => [p.id, p]));
+    setPlans((ps) => ps.map((p) => byId.get(p.id) ?? p));
+    if (remove.length) await deleteCalendar(remove);
+  }
+  async function deletePlan(plan: TrainingPlan, remove: string[]) {
+    await deleteOne('plans', plan.id);
+    setPlans((ps) => ps.filter((p) => p.id !== plan.id));
+    if (remove.length) await deleteCalendar(remove);
+    setNotice(`Deleted “${plan.name}”${remove.length ? ` and ${remove.length} upcoming workout${remove.length === 1 ? '' : 's'}` : ''}.`);
+  }
   async function markReviewed() {
     await setFlag('coach-last-review', today());
     setLastReview(today());
@@ -390,6 +405,16 @@ export function App() {
   const coachOverlays = (
     <>
       {planBuilder && <PlanBuilder state={coachState} onApply={applyPlan} onClose={() => setPlanBuilder(false)} />}
+      {planManager !== null && (
+        <PlanManager
+          plans={plans}
+          calendar={calendar}
+          initial={planManager || undefined}
+          onSave={savePlans}
+          onDelete={deletePlan}
+          onClose={() => setPlanManager(null)}
+        />
+      )}
       {adapt && <AdaptReview state={coachState} input={adapt} onApply={applyAdapt} onClose={() => setAdapt(null)} />}
     </>
   );
@@ -423,6 +448,7 @@ export function App() {
           onSettingsChange={updateSettings}
           onStravaChange={setStrava}
           onBuildPlan={() => setPlanBuilder(true)}
+          onManagePlans={() => setPlanManager('')}
           onAdapt={setAdapt}
           onDismissSuggestion={() => void markReviewed()}
           onAddToday={addToday}
@@ -695,13 +721,17 @@ export function App() {
           toolbar={
             coachOn ? (
               <>
+                {plans.length > 0 && <button onClick={() => setPlanManager('')}>Plans</button>}
                 <button onClick={() => setPlanBuilder(true)}>{activePlan ? 'New plan' : 'Build a plan'}</button>
                 <button onClick={() => setAdapt({ reason: 'manual', from: today(), to: activePlan && addDays(today(), 13) > activePlan.end ? activePlan.end : addDays(today(), 13) })}>
                   Adjust with coach
                 </button>
               </>
             ) : (
-              <span className="muted small" title="The Claude coach runs on your private Cloudflare site">Coach: available on your private site</span>
+              <>
+                {plans.length > 0 && <button onClick={() => setPlanManager('')}>Plans</button>}
+                <span className="muted small" title="The Claude coach runs on your private Cloudflare site">Coach: available on your private site</span>
+              </>
             )
           }
           banner={
@@ -713,6 +743,7 @@ export function App() {
                     {activePlan.goal}
                     {activePlan.eventDate ? ` · event ${activePlan.eventDate}` : ''} · until {activePlan.end}
                   </span>
+                  <button className="link small" onClick={() => setPlanManager(activePlan.id)}>Edit</button>
                 </div>
               )}
               {suggestion && (
