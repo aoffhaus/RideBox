@@ -1,15 +1,18 @@
-// Strava: OAuth (authorization-code flow, run entirely in the browser) + FIT upload.
+// Strava: sign-in + FIT upload + activity import.
 //
-// RideBox has no server, so each rider registers their own (free) Strava API
-// application and pastes its Client ID and Client Secret into Settings. The
-// secret and tokens are stored only in this browser's IndexedDB.
+// On the private Cloudflare site the Worker holds Strava (worker/strava.ts):
+// the API app's secret is a Worker secret, the Worker keeps the tokens, and
+// the app calls Strava through /api/strava/proxy. Anywhere else (npm run dev,
+// a static copy) the older browser-only flow is used: the rider pastes their
+// Strava API app's Client ID and Secret into Settings and the tokens live in
+// this browser's IndexedDB.
 
 import { getFlag, setFlag } from '../storage/db';
 
 const AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize';
 const TOKEN_URL = 'https://www.strava.com/oauth/token';
 const DEAUTH_URL = 'https://www.strava.com/oauth/deauthorize';
-const API = 'https://www.strava.com/api/v3';
+export const API = 'https://www.strava.com/api/v3';
 const KV_KEY = 'strava';
 /** marks our own OAuth redirect so we don't react to unrelated ?code= params */
 export const OAUTH_STATE = 'ridebox-strava';
@@ -22,6 +25,30 @@ export interface StravaConfig {
   /** seconds since epoch */
   expiresAt?: number;
   athleteName?: string;
+  /** scopes the rider granted, e.g. "read,activity:write,activity:read_all" */
+  scope?: string;
+  /** set when the Worker holds Strava: whether its secrets are set and it's connected */
+  server?: { configured: boolean; connected: boolean };
+}
+
+let mode: 'browser' | 'server' = 'browser';
+export const stravaMode = () => mode;
+
+/**
+ * Finds out whether the Worker holds Strava. Call once at startup. On the
+ * server, any Strava secret or tokens an older version stored in the browser
+ * (and synced) are wiped: they aren't needed and shouldn't be kept.
+ */
+export async function initStrava(): Promise<void> {
+  try {
+    const res = await fetch('api/strava/status');
+    if (!res.ok || !(res.headers.get('Content-Type') ?? '').includes('json')) return;
+    mode = 'server';
+  } catch {
+    return;
+  }
+  const old = (await getFlag(KV_KEY)) as Partial<StravaConfig> | undefined;
+  if (old && (old.clientSecret || old.refreshToken || old.accessToken)) await setFlag(KV_KEY, {});
 }
 
 export interface StravaUploadState {
@@ -35,6 +62,14 @@ export interface StravaUploadState {
 export const DEFAULT_STRAVA: StravaConfig = { clientId: '', clientSecret: '' };
 
 export async function loadStrava(): Promise<StravaConfig> {
+  if (mode === 'server') {
+    try {
+      const st = (await (await fetch('api/strava/status')).json()) as { configured: boolean; connected: boolean; athleteName?: string; scope: string };
+      return { ...DEFAULT_STRAVA, athleteName: st.athleteName, scope: st.scope, server: { configured: st.configured, connected: st.connected } };
+    } catch {
+      return { ...DEFAULT_STRAVA, server: { configured: false, connected: false } };
+    }
+  }
   try {
     return { ...DEFAULT_STRAVA, ...((await getFlag(KV_KEY)) as Partial<StravaConfig> | undefined) };
   } catch {
@@ -45,7 +80,9 @@ export async function saveStrava(c: StravaConfig) {
   await setFlag(KV_KEY, c);
 }
 
-export const isConnected = (c: StravaConfig) => !!(c.refreshToken && c.clientId && c.clientSecret);
+export const isConnected = (c: StravaConfig) => (c.server ? c.server.connected : !!(c.refreshToken && c.clientId && c.clientSecret));
+/** Connected with permission to read activities (older connections only had upload permission). */
+export const canReadActivities = (c: StravaConfig) => isConnected(c) && /activity:read(_all)?/.test(c.scope ?? '');
 
 /** The page URL without query/hash: Strava sends the rider back here. */
 export function redirectUri(loc: { origin: string; pathname: string } = location) {
@@ -58,10 +95,32 @@ export function authorizeUrl(clientId: string, redirect = redirectUri()) {
     redirect_uri: redirect,
     response_type: 'code',
     approval_prompt: 'auto',
-    scope: 'activity:write',
+    // read_all: import activities (outdoor rides count toward training load)
+    scope: 'activity:write,activity:read_all',
     state: OAUTH_STATE,
   });
   return `${AUTHORIZE_URL}?${q}`;
+}
+
+/** Where the Connect button goes: the Worker's sign-in, or Strava directly (browser mode). */
+export const connectUrl = (c: StravaConfig) => (c.server ? 'api/strava/connect' : authorizeUrl(c.clientId));
+
+/** The Worker sends the rider back with ?strava=connected or ?strava=error&message=… */
+export function parseServerReturn(search: string): { ok: true } | { error: string } | null {
+  const q = new URLSearchParams(search);
+  const v = q.get('strava');
+  if (v === 'connected') return { ok: true };
+  if (v === 'error') return { error: q.get('message') ?? 'Strava sign-in failed.' };
+  return null;
+}
+
+/** Calls the Strava API: through the Worker on the private site, directly with the browser's token otherwise. */
+export async function stravaFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  if (mode === 'server') return fetch(`api/strava/proxy/${path}`, init);
+  const token = await accessToken();
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  return fetch(`${API}/${path}`, { ...init, headers });
 }
 
 export type OAuthReturn = { code: string; scope: string } | { error: string } | null;
@@ -108,6 +167,7 @@ export async function completeOAuth(c: StravaConfig, ret: { code: string; scope:
     refreshToken: t.refresh_token,
     expiresAt: t.expires_at,
     athleteName: [t.athlete?.firstname, t.athlete?.lastname].filter(Boolean).join(' ') || undefined,
+    scope: ret.scope,
   };
   await saveStrava(next);
   return next;
@@ -129,6 +189,10 @@ async function accessToken(): Promise<string> {
 }
 
 export async function disconnect(): Promise<StravaConfig> {
+  if (mode === 'server') {
+    await fetch('api/strava/disconnect', { method: 'POST' });
+    return loadStrava();
+  }
   const c = await loadStrava();
   if (c.accessToken) {
     // best effort: revoke on Strava's side too
@@ -140,7 +204,7 @@ export async function disconnect(): Promise<StravaConfig> {
 }
 
 /** Strava error bodies look like {message, errors:[{resource, field, code}]}. */
-function describeError(json: any): string {
+export function describeError(json: any): string {
   if (!json || typeof json !== 'object') return 'unknown error';
   const parts = [json.message, ...(Array.isArray(json.errors) ? json.errors.map((e: any) => [e.resource, e.field, e.code].filter(Boolean).join(' ')) : [])];
   return parts.filter(Boolean).join(': ') || 'unknown error';
@@ -175,7 +239,6 @@ export async function uploadFit(
   fit: Uint8Array,
   meta: { name: string; description?: string; externalId: string; fileName: string },
 ): Promise<StravaUploadState> {
-  const token = await accessToken();
   const form = new FormData();
   form.append('file', new Blob([fit], { type: 'application/octet-stream' }), meta.fileName);
   form.append('data_type', 'fit');
@@ -183,7 +246,7 @@ export async function uploadFit(
   if (meta.description) form.append('description', meta.description);
   form.append('trainer', '1');
   form.append('external_id', meta.externalId);
-  const res = await fetch(`${API}/uploads`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
+  const res = await stravaFetch('uploads', { method: 'POST', body: form });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) throw new Error('Strava rejected the sign-in. Disconnect and connect again in Settings.');
@@ -194,7 +257,7 @@ export async function uploadFit(
     const r = interpretUpload(u);
     if (r) return r;
     await new Promise((ok) => setTimeout(ok, i < 5 ? 1000 : 2000));
-    const p = await fetch(`${API}/uploads/${u.id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const p = await stravaFetch(`uploads/${u.id}`);
     if (!p.ok) throw new Error(`Strava upload status check failed (${p.status})`);
     u = (await p.json()) as UploadResponse;
   }
@@ -207,10 +270,9 @@ export async function uploadFit(
  * visibility or delete it; those are only possible on strava.com.
  */
 export async function updateActivity(id: number, changes: { name?: string; hide_from_home?: boolean }): Promise<void> {
-  const token = await accessToken();
-  const res = await fetch(`${API}/activities/${id}`, {
+  const res = await stravaFetch(`activities/${id}`, {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes),
   });
   if (!res.ok) {

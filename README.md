@@ -2,7 +2,7 @@
 
 A free, personal indoor-training app for **Chrome on macOS**. It connects to a **Wahoo KICKR Core** (or any FTMS smart trainer) and a **Bluetooth heart-rate strap**. You ride structured workouts in **ERG mode** on a generated 3D road, chasing **arches** that mark the end of each interval, or free-ride with the trainer simulating the hills.
 
-There are no accounts, servers, social features, or game mechanics. Everything runs in your browser. You can upload finished rides to Strava with one click.
+There are no social features or game mechanics. RideBox runs on your own private Cloudflare site: only you can sign in (Cloudflare Access), and your rides, workouts, calendar and settings sync across every browser you use. You can upload finished rides to Strava with one click.
 
 ## Using it
 
@@ -34,11 +34,14 @@ The arch ahead of you sits where you'll be when the current interval ends. Its p
 
 ## Strava upload
 
-RideBox has no server, so you connect Strava through your own free Strava API app (one-time setup):
+On your private Cloudflare site, Strava is held by the server: your Strava API app's secret is a Worker secret, the Worker keeps your Strava sign-in, and the browser never sees either. One-time setup:
 
 1. Go to [strava.com/settings/api](https://www.strava.com/settings/api) and create an app (any name, category and website).
-2. Set **Authorization Callback Domain** to the host RideBox is served from, e.g. `yourname.github.io` (or `localhost` for `npm run dev`).
-3. In RideBox **Settings → Strava**, paste the app's **Client ID** and **Client Secret** and click **Connect Strava**. Allow uploads on Strava's page.
+2. Set **Authorization Callback Domain** to your RideBox host, e.g. `ridebox.<you>.workers.dev`.
+3. In the Cloudflare dashboard → Workers & Pages → **ridebox** → Settings → Variables and Secrets, add the secrets `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` from that Strava page.
+4. In RideBox **Settings → Strava**, click **Connect Strava** and allow uploads and reading your activities.
+
+(Running RideBox without the Worker, e.g. `npm run dev`, falls back to pasting the Client ID and Secret into Settings; they then stay in that browser.)
 
 Nothing uploads automatically. On a ride's summary (open it from History any time):
 
@@ -48,7 +51,17 @@ Nothing uploads automatically. On a ride's summary (open it from History any tim
 
 Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads private, set Strava's **Privacy Controls → Activities** to *Only You* (new uploads use that default). Re-uploading a ride that's already on Strava links the existing activity rather than creating a duplicate.
 
-The client secret and tokens stay in the browser's IndexedDB and are only sent to strava.com.
+
+## Calendar, plans and the Claude coach
+
+- **Calendar** (month and week views): drag workouts to move them (hold Alt/⌥ to copy), **+** on a day adds one from your library, and clicking a workout lets you ride it, make it easier or harder, move, skip, add a note or remove it. Rides (RideBox and Strava) link to that day's workout automatically; unridden past workouts show as missed. The right-hand column shows each week's planned vs. done TSS and hours.
+- **Fitness**: fitness (CTL), fatigue (ATL) and form (TSB) from your RideBox rides and imported Strava activities, with a projection from your calendar, weekly TSS, an FTP estimate (95% of your best 20 minutes), and **progression levels**: how hard a workout you can handle in each zone (1–10). Every workout shows its zone, level and how it compares with yours (Easy / Productive / Challenging / Very hard).
+- **Claude coach** (on your private Cloudflare site, using your `ANTHROPIC_API_KEY`):
+  - **Build a plan** (Calendar): goal, event date, hours per week and minutes per day. The coach writes the first three weeks in detail, and offers to plan the following weeks as you go so they match how training is going.
+  - **Adjust with coach**: after missed workouts or a hard ride, the coach proposes swaps, moves and additions with a reason for each. Nothing changes until you accept (all or some).
+  - **What should I ride today?** (Ride tab): time available plus how you feel gives one to three options.
+  - After each ride, **How did it feel?** on the summary feeds levels and adaptations.
+  - Requests stream the coach's reasoning while it works. A daily cap (`COACH_DAILY_LIMIT` in `wrangler.jsonc`, default 40) guards against runaway cost; a new plan typically costs well under a dollar with Claude Opus, and a daily pick a few cents.
 
 ## Getting workouts in
 
@@ -103,7 +116,41 @@ npm test         # unit tests: parsers, engine, BLE packets, physics, arches, FI
 npm run build
 ```
 
-Every push to `main` builds and deploys to GitHub Pages via `.github/workflows/deploy.yml`. In the repo, set **Settings → Pages → Source** to **GitHub Actions**.
+Every push to `main` runs the tests and deploys to Cloudflare via `.github/workflows/deploy.yml` (once the repo secrets below are set).
+
+To run the full private site locally (Worker, sync API, local database), put `DEV_NO_AUTH=1` in a `.dev.vars` file (git-ignored; it only works on localhost) and run `npm run worker:dev` → http://localhost:8787.
+
+## Hosting on Cloudflare (private, password-protected)
+
+RideBox is served by a Cloudflare Worker (`worker/`) with a D1 database for sync (large rides are stored in chunks). **Cloudflare Access** puts a login screen in front of the entire site, so nobody else can see your rides or workouts or use your Claude and Strava connections. As a second line of defense the Worker checks the Access sign-in on every request and serves nothing if Access isn't set up (it fails closed).
+
+One-time setup:
+
+1. **Cloudflare account** with your domain added (any domain you own; the free plan is fine).
+2. **Create the database** (from this repo, after `npm install`):
+   ```bash
+   npx wrangler login
+   npx wrangler d1 create ridebox          # paste the printed database_id into wrangler.jsonc
+   ```
+3. **Deploy once:** `npm run deploy`. The site is served at `ridebox.<your-subdomain>.workers.dev` (preview URLs are off in `wrangler.jsonc`). You can add a custom domain later under Workers & Pages → **ridebox** → Settings → Domains & Routes; protect it with Access too.
+4. **Turn on Cloudflare Access:** Workers & Pages → **ridebox** → Settings → Domains & Routes → workers.dev → **Enable Cloudflare Access** (or Zero Trust → Access → Applications → Add → *Self-hosted* for a custom domain). Allow only yourself (your account, or Include → Emails → your email) and set the session to about a month so you don't sign in before every ride. Copy the application's **Audience (AUD) tag**, and note your team domain (`<team>.cloudflareaccess.com`, under Zero Trust → Settings).
+5. **Secrets** (never committed):
+   ```bash
+   npx wrangler secret put ACCESS_TEAM_DOMAIN   # e.g. yourteam.cloudflareaccess.com
+   npx wrangler secret put ACCESS_AUD           # the AUD tag from step 4
+   npx wrangler secret put ALLOWED_EMAILS       # your email (comma-separate to add more)
+   npx wrangler secret put ANTHROPIC_API_KEY    # for the Claude coach
+   npx wrangler secret put STRAVA_CLIENT_ID     # see "Strava upload"
+   npx wrangler secret put STRAVA_CLIENT_SECRET
+   ```
+6. **Automatic deploys:** in GitHub → Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (the *Edit Cloudflare Workers* template plus *D1: Edit*) and `CLOUDFLARE_ACCOUNT_ID`.
+7. **Move your data, then retire the old public copy.** Browsers keep data per site address, so rides saved on the GitHub Pages copy don't appear on the new domain by themselves:
+   - Open the old GitHub Pages site → **Settings → Backup & moving → Download backup**.
+   - Open your private RideBox site → **Settings → Load backup…** and pick that file. It syncs up right away.
+   - GitHub → Settings → Pages → *Unpublish site*, then add the repo variable `PAGES_RETIRED` = `true` (Settings → Secrets and variables → Actions → Variables) so the workflow stops publishing it.
+   - Change your Strava API app's callback domain to your private site's host (e.g. `ridebox.<you>.workers.dev`) and reconnect Strava in RideBox Settings.
+
+After that, every browser you sign in from pulls the same data. Every other browser then pulls the same data. The **✓ Synced** chip at the top right shows the sync state; click it to sync now.
 
 Visuals: the world is drawn with **grade exaggeration** (Settings, default 1.8×) so climbs and descents read clearly on screen, like Zwift. It's visual only: trainer resistance, speed and the grade readout use the true gradient.
 

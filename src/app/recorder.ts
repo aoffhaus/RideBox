@@ -44,6 +44,8 @@ export interface RideRecord {
   samples: Sample[];
   laps: Lap[];
   summary: RideSummary;
+  /** how it felt, 1 (easy) … 5 (all out); asked on the summary */
+  feel?: number;
   /** set once the ride has been sent to Strava */
   strava?: { status: 'uploading' | 'done' | 'error'; activityId?: number; error?: string; hidden?: boolean };
 }

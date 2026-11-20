@@ -1,0 +1,36 @@
+// Cloudflare Worker config. One-time setup is in README.md ("Hosting on Cloudflare").
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ridebox",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Served at ridebox.<account>.workers.dev, protected by Cloudflare Access
+  // (the Worker also refuses any request without a valid Access sign-in).
+  // Preview URLs stay off: they would be extra addresses to protect.
+  "workers_dev": true,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // run the Worker (and its Access check) before serving any file
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ridebox",
+      // the id printed by `npx wrangler d1 create ridebox`
+      "database_id": "ed5c13ed-19c2-4f63-9e7b-ae2583ebc3bd",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "vars": {
+    // max Claude coach requests per day (a guard against runaway cost)
+    "COACH_DAILY_LIMIT": "40"
+  },
+  // ACCESS_TEAM_DOMAIN, ACCESS_AUD, ALLOWED_EMAILS and ANTHROPIC_API_KEY are
+  // secrets: `npx wrangler secret put <NAME>`. Keep them out of this file.
+  "observability": { "enabled": true }
+}

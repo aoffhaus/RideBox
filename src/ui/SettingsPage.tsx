@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { reactLabel, type Settings } from '../storage/db';
+import { useEffect, useState } from 'react';
+import { exportAll, importAll, reactLabel, type Backup, type Settings } from '../storage/db';
 import { BOOKMARKLET } from './bookmarklet';
 import { CLAUDE_PROMPT } from './claudePrompt';
 import { StravaSettings } from './StravaSettings';
@@ -12,6 +12,8 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
   onStravaChange: (c: StravaConfig) => void;
 }) {
   const [s, setS] = useState(settings);
+  // settings can change underneath us (saved in another browser and synced here)
+  useEffect(() => setS(settings), [settings]);
   const [copied, setCopied] = useState('');
   const num = (k: keyof Settings, label: string, step = 1, hint?: string) => (
     <label className="field">
@@ -107,12 +109,53 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange }: {
       <pre className="prompt">{CLAUDE_PROMPT}</pre>
       <button onClick={() => copy(CLAUDE_PROMPT, 'prompt')}>{copied === 'prompt' ? 'Copied ✓' : 'Copy prompt'}</button>
 
+      <h2>Backup &amp; moving</h2>
+      <p className="muted">
+        Download everything (rides, workouts, calendar, settings) as one file, or load a backup. Use this to move your data from an old RideBox address
+        (e.g. the GitHub Pages copy) to your private site: browsers keep data per address, so it doesn&apos;t carry over on its own.
+      </p>
+      <div className="row">
+        <button
+          onClick={async () => {
+            const b = await exportAll();
+            const url = URL.createObjectURL(new Blob([JSON.stringify(b)], { type: 'application/json' }));
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ridebox-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
+        >
+          Download backup
+        </button>
+        <label className="button-like">
+          Load backup…
+          <input
+            type="file"
+            accept=".json,application/json"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (!f) return;
+              try {
+                const n = await importAll(JSON.parse(await f.text()) as Backup);
+                alert(`Loaded ${n} records. Reloading…`);
+                location.reload();
+              } catch (err) {
+                alert(`Couldn't load that file: ${(err as Error).message}`);
+              }
+            }}
+          />
+        </label>
+      </div>
+
       <h2>Tips</h2>
       <ul className="muted small">
         <li>Use Chrome. The first time you connect, macOS will ask to let Chrome use Bluetooth (System Settings → Privacy &amp; Security → Bluetooth).</li>
         <li>Close Zwift, the Wahoo app, and TrainerRoad on other devices: the KICKR accepts only one controller at a time.</li>
         <li>If ERG doesn&apos;t respond, update the KICKR Core firmware in the Wahoo app (newer firmware adds FTMS).</li>
-        <li>Your data stays in this browser (IndexedDB). Clearing site data deletes your rides and imported workouts.</li>
+        <li>On your private Cloudflare site your data syncs across browsers. Anywhere else (e.g. <code>npm run dev</code>) it stays in this browser only, so clearing site data deletes it: download a backup first.</li>
       </ul>
     </div>
   );
