@@ -120,7 +120,7 @@ export function MetricsChart({ series, intervals, ftp }: { series: ActualSeries;
     <div className="metrics">
       <div className="metrics-readout small">
         {hover == null ? (
-          <span className="muted">Hover or drag across the chart for second-by-second values</span>
+          <span className="muted">{matchMedia('(pointer: coarse)').matches ? 'Touch and drag' : 'Hover or drag'} across the chart for second-by-second values</span>
         ) : (
           <>
             <b>{formatDuration(at)}</b>
@@ -136,7 +136,7 @@ export function MetricsChart({ series, intervals, ftp }: { series: ActualSeries;
         ref={box}
         onPointerMove={move}
         onPointerDown={move}
-        onPointerLeave={() => setHover(null)}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}
         style={{ touchAction: 'pan-y' }}
       >
         {(hasPower || intervals) && (
@@ -240,12 +240,42 @@ function PlanTable({ intervals, ftp, series }: { intervals: Interval[]; ftp: num
   );
 }
 
+/** Plan vs actual as stacked rows, for narrow screens. */
+function PlanList({ intervals, ftp, series }: { intervals: Interval[]; ftp: number; series: ActualSeries }) {
+  const rows = useMemo(() => comparePlan(intervals, ftp, series), [intervals, ftp, series]);
+  return (
+    <div className="plan-list-m">
+      {rows.map((c) => {
+        const v = verdict(c);
+        const color = c.free ? '#5b6573' : zoneFor(intervalFtpFraction(intervals[c.index], ftp)).color;
+        return (
+          <div key={c.index} className={`plan-row-m${c.actualDuration ? '' : ' muted'}`} style={{ borderLeftColor: color }}>
+            <div className="plan-row-top">
+              <span className="plan-row-name">{c.label || `Interval ${c.index + 1}`}</span>
+              {v && c.actualDuration > 0 && <span className={`verdict v-${v}`}>{VERDICT[v]}</span>}
+            </div>
+            <div className="plan-row-meta">
+              <span>{formatDuration(c.duration)}</span>
+              <span>{c.free ? 'free' : c.rampW ? `${r0(c.rampW[0])}→${r0(c.rampW[1])} W` : `${r0(c.targetW)} W`}</span>
+              <span>→ <b>{r0(c.avgPower)} W</b>{c.ratio != null ? ` (${Math.round(c.ratio * 100)}%)` : ''}</span>
+              {c.avgHr ? <span style={{ color: HR_COLOR }}>{r0(c.avgHr)} bpm</span> : null}
+              {c.avgCadence ? <span style={{ color: CADENCE_COLOR }}>{r0(c.avgCadence)} rpm</span> : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * Everything about a ride that happened: summary stats (next to the plan's when there was one),
  * the power / HR / cadence chart, and a per-interval plan vs actual table.
  */
-export function ActualDetail({ ride, act, intervals, settings, tss }: {
+export function ActualDetail({ ride, act, intervals, settings, tss, compact }: {
   ride?: RideRecord;
+  /** phone layout: intervals as a list instead of a wide table */
+  compact?: boolean;
   /** estimated TSS to show when there's no power series (e.g. HR-based for a Strava activity) */
   tss?: number;
   act?: StravaActivity;
@@ -312,7 +342,7 @@ export function ActualDetail({ ride, act, intervals, settings, tss }: {
       {series && intervals && intervals.length > 1 && (
         <>
           <div className="card-title">Plan vs actual</div>
-          <PlanTable intervals={intervals} ftp={ftp} series={series} />
+          {compact ? <PlanList intervals={intervals} ftp={ftp} series={series} /> : <PlanTable intervals={intervals} ftp={ftp} series={series} />}
           {act && !ride && <div className="muted small">Intervals are lined up by moving time from the start of the activity.</div>}
         </>
       )}
