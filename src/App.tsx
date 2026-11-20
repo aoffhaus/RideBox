@@ -24,7 +24,7 @@ import { importStravaActivities } from './strava/activities';
 import type { PlannedWorkout, StravaActivity, TrainingPlan } from './training/model';
 import { reconcile } from './training/calendar';
 import { dayKey, today } from './training/load';
-import { ftpOn, withFtpHistory } from './training/ftp';
+import { ftpOn, withRiderHistory } from './training/ftp';
 import { Calendar } from './ui/Calendar';
 import { computeLevels, ZONE_NAMES } from './training/levels';
 import { LevelsCard } from './ui/Levels';
@@ -268,7 +268,7 @@ export function App() {
   }, [hrm, session]);
   const { levels, history: levelHistory } = useMemo(
     () => computeLevels(rides, acts, calendar, workouts.map((w) => w.workout), settings.ftp, Date.now(), (t) => ftpOn(settings, dayKey(t))),
-    [rides, acts, calendar, workouts, settings.ftp],
+    [rides, acts, calendar, workouts, settings.ftp, settings.ftpHistory],
   );
   // the coach runs in the private Worker, so it's only offered when the site is served from there
   const coachOn = syncStatus !== 'off';
@@ -418,7 +418,7 @@ export function App() {
   }
 
   async function updateSettings(s: Settings) {
-    const next = withFtpHistory(settings, s, dayKey(Date.now()));
+    const next = withRiderHistory(settings, s, dayKey(Date.now()));
     setSettings(next);
     await saveSettings(next);
   }
@@ -468,6 +468,7 @@ export function App() {
           onDeleteCalendar={deleteCalendar}
           onSettingsChange={updateSettings}
           onStravaChange={setStrava}
+          onImported={refresh}
           onBuildPlan={() => setPlanBuilder(true)}
           onManagePlans={() => setPlanManager('')}
           onAdapt={setAdapt}
@@ -713,6 +714,7 @@ export function App() {
         <Library
           workouts={workouts}
           ftp={settings.ftp}
+          levels={levels}
           onChange={refresh}
           onEdit={(w) => setEditing(w)}
           onRide={(w) => {
@@ -783,7 +785,7 @@ export function App() {
           }
         />
       ) : tab === 'fitness' ? (
-        <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} strava={strava} onSettingsChange={updateSettings} onImported={refresh}>
+        <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} onSettingsChange={updateSettings}>
           <LevelsCard levels={levels} history={levelHistory} />
         </Fitness>
       ) : tab === 'history' ? (
@@ -796,6 +798,7 @@ export function App() {
           onSave={updateSettings}
           strava={strava}
           onStravaChange={setStrava}
+          onImported={refresh}
         />
       )}
       {coachOverlays}

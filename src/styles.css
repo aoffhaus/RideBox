@@ -770,3 +770,17 @@ a.m-btn { text-decoration: none; }
 .card-actual { display: flex; flex-direction: column; gap: 2px; margin-top: 1px; }
 .card-metrics { gap: 6px; font-variant-numeric: tabular-nums; }
 .mini-actual { display: block; width: 100%; margin-top: 2px; background: rgba(0,0,0,0.18); border-radius: 4px; }
+
+/* Fitness: W/kg beside FTP, FTP history card and its log forms */
+.tile-value-side { font-size: 15px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+.rider-log { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.rider-log .row input[type='number'] { width: 90px; }
+.rider-log-label { min-width: 88px; }
+.rider-log p { margin: 0; }
+.rider-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 10px; }
+.rider-lists td:last-child { text-align: right; }
+
+/* Workouts tab: level line under the workout name */
+.lib-level { margin: 2px 0 1px; }
+.lib-level .diff { font-size: 12px; }
+.m-stat-unit { font-size: 0.55em; font-weight: 500; color: var(--muted); }

@@ -6,16 +6,20 @@ import { parseWorkout, toMrc, toRideBoxJson, toZwo } from '../workout/parsers';
 import { WorkoutChart } from './WorkoutChart';
 import { downloadBlob } from '../export/fit';
 import { WorkoutView } from './WorkoutView';
+import { LevelBadge } from './Levels';
+import { rateWorkout, type Levels } from '../training/levels';
 
 interface Props {
   workouts: StoredWorkout[];
   ftp: number;
+  /** the rider's progression levels, to show each workout's level against them */
+  levels: Levels;
   onChange: () => void;
   onRide: (w: StoredWorkout) => void;
   onEdit: (w: StoredWorkout | null) => void;
 }
 
-export function Library({ workouts, ftp, onChange, onRide, onEdit }: Props) {
+export function Library({ workouts, ftp, levels, onChange, onRide, onEdit }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [paste, setPaste] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -108,6 +112,9 @@ export function Library({ workouts, ftp, onChange, onRide, onEdit }: Props) {
               <div className="card-head">
                 <div>
                   <div className="card-title">{sw.workout.name}</div>
+                  <div className="lib-level small">
+                    <LevelBadge rating={rateWorkout(sw.workout, ftp)} levels={levels} />
+                  </div>
                   <div className="muted small">
                     {formatDuration(st.duration)} · TSS {Math.round(st.tss)} · IF {st.if.toFixed(2)} · {sw.source}
                   </div>

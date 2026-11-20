@@ -7,7 +7,7 @@ import type { Settings, StoredWorkout } from '../storage/db';
 import type { StravaConfig } from '../strava/strava';
 import type { SyncStatus } from '../storage/sync';
 import { monthWeeks, moveTo, newPlanned, scaleWorkout, weekStart } from '../training/calendar';
-import { addDays, dayKey, dayStart, estimateFtp, fitnessSeries, formLabel, loadEntries, plannedLoad, today, weeklyTotals, type LoadEntry } from '../training/load';
+import { addDays, dayKey, dayStart, fitnessSeries, formLabel, loadEntries, plannedLoad, today, weeklyTotals, type LoadEntry } from '../training/load';
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../training/model';
 import { LEVEL_ZONES, ZONE_NAMES, difficultyLabel, rateWorkout, type LevelEvent, type LevelZone, type Levels } from '../training/levels';
 import type { AdaptSuggestion, CoachState } from '../training/coach';
@@ -19,6 +19,7 @@ import { MiniChart, useCardStats } from '../ui/CardActual';
 import { LEVEL_COLORS } from '../ui/Levels';
 import { FitnessChart, SERIES, WeeklyBars } from '../ui/FitnessChart';
 import { StravaSettings } from '../ui/StravaSettings';
+import { RiderLog } from '../ui/RiderLog';
 import { PlannedCoach, TodayCard } from '../ui/Coach';
 import { ChainTracker } from '../chains/ChainTracker';
 
@@ -44,6 +45,8 @@ export interface MobileAppProps {
   onDeleteCalendar: (ids: string[]) => void;
   onSettingsChange: (s: Settings) => void;
   onStravaChange: (c: StravaConfig) => void;
+  /** after a manual Strava import */
+  onImported: () => void;
   onBuildPlan: () => void;
   onManagePlans: () => void;
   onAdapt: (input: AdaptInput) => void;
@@ -1097,7 +1100,6 @@ function ProgressScreen(p: MobileAppProps) {
     return all.slice(all.length - (42 + 1 + 14));
   }, [entries, planned, t]);
   const weeks = useMemo(() => weeklyTotals(entries, addDays(t, -55), t), [entries, t]);
-  const est = useMemo(() => estimateFtp(p.rides), [p.rides]);
   const now = series.find((d) => d.date === t) ?? series[series.length - 1];
   const recent = p.levelHistory.filter((h) => h.after !== h.before).slice(-4).reverse();
 
@@ -1140,13 +1142,8 @@ function ProgressScreen(p: MobileAppProps) {
           <Stat label="Fitness" value={<span style={{ color: SERIES.ctl }}>{Math.round(now?.ctl ?? 0)}</span>} sub="CTL" />
           <Stat label="Fatigue" value={<span style={{ color: SERIES.atl }}>{Math.round(now?.atl ?? 0)}</span>} sub="ATL" />
           <Stat label="Form" value={<span style={{ color: SERIES.tsb }}>{Math.round(now?.tsb ?? 0)}</span>} sub={formLabel(now?.tsb ?? 0)} />
-          <Stat label="FTP" value={settings.ftp} sub={est && Math.abs(est.ftp - settings.ftp) >= 3 ? `est. ${est.ftp}` : 'W'} />
+          <Stat label="FTP" value={<>{settings.ftp}<small className="m-stat-unit"> W</small></>} sub={`${settings.riderKg > 0 ? (settings.ftp / settings.riderKg).toFixed(2) : '–'} W/kg`} />
         </div>
-        {est && Math.abs(est.ftp - settings.ftp) >= 3 && (
-          <button className="m-btn block" onClick={() => p.onSettingsChange({ ...settings, ftp: est.ftp })}>
-            Use estimated FTP {est.ftp} W
-          </button>
-        )}
         <div className="m-card">
           <div className="small muted">Last 6 weeks · dashed is your plan</div>
           <FitnessChart days={series} height={190} />
@@ -1155,6 +1152,7 @@ function ProgressScreen(p: MobileAppProps) {
           <div className="small muted">Weekly TSS</div>
           <WeeklyBars weeks={weeks} />
         </div>
+        <RiderLog settings={settings} today={t} onChange={p.onSettingsChange} />
       </div>
     </>
   );
@@ -1234,7 +1232,7 @@ function MoreScreen(p: MobileAppProps & { onOpenActivity: (e: LoadEntry) => void
 
         <div className="m-section-label">Strava</div>
         <div className="m-card m-strava">
-          <StravaSettings config={p.strava} onChange={p.onStravaChange} />
+          <StravaSettings config={p.strava} onChange={p.onStravaChange} onImported={p.onImported} />
         </div>
 
         <button className="m-btn block ghost" onClick={p.onDesktop}>Open the full desktop site</button>

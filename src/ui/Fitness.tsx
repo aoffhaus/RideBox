@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings } from '../storage/db';
-import { importStravaActivities } from '../strava/activities';
-import { canReadActivities, type StravaConfig } from '../strava/strava';
-import { addDays, estimateFtp, fitnessSeries, formLabel, loadEntries, plannedLoad, today, weeklyTotals } from '../training/load';
+import { addDays, fitnessSeries, formLabel, loadEntries, plannedLoad, today, weeklyTotals } from '../training/load';
 import type { PlannedWorkout, StravaActivity } from '../training/model';
 import { formatDuration } from '../workout/model';
 import { FitnessChart, SERIES, WeeklyBars } from './FitnessChart';
+import { RiderLog } from './RiderLog';
 
 const RANGES = [
   { id: '6w', label: '6 weeks', days: 42 },
@@ -15,20 +14,16 @@ const RANGES = [
   { id: '1y', label: '1 year', days: 365 },
 ] as const;
 
-export function Fitness({ rides, acts, calendar, settings, strava, onSettingsChange, onImported, children }: {
+export function Fitness({ rides, acts, calendar, settings, onSettingsChange, children }: {
   rides: RideRecord[];
   acts: StravaActivity[];
   calendar: PlannedWorkout[];
   settings: Settings;
-  strava: StravaConfig;
   onSettingsChange: (s: Settings) => void;
-  onImported: () => void;
   /** extra sections (progression levels) */
   children?: React.ReactNode;
 }) {
   const [range, setRange] = useState<(typeof RANGES)[number]['id']>('3m');
-  const [importing, setImporting] = useState(false);
-  const [msg, setMsg] = useState('');
   const [showTable, setShowTable] = useState(false);
   const days = RANGES.find((r) => r.id === range)!.days;
   const t = today();
@@ -41,39 +36,12 @@ export function Fitness({ rides, acts, calendar, settings, strava, onSettingsCha
     return all.slice(all.length - (days + 1 + 28));
   }, [entries, planned, days, t]);
   const weeks = useMemo(() => weeklyTotals(entries, addDays(t, -days), t), [entries, days, t]);
-  const est = useMemo(() => estimateFtp(rides), [rides]);
   const now = series.find((d) => d.date === t) ?? series[series.length - 1];
   const recent = entries.filter((e) => e.date >= addDays(t, -13)).reverse();
 
-  async function runImport() {
-    setImporting(true);
-    setMsg('');
-    try {
-      const n = await importStravaActivities();
-      setMsg(n ? `Imported ${n} Strava ${n === 1 ? 'activity' : 'activities'}.` : 'No new Strava activities.');
-      onImported();
-    } catch (e) {
-      setMsg((e as Error).message);
-    } finally {
-      setImporting(false);
-    }
-  }
-
   return (
     <div className="page">
-      <div className="row space">
-        <h2>Fitness</h2>
-        <div className="row">
-          {canReadActivities(strava) ? (
-            <button onClick={runImport} disabled={importing}>
-              {importing ? 'Importing…' : 'Import from Strava'}
-            </button>
-          ) : (
-            <span className="muted small">Connect Strava (Settings) to count outdoor rides.</span>
-          )}
-        </div>
-      </div>
-      {msg && <div className="muted small">{msg}</div>}
+      <h2>Fitness</h2>
 
       <div className="tiles">
         <div className="tile">
@@ -99,22 +67,10 @@ export function Fitness({ rides, acts, calendar, settings, strava, onSettingsCha
         </div>
         <div className="tile">
           <div className="tile-label">FTP</div>
-          <div className="tile-value">{settings.ftp} W</div>
-          {est ? (
-            <div className="muted small">
-              Estimate {est.ftp} W (95% of {est.best20} W for 20 min, {est.date})
-              {Math.abs(est.ftp - settings.ftp) >= 3 && (
-                <>
-                  {' '}
-                  <button className="link" onClick={() => onSettingsChange({ ...settings, ftp: est.ftp })}>
-                    Use {est.ftp} W
-                  </button>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="muted small">Ride 20+ minutes hard to get an estimate.</div>
-          )}
+          <div className="tile-value">
+            {settings.ftp} W <span className="tile-value-side">{settings.riderKg > 0 ? (settings.ftp / settings.riderKg).toFixed(2) : '–'} W/kg</span>
+          </div>
+          <div className="muted small">at {settings.units === 'imperial' ? `${Math.round(settings.riderKg * 2.20462)} lb` : `${settings.riderKg.toFixed(1)} kg`}</div>
         </div>
       </div>
 
@@ -164,6 +120,8 @@ export function Fitness({ rides, acts, calendar, settings, strava, onSettingsCha
         <div className="card-title">Weekly TSS</div>
         <WeeklyBars weeks={weeks} />
       </div>
+
+      <RiderLog settings={settings} today={t} onChange={onSettingsChange} />
 
       {children}
 
