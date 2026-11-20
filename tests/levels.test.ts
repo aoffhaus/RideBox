@@ -102,6 +102,23 @@ describe('computeLevels', () => {
     expect(levels.vo2max).toBeNull();
   });
 
+  it('decays an idle zone by 0.1 a week after 4 weeks, however much other zones are ridden', () => {
+    const w = parseText('# Thr\n10m 55%\n2x(20m 97%, 5m 50%)\n5m 50%');
+    const t0 = Date.UTC(2026, 0, 5);
+    const day = 86_400_000;
+    const ride = { ...rideWith([{ target: 137, power: 137, secs: 600 }, { target: 242, power: 245, secs: 1200 }, { target: 125, power: 125, secs: 300 }, { target: 242, power: 245, secs: 1200 }, { target: 125, power: 125, secs: 600 }]), id: 'r1', workoutName: 'Thr', startTime: t0 };
+    // three long endurance rides a week for 10 weeks, no threshold work
+    const acts = Array.from({ length: 30 }, (_, i) => ({
+      id: `strava-${i}`, stravaId: i + 1, name: 'Long ride', sportType: 'Ride',
+      start: t0 + (Math.floor(i / 3) * 7 + 1 + 2 * (i % 3)) * day, movingTime: 2 * 3600, distance: 60000, weightedWatts: 160, deviceWatts: true,
+    }));
+    const now = t0 + 70 * day + 3600_000;
+    const start = computeLevels([ride], [], [], [w], 250, t0 + day).levels.threshold!;
+    const idle = computeLevels([ride], acts, [], [w], 250, now).levels.threshold!;
+    expect(idle).toBeCloseTo(start - 0.6, 5); // 10 weeks idle = 6 weeks of decay
+    expect(computeLevels([ride], [], [], [w], 250, now).levels.threshold!).toBeCloseTo(idle, 5);
+  });
+
   it('counts long steady outdoor rides as endurance', () => {
     const act = { id: 'strava-1', stravaId: 1, name: 'Long ride', sportType: 'Ride', start: Date.UTC(2026, 0, 5), movingTime: 3 * 3600, distance: 90000, weightedWatts: 170, deviceWatts: true };
     expect(computeLevels([], [act], [], [], 250, Date.UTC(2026, 0, 6)).levels.endurance).toBeGreaterThan(5);

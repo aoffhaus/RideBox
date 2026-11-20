@@ -184,12 +184,16 @@ export function applyOutcome(levels: Levels, r: WorkoutRating, outcome: Outcome,
   return { ...levels, [r.zone]: clamp(next) };
 }
 
-/** Untrained zones lose 0.1 per week after 4 weeks. */
-function decay(levels: Levels, lastTrained: Partial<Record<LevelZone, number>>, now: number): Levels {
-  const out = { ...levels };
+/**
+ * Untrained zones lose 0.1 per week after 4 weeks. `trained` holds each zone's
+ * level as of the last workout in it, so decay is always measured from that
+ * level, never from an already-decayed one.
+ */
+function decay(trained: Levels, lastTrained: Partial<Record<LevelZone, number>>, now: number): Levels {
+  const out = { ...trained };
   for (const z of LEVEL_ZONES) {
     const last = lastTrained[z];
-    const L = levels[z];
+    const L = trained[z];
     if (last == null || L == null) continue;
     const weeks = (now - last) / (7 * 86_400_000) - 4;
     if (weeks > 0) out[z] = clamp(L - 0.1 * Math.floor(weeks));
@@ -241,18 +245,21 @@ export function computeLevels(
     evs.push({ t: a.start, name: a.name, rating: { zone: 'endurance', level: clamp(1 + (minutes - 45) / 22) }, outcome: 'pass' });
   }
   evs.sort((x, y) => x.t - y.t);
-  let levels = startLevels();
+  // each zone's level as of its last workout (undecayed)
+  let trained = startLevels();
   const last: Partial<Record<LevelZone, number>> = {};
   const history: LevelEvent[] = [];
   for (const e of evs) {
-    levels = decay(levels, last, e.t);
     if (e.rating.zone === 'recovery' || e.rating.zone === 'test') continue;
-    const before = levels[e.rating.zone];
-    levels = applyOutcome(levels, e.rating, e.outcome, e.feel);
-    last[e.rating.zone] = e.t;
-    history.push({ date: dayKey(e.t), name: e.name, zone: e.rating.zone, workoutLevel: e.rating.level, outcome: e.outcome, before, after: levels[e.rating.zone]! });
+    const z = e.rating.zone;
+    const current = decay(trained, last, e.t);
+    const before = current[z];
+    const after = applyOutcome(current, e.rating, e.outcome, e.feel)[z]!;
+    trained = { ...trained, [z]: after };
+    last[z] = e.t;
+    history.push({ date: dayKey(e.t), name: e.name, zone: z, workoutLevel: e.rating.level, outcome: e.outcome, before, after });
   }
-  return { levels: decay(levels, last, now), history };
+  return { levels: decay(trained, last, now), history };
 }
 
 /** How a workout compares with the rider's current level in its zone. */
