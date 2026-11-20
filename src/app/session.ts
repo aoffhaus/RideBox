@@ -2,7 +2,7 @@ import type { HeartRateMonitor, Trainer } from '../ble/types';
 import { WorkoutEngine, type EngineState } from '../workout/engine';
 import { intervalFtpFraction, zoneFor, type Workout } from '../workout/model';
 import { DEFAULT_RIDER, stepSpeed, type RiderParams } from '../physics/rider';
-import { generateRoute, type Route, type RoutePresetId } from '../world/route';
+import { ROUTE_PRESETS, generateRoute, rng, type Route, type RoutePresetId } from '../world/route';
 import { ArchTracker } from '../world/arches';
 import { summarize, type Lap, type RideRecord, type Sample } from './recorder';
 import type { Settings } from '../storage/db';
@@ -25,7 +25,12 @@ export interface Snapshot {
   cadence: number;
   hr?: number;
   speed: number; // m/s
-  distance: number; // m
+  distance: number; // m, total ridden this session (the odometer)
+  /** Where you are on the current route (m along it). Equals `distance` unless portals moved you. */
+  routeDistance: number;
+  /** Bumps each time a portal swaps the route (the views rebuild for the new world). */
+  routeEpoch: number;
+  /** Continuous altitude: portal jumps are levelled out so climbing totals stay honest. */
   altitude: number;
   grade: number;
   ergOn: boolean;
@@ -33,9 +38,12 @@ export interface Snapshot {
   workout?: EngineState;
   workoutDone: boolean;
   intervalStats?: IntervalStats;
+  /** Route distances (on the current route) of the gate ending this interval and the next one. */
   archDistance?: number;
   nextArchDistance?: number;
-  /** Projected route distance where each upcoming interval starts (next few). */
+  /** The gate ending this interval is a portal to another world. */
+  portal: boolean;
+  /** Projected route distance where each upcoming interval starts (next few; on the current route). */
   upcoming: { index: number; distance: number; startsIn: number }[];
   lapCount: number;
 }
@@ -47,6 +55,31 @@ export interface SessionOptions {
   workout?: Workout;
   routePreset: RoutePresetId;
   routeSeed?: number;
+  /**
+   * Portal run: every interval gate of an ERG workout is a portal that drops you at a
+   * random spot in a random world. Seeds the sequence of worlds (so it can be repeated).
+   */
+  portalSeed?: number;
+}
+
+/** Where a portal took you. */
+export interface PortalJump {
+  preset: RoutePresetId;
+  seed: number;
+  /** route distance you arrive at */
+  spawn: number;
+}
+
+/**
+ * Picks the next portal destination: a different world from the one you're in
+ * (so every jump is a visible change), a fresh layout seed, and a random spot on it.
+ */
+export function pickPortalJump(rand: () => number, current: RoutePresetId): PortalJump {
+  const options = ROUTE_PRESETS.filter((p) => p.id !== current);
+  const preset = options[Math.floor(rand() * options.length) % options.length];
+  const seed = 1 + Math.floor(rand() * 1e6);
+  const lap = preset.lengthKm * 1000;
+  return { preset: preset.id, seed, spawn: rand() * lap };
 }
 
 /**
@@ -55,7 +88,18 @@ export interface SessionOptions {
  * the 3D view is throttled.
  */
 export class RideSession {
-  readonly route: Route;
+  /** The route you're on; replaced when a portal moves you to another world. */
+  route: Route;
+  /** route position = distance + routeOffset */
+  private routeOffset = 0;
+  /** added to the route's altitude so the recorded altitude doesn't jump through portals */
+  private altOffset = 0;
+  /** Bumps on every route swap. */
+  routeEpoch = 0;
+  /** Names of the worlds ridden, in order (portal runs visit several). */
+  readonly worlds: string[] = [];
+  private portalRand?: () => number;
+  private portalArmed = false;
   readonly engine?: WorkoutEngine;
   readonly startTime = Date.now();
   readonly samples: Sample[] = [];
@@ -91,8 +135,10 @@ export class RideSession {
   constructor(private opts: SessionOptions) {
     const s = opts.settings;
     this.rider = { ...DEFAULT_RIDER, riderKg: s.riderKg, bikeKg: s.bikeKg, cda: s.cda };
-    this.route = generateRoute(opts.routePreset, opts.routeSeed ?? 1);
     if (opts.workout) this.engine = new WorkoutEngine(opts.workout, s.ftp);
+    if (opts.portalSeed != null) this.portalRand = rng(opts.portalSeed);
+    this.route = generateRoute(opts.routePreset, opts.routeSeed ?? 1);
+    this.worlds.push(this.route.preset.name);
 
     opts.trainer.onData = (d) => {
       this.power = d.power;
@@ -117,6 +163,35 @@ export class RideSession {
   /** The rider's FTP from settings (used even in free rides, where there is no workout engine). */
   get ftp() {
     return this.opts.settings.ftp;
+  }
+
+  /** A portal run (portals only open on ERG workout intervals). */
+  get portalRun() {
+    return this.portalRand != null;
+  }
+
+  /** Position on the current route. */
+  get routeDistance() {
+    return this.distance + this.routeOffset;
+  }
+
+  /**
+   * Whether the gate at the end of the current interval is a portal: a portal run,
+   * mid-workout with ERG holding the power (in SIM the jump in grade would be felt),
+   * and another interval to ride after it.
+   */
+  private portalOpen(st: EngineState | undefined): boolean {
+    return !!this.portalRand && !!st && !st.finished && this.ergOn && st.targetWatts != null && !!st.next;
+  }
+
+  /** Move to another world. The odometer, recording and workout carry on untouched. */
+  teleport(jump: PortalJump) {
+    const before = this.route.at(this.routeDistance).y + this.altOffset;
+    this.route = generateRoute(jump.preset, jump.seed);
+    this.routeOffset = jump.spawn - this.distance;
+    this.altOffset = before - this.route.at(jump.spawn).y;
+    this.routeEpoch++;
+    this.worlds.push(this.route.preset.name);
   }
 
   start() {
@@ -157,7 +232,9 @@ export class RideSession {
       }
     }
     const moving = this.started && !this.paused && !this.autoPaused;
-    const pt = this.route.at(this.distance);
+    // was the gate ahead a portal? (as of the last tick, before the interval changed under it)
+    const portalAhead = this.portalArmed;
+    let pt = this.route.at(this.routeDistance);
     if (moving) {
       this.engine?.tick(dt);
       this.elapsed += dt;
@@ -170,9 +247,15 @@ export class RideSession {
     const st = this.engine?.state;
     if (st && st.index !== this.lastIntervalIndex) {
       this.closeLap(this.intervalName(this.lastIntervalIndex));
+      // ridden (not skipped back) through a portal gate: off to another world
+      if (portalAhead && st.index > this.lastIntervalIndex) {
+        this.teleport(pickPortalJump(this.portalRand!, this.route.preset.id));
+        pt = this.route.at(this.routeDistance);
+      }
       this.lastIntervalIndex = st.index;
       this.ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0 };
     }
+    this.portalArmed = this.portalOpen(st);
     if (st?.finished && !this.completedFired) {
       this.completedFired = true;
       this.onWorkoutComplete?.();
@@ -196,7 +279,7 @@ export class RideSession {
         cadence: Math.round(this.cadence),
         speed: this.speed,
         distance: this.distance,
-        altitude: pt.y,
+        altitude: pt.y + this.altOffset,
         target: target ?? undefined,
       });
       const a = this.ivAcc;
@@ -266,24 +349,27 @@ export class RideSession {
   }
 
   snapshot(): Snapshot {
-    const pt = this.route.at(this.distance);
+    const rd = this.routeDistance;
+    const pt = this.route.at(rd);
     const st = this.engine?.state;
     const a = this.ivAcc;
     const workoutActive = !!st && !st.finished;
     let archDistance: number | undefined;
     let nextArchDistance: number | undefined;
     const upcoming: Snapshot['upcoming'] = [];
+    const portal = this.portalOpen(st);
     if (workoutActive && st) {
-      archDistance = this.arch.archDistance(this.distance, st.remaining);
-      if (st.next) nextArchDistance = this.arch.archDistance(this.distance, st.remaining + st.next.duration);
+      archDistance = this.arch.archDistance(rd, st.remaining);
+      // beyond a portal lies another world: nothing further to show on this route
+      if (st.next && !portal) nextArchDistance = this.arch.archDistance(rd, st.remaining + st.next.duration);
       const ivs = this.engine!.intervals;
       let t = st.remaining;
-      for (let i = st.index + 1; i < ivs.length && upcoming.length < 6; i++) {
-        upcoming.push({ index: i, distance: this.arch.archDistance(this.distance, t), startsIn: t });
+      for (let i = st.index + 1; i < ivs.length && upcoming.length < (portal ? 1 : 6); i++) {
+        upcoming.push({ index: i, distance: this.arch.archDistance(rd, t), startsIn: t });
         t += ivs[i].duration;
       }
       // where the workout ends (useful to show the finish on the map)
-      if (upcoming.length < 6) upcoming.push({ index: ivs.length, distance: this.arch.archDistance(this.distance, t), startsIn: t });
+      if (upcoming.length < 6 && !portal) upcoming.push({ index: ivs.length, distance: this.arch.archDistance(rd, t), startsIn: t });
     }
     return {
       started: this.started,
@@ -296,7 +382,9 @@ export class RideSession {
       hr: this.hr,
       speed: this.speed,
       distance: this.distance,
-      altitude: pt.y,
+      routeDistance: rd,
+      routeEpoch: this.routeEpoch,
+      altitude: pt.y + this.altOffset,
       grade: pt.grade,
       ergOn: this.ergOn,
       mode: workoutActive && this.ergOn && st?.targetWatts != null ? 'erg' : 'sim',
@@ -312,6 +400,7 @@ export class RideSession {
         : undefined,
       archDistance,
       nextArchDistance,
+      portal,
       upcoming,
       lapCount: this.laps.length,
     };
@@ -325,9 +414,9 @@ export class RideSession {
     const workoutName = this.engine?.workout.name;
     return {
       id: uid(),
-      name: workoutName ?? `${this.route.preset.name} ride`,
+      name: workoutName ?? (this.portalRun ? 'Portal run' : `${this.route.preset.name} ride`),
       workoutName,
-      routeName: this.route.preset.name,
+      routeName: this.worlds.length > 1 ? `Portal run: ${portalRoute(this.worlds)}` : this.route.preset.name,
       startTime: this.startTime,
       ftp,
       samples: this.samples,
@@ -335,4 +424,10 @@ export class RideSession {
       summary: summarize(this.samples, ftp),
     };
   }
+}
+
+/** "A → B → C", collapsing long runs so the name stays readable. */
+export function portalRoute(worlds: string[], max = 8): string {
+  if (worlds.length <= max) return worlds.join(' → ');
+  return [...worlds.slice(0, max - 2), `… ${worlds.length - (max - 1)} more`, worlds[worlds.length - 1]].join(' → ');
 }

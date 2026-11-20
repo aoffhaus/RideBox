@@ -127,7 +127,7 @@ export function App() {
   const [hrm, setHrm] = useState<HeartRateMonitor | null>(null);
   const [hrmState, setHrmState] = useState<ConnState>('disconnected');
   const [selected, setSelected] = useState<string>('free');
-  const [route, setRoute] = useState<RoutePresetId>('rolling');
+  const [route, setRoute] = useState<RoutePresetId | 'portal'>('rolling');
   const [session, setSession] = useState<RideSession | null>(null);
   const [summary, setSummary] = useState<RideRecord | null>(null);
   const [editing, setEditing] = useState<StoredWorkout | null | undefined>(undefined);
@@ -368,13 +368,16 @@ export function App() {
     }
     const planned = workoutId.startsWith('cal:') ? calendar.find((c) => `cal:${c.id}` === workoutId) : undefined;
     const sw = workouts.find((w) => w.id === workoutId);
+    // portal run: start somewhere random, then every interval gate is a portal
+    const portalSeed = route === 'portal' ? Math.floor(Math.random() * 2 ** 31) : undefined;
     const s = new RideSession({
       trainer,
       hrm,
       settings,
       workout: planned?.workout ?? sw?.workout,
-      routePreset: route,
-      routeSeed: 1,
+      routePreset: route === 'portal' ? ROUTE_PRESETS[Math.floor(Math.random() * ROUTE_PRESETS.length)].id : route,
+      routeSeed: route === 'portal' ? 1 + Math.floor(Math.random() * 1e6) : 1,
+      portalSeed,
     });
     setSession(s);
   }
@@ -665,6 +668,39 @@ export function App() {
 
           <h2>Route</h2>
           <div className="route-grid">
+            <div
+              role="button"
+              tabIndex={0}
+              className={`route-card ${route === 'portal' ? 'selected' : ''}`}
+              onClick={() => setRoute('portal')}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  setRoute('portal');
+                }
+              }}
+            >
+              <div className="route-thumb portal-thumb" aria-hidden>
+                <span />
+              </div>
+              <div className="card-title">Portal Run</div>
+              <div className="muted small">
+                Every interval gate is a portal: ride through it and land somewhere random in another world.{' '}
+                {selected === 'free' ? <b>Pick a workout: portals open at interval gates in ERG mode.</b> : 'Portals open while ERG holds your power.'}
+              </div>
+              {route === 'portal' && (
+                <button
+                  className="primary route-ride"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startRide();
+                  }}
+                  disabled={!trainer}
+                >
+                  {trainer ? 'Ride ▶' : 'Connect a trainer to ride'}
+                </button>
+              )}
+            </div>
             {routes.map(({ p, r }) => {
               return (
                 <div

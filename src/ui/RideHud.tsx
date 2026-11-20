@@ -75,7 +75,11 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
   // usable power/FTP the class-based compliance colour applies as before.
   const powerColor = powerZoneColor(p3, ftp);
 
-  const lapFrac = (snap.distance % route.length) / route.length;
+  const rd = snap.routeDistance;
+  const lapFrac = (rd % route.length) / route.length;
+  const lap = Math.floor(rd / route.length) + 1;
+  // a portal run hops between worlds, so laps of any one route mean little
+  const where = session.portalRun ? route.preset.name : `${route.preset.name} · lap ${lap}`;
   const ivFrac = cur ? Math.min(1, Math.max(0, st!.timeInInterval / cur.duration)) : 0;
   const total = session.engine ? session.engine.intervals.reduce((s, x) => s + x.duration, 0) : 0;
   const wFrac = st && total ? Math.min(1, st.elapsed / total) : lapFrac;
@@ -91,7 +95,7 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
         <Stat value={fmtElev(climb.current.total, settings)} unit={elevUnit(settings)} sub="climb" />
         <Stat value={formatDuration(snap.elapsed)} unit="time" />
       </div>
-      <div className="zh-lap" title={`${route.preset.name}: lap ${Math.floor(snap.distance / route.length) + 1}`}>
+      <div className="zh-lap" title={where}>
         <div style={{ width: `${lapFrac * 100}%` }} />
       </div>
 
@@ -99,7 +103,7 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
         <span className={`zh-chip ${snap.mode === 'erg' ? 'erg' : 'sim'}`}>{snap.mode === 'erg' ? 'ERG ON' : 'SIM'}</span>
         {session.engine && <span className="zh-chip">{st?.intensity ?? 100}%</span>}
         <span className="zh-chip zh-chip-r">
-          {route.preset.name} · lap {Math.floor(snap.distance / route.length) + 1}
+          {where}
         </span>
       </div>
 
@@ -156,13 +160,13 @@ export function RideHud({ session, settings, snap }: { session: RideSession; set
           ) : st?.finished ? (
             'workout complete'
           ) : !st ? (
-            `${fmtDist(snap.distance % route.length, settings)} / ${fmtDist(route.length, settings)} ${distUnit(settings)}`
+            `${fmtDist(rd % route.length, settings)} / ${fmtDist(route.length, settings)} ${distUnit(settings)}`
           ) : (
             'last interval'
           )}
         </span>
         <span className="zh-left">
-          <Flag /> {st && !st.finished ? formatDuration(Math.ceil(st.totalRemaining)) : `lap ${Math.floor(snap.distance / route.length) + 1}`}
+          <Flag /> {st && !st.finished ? formatDuration(Math.ceil(st.totalRemaining)) : `lap ${lap}`}
         </span>
       </div>
       <div className="zh-wbar">

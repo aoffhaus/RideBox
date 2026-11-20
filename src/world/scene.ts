@@ -6,7 +6,8 @@ import { chunkedInstances, type Inst } from './themes/common';
 import { MotionSmoother } from './smoother';
 import { exaggerateRoute } from './route';
 import { CAMERA_RIGS, cameraTargets, type CameraMode } from './camera';
-import { themeFor } from './themes';
+import { themeFor, type Theme } from './themes';
+import { PORTAL_VIOLET, animatePortal, buildPortal, setPortalZone, type PortalObj } from './portal';
 import type { ViewHook } from './themes/common';
 import { registerWorld, releaseWorld } from './worldMap';
 import { applyWorldFx, fxBuild, fxSurge, fxTime, windy } from './fx';
@@ -828,7 +829,7 @@ function animateArch(a: ArchObj, time: number, opacity: number) {
   a.glow[1].opacity = opacity * (0.75 + 0.25 * Math.sin(time * 4));
 }
 
-function drawLabel(a: ArchObj, big: string, small: string, color: string) {
+function drawLabel(a: Pick<ArchObj, 'canvas' | 'tex' | 'lastText'>, big: string, small: string, color: string) {
   const text = big + '|' + small + '|' + color;
   if (text === a.lastText) return;
   a.lastText = text;
@@ -893,10 +894,12 @@ export class WorldView {
   private rider: RiderModel;
   private arch: ArchObj;
   private nextArch: ArchObj;
+  private portal: PortalObj;
   private sun: THREE.DirectionalLight;
+  private hemi: THREE.HemisphereLight;
   /** unit vector towards the sun (the light and the physical sky share it) */
   private sunDir = new THREE.Vector3(80, 140, 50).normalize();
-  private sky: THREE.Mesh;
+  private sky: THREE.Mesh | null = null;
   private post: PostFX | null = null;
   private envMap: THREE.Texture | null = null;
   private t0 = performance.now();
@@ -934,6 +937,18 @@ export class WorldView {
   /** everything built from the (exaggerated) route: terrain, road, scenery, ground */
   private world = Object.assign(new THREE.Group(), { name: 'route-world' });
   private viewHooks: ViewHook[] = [];
+  /** the session route the world was built for (portal runs replace it mid-ride) */
+  private builtFor: Route;
+  private routeEpoch: number;
+  /** a portal swap is under way: the old world is gone, the new one compiling, the flash covering it */
+  private swapping = false;
+  private disposed = false;
+  /** the flash is showing the approach wash */
+  private washing = false;
+  /** last frame's portal charge, for the camera's FOV pull */
+  private portalPull = 0;
+  /** full-screen flash that hides a portal swap */
+  private flash: HTMLDivElement;
 
   constructor(
     private container: HTMLElement,
@@ -955,24 +970,11 @@ export class WorldView {
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
 
-    const theme = themeFor(session.route);
-    this.renderer.toneMappingExposure = theme.exposure;
-    this.scene.fog = new THREE.Fog(theme.id === 'countryside' ? HAZE : new THREE.Color(theme.haze), theme.fogNear, theme.fogFar);
-    if (theme.sun) sunDirection(theme.sun.elevation, theme.sun.azimuth, this.sunDir);
-    const haze = theme.id === 'countryside' ? HAZE : new THREE.Color(theme.haze);
-    if (theme.physicalSky !== false) {
-      const sky = buildPhysicalSky({ ...DEFAULT_SKY, ...theme.sky }, this.sunDir, haze);
-      this.sky = sky;
-      // image-based lighting from the sky for the PBR materials (rider, arches)
-      this.envMap = bakeEnvironment(this.renderer, sky);
-      this.scene.environment = this.envMap;
-      this.scene.environmentIntensity = 0.55;
-    } else {
-      this.sky = theme.id === 'countryside' ? buildSky() : buildSky(new THREE.Color(theme.skyTop), new THREE.Color(theme.skyHorizon));
-    }
-    this.scene.add(this.sky);
-    this.scene.add(new THREE.HemisphereLight(theme.hemiSky, theme.hemiGround, theme.hemiIntensity));
-    this.sun = new THREE.DirectionalLight(theme.sunColor, theme.sunIntensity);
+    this.high = high;
+    this.builtFor = session.route;
+    this.routeEpoch = session.routeEpoch;
+    this.hemi = new THREE.HemisphereLight();
+    this.sun = new THREE.DirectionalLight();
     this.sun.castShadow = true;
     // The shadow box is centred SHADOW_AHEAD metres up the road (see loop): the camera looks
     // forward, so a box centred on the rider spent almost half its texels behind the lens.
@@ -985,16 +987,79 @@ export class WorldView {
     sc.top = SHADOW_HALF;
     sc.bottom = -SHADOW_HALF;
     sc.far = 400;
-    this.scene.add(this.sun, this.sun.target);
+    this.scene.add(this.hemi, this.sun, this.sun.target);
+    this.applyTheme(themeFor(session.route));
 
-    this.theme = theme;
-    this.high = high;
     this.scene.add(this.world);
     this.buildWorld();
-    if (high) this.post = new PostFX(this.renderer, this.scene, this.camera, theme.bloom ?? DEFAULT_BLOOM);
+    if (high) this.post = new PostFX(this.renderer, this.scene, this.camera, this.theme.bloom ?? DEFAULT_BLOOM);
 
     this.rider = buildRider();
     this.scene.add(this.rider.group);
+    this.arch = buildArch(1);
+    this.nextArch = buildArch(0.35);
+    this.portal = buildPortal(stripTexture());
+    this.portal.group.visible = false;
+    this.scene.add(this.arch.group, this.nextArch.group, this.portal.group);
+
+    this.flash = document.createElement('div');
+    Object.assign(this.flash.style, { position: 'absolute', inset: '0', pointerEvents: 'none', opacity: '0', background: '#fff' });
+    container.appendChild(this.flash);
+
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(container);
+    this.resize();
+
+    this.placeAt(session.snapshot().routeDistance);
+    this.camera.fov = CAMERA_RIGS[this.camMode].fov;
+    this.camera.updateProjectionMatrix();
+    this.loop();
+  }
+
+  /**
+   * Sky, fog, lights, exposure, glow and headlamp for a theme. Called once at start and
+   * again whenever a portal takes you into another world.
+   */
+  private applyTheme(theme: Theme) {
+    this.theme = theme;
+    const high = this.high;
+    this.renderer.toneMappingExposure = theme.exposure;
+    const haze = theme.id === 'countryside' ? HAZE : new THREE.Color(theme.haze);
+    this.scene.fog = new THREE.Fog(haze, theme.fogNear, theme.fogFar);
+    this.sunDir.set(80, 140, 50).normalize();
+    if (theme.sun) sunDirection(theme.sun.elevation, theme.sun.azimuth, this.sunDir);
+
+    if (this.sky) {
+      this.scene.remove(this.sky);
+      disposeTree(this.sky);
+    }
+    this.envMap?.dispose();
+    this.envMap = null;
+    this.scene.environment = null;
+    if (theme.physicalSky !== false) {
+      const sky = buildPhysicalSky({ ...DEFAULT_SKY, ...theme.sky }, this.sunDir, haze);
+      this.sky = sky;
+      // image-based lighting from the sky for the PBR materials (rider, arches)
+      this.envMap = bakeEnvironment(this.renderer, sky);
+      this.scene.environment = this.envMap;
+      this.scene.environmentIntensity = 0.55;
+    } else {
+      this.sky = theme.id === 'countryside' ? buildSky() : buildSky(new THREE.Color(theme.skyTop), new THREE.Color(theme.skyHorizon));
+    }
+    this.scene.add(this.sky);
+
+    this.hemi.color.set(theme.hemiSky);
+    this.hemi.groundColor.set(theme.hemiGround);
+    this.hemi.intensity = theme.hemiIntensity;
+    this.sun.color.set(theme.sunColor);
+    this.sun.intensity = theme.sunIntensity;
+    this.post?.setBloom(theme.bloom ?? DEFAULT_BLOOM);
+
+    if (this.lampRig) {
+      this.scene.remove(this.lampRig);
+      disposeTree(this.lampRig);
+      this.lampRig = null;
+    }
     if (theme.headlamp) {
       // a cool-white lamp on the bars throwing a soft pool ~20 m up the road
       const lamp = new THREE.SpotLight('#f4f1ff', high ? 60 : 45, 70, 0.42, 0.75, 1.4);
@@ -1008,22 +1073,64 @@ export class WorldView {
       fill.position.set(-3, 2.5, 1.5);
       this.lampRig.add(fill);
     }
-    this.arch = buildArch(1);
-    this.nextArch = buildArch(0.35);
-    this.scene.add(this.arch.group, this.nextArch.group);
+  }
 
-    this.ro = new ResizeObserver(() => this.resize());
-    this.ro.observe(container);
-    this.resize();
-
-    const s = session.snapshot();
-    this.motion = new MotionSmoother(s.distance);
-    const t0 = cameraTargets(this.route, s.distance, 1.7, CAMERA_RIGS[this.camMode]);
+  /** Jump the smoothed motion and the camera to a route distance (start, or arriving through a portal). */
+  private placeAt(d: number) {
+    this.motion = new MotionSmoother(d);
+    this.archFollow = new ArchFollower();
+    this.nextArchFollow = new ArchFollower();
+    const t0 = cameraTargets(this.route, d, 1.7, CAMERA_RIGS[this.camMode]);
     this.camPos.copy(t0.pos);
     this.camLook.copy(t0.look);
-    this.camera.fov = CAMERA_RIGS[this.camMode].fov;
-    this.camera.updateProjectionMatrix();
-    this.loop();
+    this.pitch = 0;
+  }
+
+  /**
+   * A portal moved the session to another world. The flash goes fully white, then (once
+   * the browser has painted it) the old world is torn down and the new one built, its
+   * shaders compiled off the main thread where the GPU driver allows, and the flash fades
+   * out over the new world. The build itself blocks for a moment, but behind solid white.
+   */
+  private beginSwap() {
+    this.swapping = true;
+    this.washing = false;
+    this.routeEpoch = this.session.routeEpoch;
+    this.flash.style.transition = 'none';
+    this.flash.style.background = '#fff';
+    this.flash.style.opacity = '1';
+    // two frames: the first paints the white, the second runs after it is on screen
+    requestAnimationFrame(() => requestAnimationFrame(() => void this.finishSwap()));
+  }
+
+  private async finishSwap() {
+    if (this.disposed) return;
+    releaseWorld(this.builtFor);
+    for (const child of [...this.world.children]) {
+      this.world.remove(child);
+      disposeTree(child);
+    }
+    this.builtFor = this.session.route;
+    this.routeEpoch = this.session.routeEpoch;
+    this.route = exaggerateRoute(this.session.route, this.exaggeration);
+    this.applyTheme(themeFor(this.session.route));
+    this.buildWorld();
+    this.post?.invalidateScene();
+    this.placeAt(this.session.snapshot().routeDistance);
+    this.portal.group.visible = false;
+    this.arch.group.visible = false;
+    this.nextArch.group.visible = false;
+    try {
+      // compile the new world's materials before showing it (bounded, in case a driver stalls)
+      await Promise.race([this.renderer.compileAsync(this.scene, this.camera), new Promise((r) => setTimeout(r, 4000))]);
+    } catch {
+      // first frames compile whatever is left
+    }
+    if (this.disposed) return;
+    this.swapping = false;
+    this.last = performance.now();
+    this.flash.style.transition = 'opacity 0.9s ease-out';
+    this.flash.style.opacity = '0';
   }
 
   /** (Re)build all route-derived scenery into `this.world` from `this.route`. */
@@ -1053,7 +1160,7 @@ export class WorldView {
       w.add(ground);
       land.push(ground);
     }
-    registerWorld(this.session.route, route, land);
+    registerWorld(this.builtFor, route, land);
     // shader-level life: drifting cloud shadows over everything, wind in the foliage
     applyWorldFx(w, { cloudShadows: theme.cloudShadows ?? (theme.clouds ? 0.45 : 0), wind: true });
     // per-frame camera hooks (e.g. distance LOD for instanced scenery)
@@ -1073,7 +1180,7 @@ export class WorldView {
     k = Math.min(3, Math.max(1, k));
     if (Math.abs(k - this.exaggeration) < 1e-6) return;
     this.exaggeration = k;
-    this.route = exaggerateRoute(this.session.route, k);
+    this.route = exaggerateRoute(this.builtFor, k);
     for (const child of [...this.world.children]) {
       this.world.remove(child);
       disposeTree(child);
@@ -1172,12 +1279,15 @@ export class WorldView {
     const rawDt = (now - this.last) / 1000;
     const dt = Math.min(0.1, rawDt);
     this.last = now;
-    if (this.adaptive.frame(rawDt)) this.applyQuality();
+    if (this.swapping) return;
     const s = this.session.snapshot();
+    // a portal moved you to another world: rebuild behind the flash
+    if (s.routeEpoch !== this.routeEpoch) return this.beginSwap();
+    if (this.adaptive.frame(rawDt)) this.applyQuality();
     const route = this.route;
 
     // --- smooth motion: predict with speed, gently correct toward the true distance
-    const d = this.motion.update(dt, s.distance, s.speed);
+    const d = this.motion.update(dt, s.routeDistance, s.speed);
     this.speed = this.motion.speed;
     const trace = (window as unknown as { __rbTrace?: number[] }).__rbTrace;
     if (trace) trace.push(d, now);
@@ -1222,14 +1332,14 @@ export class WorldView {
     if (Math.abs(this.camPos.y - tgt.pos.y) > 30) this.camPos.y = tgt.pos.y; // after jumps
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
-    // a sprint widens the view for a rush of speed
-    const fovTarget = rig.fov + 7 * fxSurge.value;
+    // a sprint widens the view for a rush of speed (and so does the pull of a portal)
+    const fovTarget = rig.fov + 7 * fxSurge.value + 14 * this.portalPull;
     if (Math.abs(this.camera.fov - fovTarget) > 0.05) {
       this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, dt * 6);
       this.camera.updateProjectionMatrix();
     }
 
-    this.sky.position.copy(this.camera.position);
+    this.sky!.position.copy(this.camera.position);
     // shadow box centred up the road, where the camera is looking
     const ahead = route.at(d + SHADOW_AHEAD);
     this.sun.target.position.set(ahead.x, ahead.y, ahead.z);
@@ -1244,20 +1354,34 @@ export class WorldView {
     const archAt = (remaining: number) => d + vArch * Math.max(0, remaining - age);
     const archD = this.archFollow.update(dt, st && s.archDistance != null && st.interval ? archAt(st.remaining) : undefined);
     const nextD = this.nextArchFollow.update(dt, st && s.nextArchDistance != null && st.next ? archAt(st.remaining + st.next.duration) : undefined);
+    let charge = 0;
     if (st && archD != null && st.interval) {
-      this.arch.group.visible = true;
-      this.place(this.arch.group, archD);
       const next = st.next;
       const color = next ? (next.free ? '#9aa4b2' : zoneFor(intervalFtpFraction(next, ftp)).color) : '#ffffff';
-      setArchColor(this.arch, color);
-      animateArch(this.arch, (now - this.t0) / 1000, 1);
       const intensity = st.intensity / 100;
       const nextTxt = next
         ? next.free
           ? `Next: ${formatDuration(next.duration)} free ride`
           : `Next: ${formatDuration(next.duration)} @ ${Math.round(toWatts((next.powerStart + next.powerEnd) / 2, next.unit, ftp) * intensity)} W`
         : 'Workout complete!';
-      drawLabel(this.arch, formatDuration(Math.ceil(st.remaining)), nextTxt, color);
+      if (s.portal) {
+        // portal run: the gate is a portal, charging up over the last couple of seconds
+        this.arch.group.visible = false;
+        this.portal.group.visible = true;
+        this.place(this.portal.group, archD);
+        const left = Math.max(0, st.remaining - age);
+        charge = s.paused ? 0 : Math.max(0, Math.min(1, 1 - left / 2.5)) ** 2;
+        setPortalZone(this.portal, color);
+        animatePortal(this.portal, (now - this.t0) / 1000, dt, charge);
+        drawLabel(this.portal, formatDuration(Math.ceil(st.remaining)), nextTxt, color);
+      } else {
+        this.portal.group.visible = false;
+        this.arch.group.visible = true;
+        this.place(this.arch.group, archD);
+        setArchColor(this.arch, color);
+        animateArch(this.arch, (now - this.t0) / 1000, 1);
+        drawLabel(this.arch, formatDuration(Math.ceil(st.remaining)), nextTxt, color);
+      }
       if (nextD != null && next) {
         this.nextArch.group.visible = true;
         this.place(this.nextArch.group, nextD);
@@ -1270,8 +1394,24 @@ export class WorldView {
     } else {
       this.arch.group.visible = false;
       this.nextArch.group.visible = false;
+      this.portal.group.visible = false;
+    }
+    // the last half-second into a portal: the screen washes out in its colour
+    const wash = Math.max(0, (charge - 0.75) / 0.25);
+    if (wash > 0) {
+      const c = PORTAL_VIOLET;
+      this.flash.style.transition = 'none';
+      this.flash.style.background = `radial-gradient(circle at 50% 55%, #fff 0%, #fff ${Math.round(20 + 40 * wash)}%, ${c} 100%)`;
+      this.flash.style.opacity = (0.95 * wash * wash).toFixed(3);
+      this.washing = true;
+    } else if (this.washing) {
+      // e.g. paused or skipped back just short of the portal
+      this.washing = false;
+      this.flash.style.transition = 'opacity 0.3s';
+      this.flash.style.opacity = '0';
     }
 
+    this.portalPull = charge;
     const time = (now - this.t0) / 1000;
     fxTime.value = time;
     // stopped or paused counts as zero power, so the world calms down
@@ -1292,8 +1432,10 @@ export class WorldView {
   };
 
   dispose() {
+    this.disposed = true;
     cancelAnimationFrame(this.raf);
-    releaseWorld(this.session.route);
+    releaseWorld(this.builtFor);
+    this.flash.remove();
     this.ro.disconnect();
     disposeTree(this.scene);
     this.post?.dispose();
