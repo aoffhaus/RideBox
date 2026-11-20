@@ -19,7 +19,7 @@ import { MiniChart, useCardStats } from '../ui/CardActual';
 import { LEVEL_COLORS } from '../ui/Levels';
 import { FitnessChart, SERIES, WeeklyBars } from '../ui/FitnessChart';
 import { StravaSettings } from '../ui/StravaSettings';
-import { TodayCard } from '../ui/Coach';
+import { PlannedCoach, TodayCard } from '../ui/Coach';
 
 export interface MobileAppProps {
   settings: Settings;
@@ -838,6 +838,22 @@ function PlannedSheet(props: MobileAppProps & { p: PlannedWorkout; onClose: () =
           <span className="m-coach-ico">{Icon.sparkle}</span>
           <span>{p.rationale}</span>
         </div>
+      )}
+
+      {props.coachOn && p.status !== 'done' && (
+        <>
+          <div className="m-section-label">Coach</div>
+          <PlannedCoach
+            key={p.id}
+            state={props.coachState}
+            planned={p}
+            btn="m-btn"
+            onSwap={(w, reason) => {
+              save({ ...p, workout: w, rationale: reason });
+              onToast(`Switched to ${w.name}`);
+            }}
+          />
+        </>
       )}
 
       <div className="m-section-label">Reschedule</div>

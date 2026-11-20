@@ -440,6 +440,13 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .coach-today .field { min-width: 0; }
 @media (max-width: 520px) { .day-mins { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .coach-today > input { width: 100%; }
+.detail-coach { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.planned-coach { display: flex; flex-direction: column; gap: 8px; }
+.planned-coach-form { display: flex; flex-direction: column; gap: 8px; }
+.planned-coach-form textarea { width: 100%; }
+.planned-coach .field { min-width: 0; }
+.planned-coach .seg { flex-wrap: wrap; }
+.planned-coach button.active:not(.primary) { border-color: var(--accent, currentColor); }
 
 /* =================== phone layout (src/mobile) =================== */
 .m-app {

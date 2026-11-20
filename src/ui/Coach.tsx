@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { askCoach, buildContext, planFromOutput, reviewAdaptation, todayOptions, type CoachState, type PlanResult, type ReviewedChange, type TodayOption } from '../training/coach';
-import { WEEKDAYS, type AdaptInput, type AdaptOutput, type CoachEvent, type PlanInput, type PlanOutput, type TodayOutput, type Weekday } from '../training/coachSchema';
+import { WEEKDAYS, type AdaptInput, type AdaptOutput, type CoachEvent, type PlanInput, type PlanOutput, type TodayInput, type TodayOutput, type Weekday } from '../training/coachSchema';
 import { addDays, dayStart } from '../training/load';
 import type { PlannedWorkout, TrainingPlan } from '../training/model';
 import { weekStart } from '../training/calendar';
+import { rateWorkout } from '../training/levels';
 import { flatten, formatDuration, plannedStats, type Workout } from '../workout/model';
 import { Modal } from './Calendar';
 import { WorkoutChart } from './WorkoutChart';
@@ -491,6 +492,113 @@ export function TodayCard({ state, onRide, onAdd, canRide = true }: {
               }
             />
           ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- a planned calendar workout ----------
+
+const TIMES = [30, 45, 60, 75, 90, 120, 150, 180];
+
+/**
+ * Coach help for one calendar workout: three alternatives for that day, or a
+ * recommendation after telling the coach how you feel. Nothing is asked until
+ * the rider clicks. "Use this" swaps the workout in place on the calendar.
+ */
+export function PlannedCoach({ state, planned, onSwap, btn = '' }: {
+  state: CoachState;
+  planned: PlannedWorkout;
+  onSwap: (w: Workout, reason: string) => void;
+  /** extra class for buttons (the phone layout uses m-btn) */
+  btn?: string;
+}) {
+  const c = useCoach();
+  const ftp = state.settings.ftp;
+  const st = plannedStats(flatten(planned.workout), ftp);
+  const plannedMin = Math.round(st.duration / 60);
+  const nearest = TIMES.reduce((a, b) => (Math.abs(b - plannedMin) < Math.abs(a - plannedMin) ? b : a));
+  const [mode, setMode] = useState<'closed' | 'options' | 'feel'>('closed');
+  const [minutes, setMinutes] = useState(nearest);
+  const [feel, setFeel] = useState(3);
+  const [note, setNote] = useState('');
+  const [answer, setAnswer] = useState<{ summary: string; options: TodayOption[]; problems: string[] } | null>(null);
+
+  async function ask(input: TodayInput) {
+    setAnswer(null);
+    const r = rateWorkout(planned.workout, ftp);
+    const full: TodayInput = {
+      ...input,
+      date: planned.date,
+      planned: { name: planned.workout.name, zone: r.zone, level: r.level, minutes: plannedMin, tss: Math.round(st.tss), rationale: planned.rationale || undefined },
+    };
+    const out = await c.run((onEvent, signal) => askCoach<TodayOutput>({ kind: 'today', context: buildContext(state), input: full }, onEvent, signal));
+    if (out) setAnswer({ summary: out.summary, ...todayOptions(out, state.library) });
+  }
+
+  const showOptions = () => {
+    setMode('options');
+    const seen = mode === 'options' && answer ? answer.options.map((o) => o.workout.name) : [];
+    void ask({ minutes: plannedMin, alternatives: true, note: seen.length ? `Already suggested, offer different ones: ${seen.join(', ')}` : undefined });
+  };
+
+  return (
+    <div className="planned-coach">
+      <div className="row wrap">
+        <button className={`${btn} ${mode === 'options' ? 'active' : ''}`} disabled={c.running} onClick={showOptions}>
+          {mode === 'options' && answer ? 'Show 3 more options' : 'Show 3 other options'}
+        </button>
+        <button className={`${btn} ${mode === 'feel' ? 'active' : ''}`} disabled={c.running} onClick={() => { setMode(mode === 'feel' ? 'closed' : 'feel'); setAnswer(null); }}>
+          Tell the coach how you feel
+        </button>
+      </div>
+      {mode === 'feel' && (
+        <div className="planned-coach-form">
+          <div className="row wrap">
+            <label className="field">
+              <span>Time</span>
+              <select value={minutes} onChange={(e) => setMinutes(Number(e.target.value))}>
+                {TIMES.map((m) => <option key={m} value={m}>{m} min</option>)}
+              </select>
+            </label>
+            <div className="field">
+              <span>How do you feel?</span>
+              <div className="seg">
+                {FEELS.map((f, i) => (
+                  <button key={f} className={feel === i + 1 ? 'active' : ''} onClick={() => setFeel(i + 1)}>{f}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tell the coach more, e.g. legs heavy from yesterday, slept badly, want something short and hard" />
+          <div className="row">
+            <button className={`primary ${btn}`} disabled={c.running} onClick={() => ask({ minutes, feel, note: note.trim() || undefined })}>
+              {answer ? 'Ask again' : 'Ask the coach'}
+            </button>
+          </div>
+        </div>
+      )}
+      <CoachProgress c={c} />
+      {answer && mode !== 'closed' && (
+        <>
+          <p className="small">{answer.summary}</p>
+          {answer.options.map((o, i) => (
+            <WorkoutLine
+              key={i}
+              w={o.workout}
+              ftp={ftp}
+              extra={
+                <>
+                  <div className="muted small">{o.reason}</div>
+                  <div className="row">
+                    <button className={`primary ${btn}`} onClick={() => onSwap(o.workout, o.reason)}>Use this instead</button>
+                  </div>
+                </>
+              }
+            />
+          ))}
+          {answer.problems.length > 0 && <div className="muted small">Skipped {answer.problems.length} option{answer.problems.length === 1 ? '' : 's'} that didn&apos;t check out: {answer.problems.join(' ')}</div>}
         </>
       )}
     </div>
