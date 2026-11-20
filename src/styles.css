@@ -607,7 +607,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 /* bottom tab bar */
 .m-tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   height: calc(var(--m-tabbar) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
   background: rgba(22, 27, 34, 0.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border);

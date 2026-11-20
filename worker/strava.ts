@@ -48,7 +48,8 @@ const AUTHORIZE_URL = 'https://www.strava.com/oauth/authorize';
 const TOKEN_URL = 'https://www.strava.com/oauth/token';
 const DEAUTH_URL = 'https://www.strava.com/oauth/deauthorize';
 const API = 'https://www.strava.com/api/v3';
-export const SCOPE = 'activity:write,activity:read_all';
+// profile:read_all lets the chain tracker read the athlete's bikes
+export const SCOPE = 'activity:write,activity:read_all,profile:read_all';
 const STATE_COOKIE = 'ridebox_strava_state';
 
 /** Only the Strava endpoints RideBox uses can be reached through the proxy. */

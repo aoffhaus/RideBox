@@ -37,6 +37,7 @@ import { invalidateStreams, syncMissingStreams } from './strava/streams';
 import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
 import { MobileApp } from './mobile/MobileApp';
+import { ChainTracker } from './chains/ChainTracker';
 
 const PHONE_QUERY = '(max-width: 760px), (pointer: coarse) and (max-width: 1024px)';
 const DESKTOP_KEY = 'ridebox-force-desktop';
@@ -75,8 +76,18 @@ if (pendingOAuth || serverReturn) history.replaceState(null, '', location.pathna
 
 const SYNC_LABEL: Record<SyncStatus, string> = { off: '', syncing: '⟳ Syncing', synced: '✓ Synced', offline: '⚠ Offline', error: '⚠ Sync error' };
 
-type Tab = 'ride' | 'calendar' | 'workouts' | 'fitness' | 'history' | 'settings';
-const TABS: Tab[] = ['ride', 'calendar', 'workouts', 'fitness', 'history', 'settings'];
+type Tab = 'ride' | 'calendar' | 'workouts' | 'fitness' | 'history' | 'chains' | 'settings';
+const TABS: Tab[] = ['ride', 'calendar', 'workouts', 'fitness', 'history', 'chains', 'settings'];
+
+/** The chain tracker keeps its data in the Worker's D1, so it needs the private site. */
+export function ChainsNeedServer() {
+  return (
+    <div className="page narrow">
+      <h2>Chain tracker</h2>
+      <p className="muted">The chain tracker runs on your private Cloudflare site (it keeps its records and Strava ride cache there). Open RideBox there to use it.</p>
+    </div>
+  );
+}
 
 function StatusDot({ s }: { s: ConnState }) {
   return <span className={`dot dot-${s}`} title={s} />;
@@ -772,6 +783,8 @@ export function App() {
         </Fitness>
       ) : tab === 'history' ? (
         <History rides={rides} settings={settings} stravaConnected={isConnected(strava)} onOpen={setSummary} onChange={refresh} />
+      ) : tab === 'chains' ? (
+        strava.server ? <ChainTracker /> : <ChainsNeedServer />
       ) : (
         <SettingsPage
           settings={settings}

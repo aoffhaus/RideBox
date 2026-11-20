@@ -33,7 +33,7 @@ describe('worker strava', () => {
     expect(res.status).toBe(302);
     const loc = new URL(res.headers.get('Location')!);
     expect(loc.searchParams.get('redirect_uri')).toBe('https://ride.example/api/strava/callback');
-    expect(loc.searchParams.get('scope')).toBe('activity:write,activity:read_all');
+    expect(loc.searchParams.get('scope')).toBe('activity:write,activity:read_all,profile:read_all');
     expect(loc.searchParams.get('client_id')).toBe('123');
     expect(res.headers.get('Set-Cookie')).toContain(`ridebox_strava_state=${loc.searchParams.get('state')}`);
     expect(res.headers.get('Set-Cookie')).toContain('HttpOnly');

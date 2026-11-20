@@ -100,6 +100,19 @@ Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads 
 - Durations are given in seconds or as `"30s"`, `"5m"`, or `"1h10m"`.
 - Step types are `steady`, `ramp`, `repeat`, and `free`.
 
+## Chain tracker
+
+The **Chains** tab (on a phone, the chain icon in the tab bar) tracks chain rotation, quick links and lubes per bike, counted from your Strava rides. It used to be a separate app (`aoffhaus/chain-tracker`) and now runs inside RideBox on your private Cloudflare site.
+
+- **Bikes**: the installed chain on each bike, miles and hours since the swap and since the last lube, and **Swap chain** / **Log lube** buttons. Bikes without rotated chains only track miles since their last lube.
+- **Chains**: each chain's lifetime miles and hours (including starting miles), install periods and quick-link uses.
+- **History**: every swap and lube, editable.
+- **Setup**: add or edit chains, record quick links, choose which bikes rotate chains, assign untagged virtual rides to a bike, sync with Strava, and download a backup.
+
+A ride counts toward whichever chain was installed on its bike (matched by Strava's bike tag) when the ride started. The Worker pulls rides from Strava every 30 minutes (a Cron Trigger), and when you open the tab if the last sync is more than 15 minutes old. Each sync re-pulls the last 30 days, so edits and deletions on Strava are picked up.
+
+It uses RideBox's own Strava connection. Reading your bikes needs Strava's "View data about your private profile" permission, so if you connected Strava before the chain tracker was added, click **Reconnect Strava** once (Settings, or Chains → Setup). Its data lives in RideBox's D1 database in tables prefixed `ct_` (migration `worker/migrations/0004_chain_tracker.sql`).
+
 ## Trainer details
 
 - **FTMS** (`0x1826`): Indoor Bike Data provides power, cadence, and speed. The Control Point handles ERG (*Set Target Power*) and SIM (*Set Indoor Bike Simulation*).
