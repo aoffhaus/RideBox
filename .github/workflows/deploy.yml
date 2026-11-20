@@ -2,9 +2,7 @@ name: Deploy to Cloudflare
 
 on:
   push:
-    # Deploys from the feature branch while it's being tried out; after it's
-    # merged, remove it so only main deploys.
-    branches: [main, claude/amazing-cray-mi8hmk]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
