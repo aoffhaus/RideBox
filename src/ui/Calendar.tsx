@@ -8,6 +8,7 @@ import { flatten, formatDuration, intervalFtpFraction, plannedStats, zoneFor, ty
 import { WorkoutChart } from './WorkoutChart';
 import { rateWorkout, type Levels } from '../training/levels';
 import { LevelBadge } from './Levels';
+import { ActualDetail } from './ActualDetail';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PHASE_COLORS: Record<string, string> = { base: '#2f80ed', build: '#27ae60', specialty: '#f2994a', peak: '#f2994a', taper: '#9b8afb', recovery: '#8a8f98', race: '#eb5757' };
@@ -49,6 +50,7 @@ export function Calendar(props: CalendarProps) {
   const [picker, setPicker] = useState<DayKey | null>(null);
   const [dragOver, setDragOver] = useState<DayKey | null>(null);
   const [moving, setMoving] = useState<string | null>(null); // click-to-move (keyboard / touch)
+  const [openAct, setOpenAct] = useState<LoadEntry | null>(null);
 
   const a = dayStart(anchor);
   const weeks = view === 'month' ? monthWeeks(a.getFullYear(), a.getMonth()) : [weekStart(anchor)];
@@ -215,8 +217,9 @@ export function Calendar(props: CalendarProps) {
                         key={e.id}
                         className="cal-card activity"
                         onClick={(ev) => {
+                          if (moving) return;
                           ev.stopPropagation();
-                          if (e.kind === 'ridebox') onOpenRide(e.id);
+                          setOpenAct(e);
                         }}
                         title={e.kind === 'strava' ? 'From Strava' : 'RideBox ride'}
                       >
@@ -264,6 +267,16 @@ export function Calendar(props: CalendarProps) {
           onOpenRide={onOpenRide}
           todayKey={t}
           calendar={calendar}
+        />
+      )}
+      {openAct && (
+        <ActivityModal
+          entry={openAct}
+          ride={rides.find((r) => r.id === openAct.id)}
+          act={acts.find((x) => x.id === openAct.id)}
+          settings={settings}
+          onOpenRide={onOpenRide}
+          onClose={() => setOpenAct(null)}
         />
       )}
       {picker && (
@@ -327,7 +340,7 @@ function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDele
         {s.if.toFixed(2)}
         {p.phase ? ` · ${p.phase}` : ''} · <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} />
       </div>
-      <WorkoutChart intervals={ivs} ftp={settings.ftp} height={110} />
+      {ride || act ? <ActualDetail ride={ride} act={act} intervals={ivs} settings={settings} /> : <WorkoutChart intervals={ivs} ftp={settings.ftp} height={110} />}
       {p.workout.description && <p className="desc">{p.workout.description}</p>}
       {p.rationale && (
         <p className="small">
@@ -366,6 +379,32 @@ function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDele
           <button onClick={() => onSave({ ...p, status: 'planned', rideId: undefined, stravaId: undefined })}>Unlink ride</button>
         )}
         <button className="danger" onClick={onDelete}>Remove</button>
+      </div>
+    </Modal>
+  );
+}
+
+/** A ride that wasn't on the plan: its stats and power / HR / cadence. */
+function ActivityModal({ entry, ride, act, settings, onOpenRide, onClose }: {
+  entry: LoadEntry;
+  ride?: RideRecord;
+  act?: StravaActivity;
+  settings: Settings;
+  onOpenRide: (id: string) => void;
+  onClose: () => void;
+}) {
+  const when = ride?.startTime ?? act?.start;
+  return (
+    <Modal title={entry.name} onClose={onClose}>
+      <div className="muted small">
+        {when ? new Date(when).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : entry.date}
+        {act ? ` · ${act.sportType}${act.trainer ? ' (trainer)' : ''} · from Strava` : ride ? ` · ${ride.routeName}` : ''}
+        {ride?.workoutName ? ` · ${ride.workoutName}` : ''}
+      </div>
+      <ActualDetail ride={ride} act={act} settings={settings} tss={entry.tss} />
+      <div className="row">
+        {ride && <button onClick={() => { onClose(); onOpenRide(ride.id); }}>Open ride page</button>}
+        {act && <a className="strava-link" href={`https://www.strava.com/activities/${act.stravaId}`} target="_blank" rel="noreferrer">View on Strava ↗</a>}
       </div>
     </Modal>
   );

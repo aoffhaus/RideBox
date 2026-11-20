@@ -75,6 +75,8 @@ describe('worker strava', () => {
     expect(allowed('GET', 'uploads/55')).toBe(true);
     expect(allowed('PUT', 'activities/9')).toBe(true);
     expect(allowed('DELETE', 'activities/9')).toBe(false);
+    expect(allowed('GET', 'activities/9/streams')).toBe(true);
+    expect(allowed('GET', 'activities/9/kudos')).toBe(false);
     expect(allowed('GET', 'athlete')).toBe(false);
     expect(allowed('GET', '../oauth/token')).toBe(false);
     expect((await call('proxy/athlete', {}, memStore(auth()))).status).toBe(403);

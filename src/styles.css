@@ -696,3 +696,21 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .phase-edit input[type="date"] { width: 140px; }
 .phase-edit input:first-child { width: 120px; }
 .phase-edit .grow { flex: 1; min-width: 140px; }
+.metrics { display: flex; flex-direction: column; gap: 4px; }
+.metrics-readout { display: flex; gap: 12px; flex-wrap: wrap; min-height: 20px; font-variant-numeric: tabular-nums; }
+.metrics-lanes { position: relative; display: flex; flex-direction: column; gap: 6px; padding-bottom: 18px; cursor: crosshair; user-select: none; }
+.metrics-lane { position: relative; background: var(--panel-2); border-radius: 6px; overflow: hidden; }
+.metrics-lane svg { display: block; width: 100%; }
+.metrics-label { position: absolute; top: 3px; left: 6px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.metrics-cursor { position: absolute; top: 0; bottom: 18px; width: 1px; background: rgba(255,255,255,0.6); pointer-events: none; }
+.metrics-axis { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; font-size: 10px; color: var(--muted); }
+.metrics-axis span { position: absolute; transform: translateX(-50%); }
+.stats-grid.compact { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px; margin: 4px 0; }
+.stats-grid.compact .stat { padding: 6px 8px; }
+.stats-grid.compact .stat-v { font-size: 16px; }
+.plan-vs td, .plan-vs th { padding: 4px 6px; font-size: 12px; }
+.verdict { font-size: 11px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+.v-hit { background: #173a25; color: #7ee2a0; }
+.v-over { background: #3a2a14; color: #f2c94c; }
+.v-under { background: #3a1517; color: #ffb3b0; }
+.v-short { background: #2b3340; color: #8b96a5; }

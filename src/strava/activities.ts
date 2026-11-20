@@ -2,6 +2,7 @@
 // count toward fitness and the coach can see them.
 
 import { getFlag, listAll, putOne, setFlag } from '../storage/db';
+import type { StravaStreams } from '../training/actual';
 import type { StravaActivity } from '../training/model';
 import { describeError, stravaFetch } from './strava';
 
@@ -75,3 +76,22 @@ export async function importStravaActivities(): Promise<number> {
 }
 
 export const listStravaActivities = () => listAll<StravaActivity>('strava_acts');
+
+const streamCache = new Map<number, Promise<StravaStreams>>();
+
+/** Second-by-second power, heart rate and cadence for one activity (fetched on demand, kept for the session). */
+export function fetchStreams(stravaId: number): Promise<StravaStreams> {
+  let p = streamCache.get(stravaId);
+  if (!p) {
+    p = (async () => {
+      const res = await stravaFetch(`activities/${stravaId}/streams?keys=time,watts,heartrate,cadence,moving&key_by_type=true`);
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 404) return {};
+      if (!res.ok) throw new Error(`Couldn’t load the activity from Strava (${res.status}): ${describeError(json)}`);
+      return json as StravaStreams;
+    })();
+    p.catch(() => streamCache.delete(stravaId));
+    streamCache.set(stravaId, p);
+  }
+  return p;
+}

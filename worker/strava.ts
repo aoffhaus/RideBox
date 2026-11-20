@@ -57,6 +57,7 @@ const ALLOWED: [string, RegExp][] = [
   ['POST', /^uploads$/],
   ['GET', /^uploads\/\d+$/],
   ['PUT', /^activities\/\d+$/],
+  ['GET', /^activities\/\d+\/streams$/],
 ];
 export const allowed = (method: string, path: string) => ALLOWED.some(([m, re]) => m === method && re.test(path));
 

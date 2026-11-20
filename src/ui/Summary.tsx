@@ -1,4 +1,7 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { seriesFromRide } from '../training/actual';
+import { MetricsChart } from './ActualDetail';
+import { CADENCE_COLOR } from './WorkoutChart';
 import type { RideRecord } from '../app/recorder';
 import { lapStats } from '../app/recorder';
 import type { Settings } from '../storage/db';
@@ -6,34 +9,6 @@ import { downloadBlob, rideFileName, rideToFit, sendToGarmin } from '../export/f
 import { formatDuration } from '../workout/model';
 import { distUnit, elevUnit, fmtDist, fmtElev, r0 } from './format';
 import { activityUrl } from '../strava/strava';
-
-/** Power + HR trace for a finished ride. */
-function RideTrace({ ride, maxHr }: { ride: RideRecord; maxHr: number }) {
-  const s = ride.samples;
-  if (s.length < 2) return null;
-  const W = 1000;
-  const H = 140;
-  const maxP = Math.max(ride.ftp * 1.3, ...s.map((x) => x.power));
-  const step = Math.max(1, Math.floor(s.length / 1200));
-  let pd = '';
-  let td = '';
-  let hd = '';
-  for (let i = 0; i < s.length; i += step) {
-    const x = ((i / (s.length - 1)) * W).toFixed(1);
-    const a = s.slice(Math.max(0, i - 4), i + 1);
-    const p = a.reduce((q, v) => q + v.power, 0) / a.length;
-    pd += `${pd ? 'L' : 'M'}${x},${(H - (p / maxP) * H).toFixed(1)}`;
-    if (s[i].target != null) td += `${td ? 'L' : 'M'}${x},${(H - (s[i].target! / maxP) * H).toFixed(1)}`;
-    if (s[i].hr) hd += `${hd ? 'L' : 'M'}${x},${(H - (s[i].hr! / maxHr) * H).toFixed(1)}`;
-  }
-  return (
-    <svg className="workout-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ height: H }}>
-      {td && <path d={td} fill="none" stroke="#f2c94c" strokeWidth={1.5} vectorEffect="non-scaling-stroke" opacity={0.8} />}
-      {hd && <path d={hd} fill="none" stroke="#ff6b81" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />}
-      <path d={pd} fill="none" stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
 
 /** Upload options / status for the ride. */
 function StravaPanel({ ride, connected, onUpload }: { ride: RideRecord; connected: boolean; onUpload: (r: RideRecord, opts: { hidden: boolean }) => void }) {
@@ -112,6 +87,7 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
   onClose: () => void;
 }) {
   const s = ride.summary;
+  const series = useMemo(() => seriesFromRide(ride), [ride]);
   const [name, setName] = useState(ride.name);
   const [renameMsg, setRenameMsg] = useState('');
   const [garminHint, setGarminHint] = useState(false);
@@ -195,9 +171,10 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
           </div>
         ))}
       </div>
-      <RideTrace ride={ride} maxHr={settings.maxHr} />
+      {ride.samples.length > 1 && <MetricsChart series={series} ftp={ride.ftp} />}
       <div className="muted small legend">
-        <span style={{ color: '#fff' }}>■ power</span> <span style={{ color: '#f2c94c' }}>■ target</span> <span style={{ color: '#ff6b81' }}>■ heart rate</span>
+        <span style={{ color: '#fff' }}>■ power</span> <span style={{ color: '#f2c94c' }}>■ target</span> <span style={{ color: '#ff6b81' }}>■ heart rate</span>{' '}
+        <span style={{ color: CADENCE_COLOR }}>■ cadence</span>
       </div>
       {ride.laps.length > 1 && (
         <table className="laps">
