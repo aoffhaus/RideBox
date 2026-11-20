@@ -1,7 +1,7 @@
 // Phone layout: a schedule-first app with a bottom tab bar (Calendar, Workouts,
 // Progress, More). There's no riding here; rides happen on the desktop site.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings, StoredWorkout } from '../storage/db';
 import type { StravaConfig } from '../strava/strava';
@@ -527,8 +527,15 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
   const [monthAnchor, setMonthAnchor] = useState<DayKey>(t);
   const week = weekStart(selected);
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
+  // The agenda is one continuous list of weeks: it grows forward as you scroll
+  // and backward when you jump to (or ask for) an earlier week.
+  const [range, setRange] = useState(() => ({ from: weekStart(t), weeks: 6 }));
+  const rangeEnd = addDays(range.from, range.weeks * 7 - 1);
+  const agendaDays = useMemo(() => Array.from({ length: range.weeks * 7 }, (_, i) => addDays(range.from, i)), [range]);
   const dayRefs = useRef(new Map<DayKey, HTMLElement>());
   const scrollPending = useRef(false);
+  const autoScrolling = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const byDay = useMemo(() => {
     const m = new Map<DayKey, PlannedWorkout[]>();
@@ -548,48 +555,110 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
   const actsById = useMemo(() => new Map(p.acts.map((x) => [x.id, x])), [p.acts]);
   const tssById = useMemo(() => new Map(entries.map((e) => [e.id, e.tss])), [entries]);
   const activePlan = p.plans.find((x) => x.active);
-  const phase = activePlan?.phases.find((ph) => ph.start <= addDays(week, 3) && addDays(week, 3) <= ph.end);
 
-  let plannedTss = 0;
-  let plannedSec = 0;
-  let doneTss = 0;
-  let doneSec = 0;
-  for (const d of days) {
-    for (const c of byDay.get(d) ?? []) {
-      if (c.status === 'skipped') continue;
-      plannedTss += stats.get(c.id)!.tss;
-      plannedSec += stats.get(c.id)!.duration;
+  const phaseOf = (ws: DayKey) => activePlan?.phases.find((ph) => ph.start <= addDays(ws, 3) && addDays(ws, 3) <= ph.end);
+  const weekTotals = (ws: DayKey) => {
+    let plannedTss = 0;
+    let plannedSec = 0;
+    let doneTss = 0;
+    let doneSec = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(ws, i);
+      for (const c of byDay.get(d) ?? []) {
+        if (c.status === 'skipped') continue;
+        plannedTss += stats.get(c.id)!.tss;
+        plannedSec += stats.get(c.id)!.duration;
+      }
+      for (const e of actsByDay.get(d) ?? []) {
+        doneTss += e.tss;
+        doneSec += e.seconds;
+      }
     }
-    for (const e of actsByDay.get(d) ?? []) {
-      doneTss += e.tss;
-      doneSec += e.seconds;
-    }
-  }
+    return { plannedTss, plannedSec, doneTss, doneSec };
+  };
+  const firstPhase = phaseOf(range.from);
+  const { plannedTss, plannedSec, doneTss, doneSec } = weekTotals(range.from);
 
   const go = (d: DayKey, scroll = true) => {
+    const ws = weekStart(d);
+    if (ws < range.from) {
+      setRange({ from: ws, weeks: Math.round((dayStart(rangeEnd).getTime() - dayStart(ws).getTime()) / (7 * 864e5)) + 1 });
+    } else if (d > rangeEnd) {
+      setRange({ from: range.from, weeks: Math.round((dayStart(ws).getTime() - dayStart(range.from).getTime()) / (7 * 864e5)) + 3 });
+    }
     setSelected(d);
     scrollPending.current = scroll;
+    if (d === selected && scroll) scrollToDay(d, true);
   };
   const headRef = useRef<HTMLElement>(null);
   const scrollToDay = (d: DayKey, smooth: boolean) => {
     const el = dayRefs.current.get(d);
     if (!el) return;
     const off = (headRef.current?.getBoundingClientRect().height ?? 0) + 12;
-    window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - off), behavior: smooth ? 'smooth' : 'auto' });
+    const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - off);
+    if (Math.abs(top - window.scrollY) < 2) return;
+    // Don't let the scroll-follow logic below re-select days while we glide past them.
+    autoScrolling.current = true;
+    let timer = 0;
+    const done = () => {
+      autoScrolling.current = false;
+      window.clearTimeout(timer);
+      window.removeEventListener('scrollend', done);
+    };
+    window.addEventListener('scrollend', done);
+    timer = window.setTimeout(done, smooth ? 1200 : 100);
+    window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
   };
   useEffect(() => {
     if (!scrollPending.current) return;
     scrollPending.current = false;
     scrollToDay(selected, true);
-  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selected, range]); // eslint-disable-line react-hooks/exhaustive-deps
   // open on today
   useEffect(() => {
-    if (t !== week) scrollToDay(t, false);
+    if (t !== weekStart(t)) scrollToDay(t, false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keep the week strip in step with the day at the top of the list.
+  const agendaRef = useRef(agendaDays);
+  agendaRef.current = agendaDays;
+  useEffect(() => {
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (autoScrolling.current) return;
+        const line = (headRef.current?.getBoundingClientRect().height ?? 0) + 12;
+        const top = agendaRef.current.find((d) => (dayRefs.current.get(d)?.getBoundingClientRect().bottom ?? 0) > line);
+        if (top) setSelected(top);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  // Load more weeks as the end of the list comes into view. Re-observing after
+  // each load re-checks, so a tall screen keeps filling until it's covered.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (es) => {
+        if (es.some((e) => e.isIntersecting)) setRange((r) => ({ ...r, weeks: r.weeks + 4 }));
+      },
+      { rootMargin: '0px 0px 800px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [range.weeks]);
+
   const swipe = useSwipe(
-    () => go(addDays(selected, 7), false),
-    () => go(addDays(selected, -7), false),
+    () => go(addDays(selected, 7)),
+    () => go(addDays(selected, -7)),
   );
   const monthSwipe = useSwipeMonth(setMonthAnchor, monthAnchor);
 
@@ -605,6 +674,23 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
           <i key={e.id} style={{ background: 'var(--ok)' }} />
         ))}
       </span>
+    );
+  };
+
+  const weekDivider = (ws: DayKey) => {
+    const w = weekTotals(ws);
+    const ph = phaseOf(ws);
+    const fmt = (k: DayKey) => dayStart(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return (
+      <div className="m-week-divider">
+        <span>
+          <b>{fmt(ws)} – {fmt(addDays(ws, 6))}</b>
+          {ph && <span style={{ color: 'var(--accent-2)' }}> · {ph.name}</span>}
+        </span>
+        <span className="muted small">
+          {w.doneTss ? `${Math.round(w.doneTss)} / ` : ''}{Math.round(w.plannedTss)} TSS · {fmtHm(w.plannedSec)}
+        </span>
+      </div>
     );
   };
 
@@ -672,7 +758,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
           </div>
         ) : (
           <div className="m-week" {...swipe}>
-            <button className="m-icon-btn" aria-label="Previous week" onClick={() => go(addDays(selected, -7), false)}>{Icon.chevL}</button>
+            <button className="m-icon-btn" aria-label="Previous week" onClick={() => go(addDays(selected, -7))}>{Icon.chevL}</button>
             <div className="m-week-days">
               {days.map((d, i) => (
                 <button key={d} className={`m-wday${d === t ? ' today' : ''}${d === selected ? ' sel' : ''}`} onClick={() => go(d)}>
@@ -682,7 +768,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
                 </button>
               ))}
             </div>
-            <button className="m-icon-btn" aria-label="Next week" onClick={() => go(addDays(selected, 7), false)}>{Icon.chevR}</button>
+            <button className="m-icon-btn" aria-label="Next week" onClick={() => go(addDays(selected, 7))}>{Icon.chevR}</button>
           </div>
         )}
       </header>
@@ -690,8 +776,8 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
       <section className="m-weeksum">
         <div className="m-weeksum-top">
           <span>
-            {phase ? <b style={{ color: 'var(--accent-2)' }}>{phase.name}</b> : <b>This week</b>}
-            {week !== weekStart(t) && <span className="muted"> · {dayStart(week).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+            {firstPhase ? <b style={{ color: 'var(--accent-2)' }}>{firstPhase.name}</b> : <b>{range.from === weekStart(t) ? 'This week' : 'Week'}</b>}
+            {range.from !== weekStart(t) && <span className="muted"> · {dayStart(range.from).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
           </span>
           <span className="muted small">
             {Math.round(doneTss)} / {Math.round(plannedTss)} TSS · {fmtHm(doneSec)} / {fmtHm(plannedSec)}
@@ -723,12 +809,17 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
       )}
 
       <div className="m-agenda">
-        {days.map((d) => {
+        <button className="m-earlier" onClick={() => go(addDays(range.from, -7))}>
+          Show earlier week
+        </button>
+        {agendaDays.map((d, i) => {
           const items = byDay.get(d) ?? [];
           const extra = (actsByDay.get(d) ?? []).filter((e) => !linked.has(e.id));
+          const weekHead = i > 0 && i % 7 === 0 ? weekDivider(d) : null;
           return (
+            <Fragment key={d}>
+            {weekHead}
             <section
-              key={d}
               className={`m-day${d === t ? ' today' : ''}${d === selected ? ' sel' : ''}`}
               ref={(el) => {
                 if (el) dayRefs.current.set(d, el);
@@ -774,8 +865,10 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
                 {!items.length && !extra.length && <div className="m-rest">{d < t ? 'No workout' : 'Rest day'}</div>}
               </div>
             </section>
+            </Fragment>
           );
         })}
+        <div ref={sentinelRef} className="m-agenda-more" aria-hidden />
       </div>
     </>
   );
