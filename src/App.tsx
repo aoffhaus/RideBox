@@ -231,6 +231,9 @@ export function App() {
         for (const w of BUILTIN_WORKOUTS) await saveWorkout({ id: uid(), workout: w, source: 'builtin', createdAt: t++ });
         await setFlag('seeded-v1', true);
       }
+      // the Claude connector (worker/mcp) works out "today" and ride dates in this time zone
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz && (await getFlag('timezone')) !== tz) await setFlag('timezone', tz);
       await refresh();
       // pick up new Strava activities in the background
       if (canReadActivities(sc)) {

@@ -58,6 +58,14 @@ function tokenFrom(req: Request): string | null {
   return m ? m[1] : null;
 }
 
+/** ALLOWED_EMAILS as a lower-cased list. */
+export function allowedEmails(env: AuthEnv): string[] {
+  return (env.ALLOWED_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 const isLocal = (url: URL) => url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 
 export async function verifyAccess(req: Request, env: AuthEnv, keys: KeySource = fetchAccessKeys, now = Date.now()): Promise<AuthResult> {
@@ -65,10 +73,7 @@ export async function verifyAccess(req: Request, env: AuthEnv, keys: KeySource =
 
   const team = env.ACCESS_TEAM_DOMAIN?.trim();
   const aud = env.ACCESS_AUD?.trim();
-  const allowed = (env.ALLOWED_EMAILS ?? '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+  const allowed = allowedEmails(env);
   // fail closed: an unconfigured deployment serves nothing
   if (!team || !aud || !allowed.length) return { ok: false, status: 503, reason: 'Cloudflare Access is not configured for this site yet.' };
 

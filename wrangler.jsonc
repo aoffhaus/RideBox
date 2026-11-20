@@ -4,7 +4,9 @@
   "name": "ridebox",
   "main": "worker/index.ts",
   "compatibility_date": "2026-11-01",
-  "compatibility_flags": ["nodejs_compat"],
+  // global_fetch_strictly_public: the Claude connector's OAuth fetches client
+  // metadata documents from URLs clients give it, so fetch() may only reach the public internet.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   // Served at ridebox.<account>.workers.dev, protected by Cloudflare Access
   // (the Worker also refuses any request without a valid Access sign-in).
   // Preview URLs stay off: they would be extra addresses to protect.
@@ -27,10 +29,13 @@
     }
   ],
   // Chain tracker: sync Strava rides every 30 minutes (UTC), about 2 of Strava's 1,000 daily reads.
+  // Also sweeps expired Claude connector sign-ins.
   "triggers": { "crons": ["*/30 * * * *"] },
   "vars": {
     // max Claude coach requests per day (a guard against runaway cost)
     "COACH_DAILY_LIMIT": "40"
+    // Optional: the Claude connector's time zone until the app has saved yours, e.g.
+    // "RIDER_TIMEZONE": "America/Los_Angeles"
   },
   // ACCESS_TEAM_DOMAIN, ACCESS_AUD, ALLOWED_EMAILS and ANTHROPIC_API_KEY are
   // secrets: `npx wrangler secret put <NAME>`. Keep them out of this file.
