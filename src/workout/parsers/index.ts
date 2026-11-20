@@ -8,7 +8,7 @@ import { looksLikeTrainerRoad, parseTrainerRoadJson } from './trainerroad';
 export { parseZwo, toZwo } from './zwo';
 export { parseErgMrc, toMrc } from './erg';
 export { parseRideBoxJson, toRideBoxJson } from './json';
-export { parseText } from './text';
+export { parseText, toText } from './text';
 export { parseTrainerRoadJson } from './trainerroad';
 
 /** Detects the format from the file name and/or content and parses it. */

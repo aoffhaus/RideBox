@@ -2,7 +2,7 @@
 // moving and copying, and easier/harder variants.
 
 import type { RideRecord } from '../app/recorder';
-import { uid } from '../storage/db';
+import { uid } from '../storage/types';
 import type { Step, Workout } from '../workout/model';
 import { addDays, dayKey, dayStart, stravaCopyChecker } from './load';
 import { isRide, type DayKey, type PlannedWorkout, type StravaActivity } from './model';

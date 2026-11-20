@@ -26,6 +26,7 @@ export async function deleteBlob(db: D1Database, key: string) {
 }
 
 export const SYNCED_STORES = ['workouts', 'rides', 'kv', 'calendar', 'plans', 'strava_acts', 'strava_streams'] as const;
+export type SyncedStoreName = (typeof SYNCED_STORES)[number];
 const STORES = new Set<string>(SYNCED_STORES);
 
 /** Records above this size are chunked instead of stored in one row. */
@@ -91,6 +92,35 @@ export async function pull(env: SyncEnv, url: URL): Promise<Response> {
   return json({ docs, cursor, more: docs.length === PAGE });
 }
 
+/**
+ * Upserts one record unless the server already has the same or a newer write
+ * (by client stamp). Browsers pick the change up on their next pull. Returns
+ * false when the stored copy was newer and nothing changed.
+ */
+export async function writeDoc(db: D1Database, d: DocIn): Promise<boolean> {
+  const prev = await db.prepare('SELECT updated_at, blob FROM docs WHERE store = ? AND id = ?').bind(d.store, d.id).first<{ updated_at: number; blob: string | null }>();
+  // the server has the same or a newer version; the client will pick it up on its next pull
+  if (prev && prev.updated_at >= d.updated_at) return false;
+  let blob: string | null = null;
+  let body: string | null = d.deleted ? null : d.json!;
+  if (body && body.length > BLOB_THRESHOLD) {
+    blob = `docs/${d.store}/${encodeURIComponent(d.id)}/${d.updated_at}`;
+    await putBlob(db, blob, body);
+    body = null;
+  }
+  await db
+    .prepare(
+      `INSERT INTO docs (store, id, updated_at, deleted, blob, json, server_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (store, id) DO UPDATE SET updated_at = excluded.updated_at, deleted = excluded.deleted,
+         blob = excluded.blob, json = excluded.json, server_at = excluded.server_at
+       WHERE excluded.updated_at > docs.updated_at`,
+    )
+    .bind(d.store, d.id, d.updated_at, d.deleted ? 1 : 0, blob, body, Date.now())
+    .run();
+  if (prev?.blob && prev.blob !== blob) await deleteBlob(db, prev.blob);
+  return true;
+}
+
 /** POST /api/sync {docs:[…]} → upserts each doc unless the server already has a newer write. */
 export async function push(env: SyncEnv, req: Request): Promise<Response> {
   const body = (await req.json().catch(() => null)) as { docs?: unknown[] } | null;
@@ -102,30 +132,7 @@ export async function push(env: SyncEnv, req: Request): Promise<Response> {
       rejected.push(String((d as DocIn)?.id ?? '?'));
       continue;
     }
-    const prev = await env.DB.prepare('SELECT updated_at, blob FROM docs WHERE store = ? AND id = ?')
-      .bind(d.store, d.id)
-      .first<{ updated_at: number; blob: string | null }>();
-    if (prev && prev.updated_at >= d.updated_at) {
-      // the server has the same or a newer version; the client will pick it up on its next pull
-      accepted.push(d.id);
-      continue;
-    }
-    let blob: string | null = null;
-    let body: string | null = d.deleted ? null : d.json!;
-    if (body && body.length > BLOB_THRESHOLD) {
-      blob = `docs/${d.store}/${encodeURIComponent(d.id)}/${d.updated_at}`;
-      await putBlob(env.DB, blob, body);
-      body = null;
-    }
-    await env.DB.prepare(
-      `INSERT INTO docs (store, id, updated_at, deleted, blob, json, server_at) VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (store, id) DO UPDATE SET updated_at = excluded.updated_at, deleted = excluded.deleted,
-         blob = excluded.blob, json = excluded.json, server_at = excluded.server_at
-       WHERE excluded.updated_at > docs.updated_at`,
-    )
-      .bind(d.store, d.id, d.updated_at, d.deleted ? 1 : 0, blob, body, Date.now())
-      .run();
-    if (prev?.blob && prev.blob !== blob) await deleteBlob(env.DB, prev.blob);
+    await writeDoc(env.DB, d);
     accepted.push(d.id);
   }
   return json({ accepted, rejected });

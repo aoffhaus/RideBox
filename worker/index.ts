@@ -1,16 +1,27 @@
-// RideBox Worker: serves the app and its private API.
+// RideBox Worker: serves the app, its private API, and the Claude connector.
 //
-// Every request (pages and /api/*) runs through here first, so nothing is
-// served unless Cloudflare Access has signed the visitor in as the owner.
+// Every page and /api/* request runs through the Cloudflare Access check
+// (verifyAccess), so nothing is served unless Access has signed the visitor in
+// as the owner. The exceptions are the Claude connector's OAuth endpoints and
+// /mcp itself: Claude's servers call those, not the rider's browser, so they
+// carry OAuth tokens instead of an Access sign-in (see README → Claude connector).
+// The OAuth provider routes those; everything else reaches `app` below.
 
+import { OAuthProvider, type OAuthHelpers } from '@cloudflare/workers-oauth-provider';
 import { verifyAccess, type AuthEnv } from './auth';
 import { blob, pull, push, type SyncEnv } from './sync';
 import { coach, type CoachEnv } from './coach';
 import { strava, type StravaEnv } from './strava';
 import { CHAIN_API, chainTracker, scheduledChainSync } from './chains';
+import { D1Kv, purgeExpiredKv } from './oauthKv';
+import { authorize, SCOPE, SCOPES_SUPPORTED } from './mcp/authorize';
+import { mcpApiHandler, type McpEnv } from './mcp';
 
-export interface Env extends AuthEnv, SyncEnv, CoachEnv, StravaEnv {
+export interface Env extends AuthEnv, SyncEnv, CoachEnv, StravaEnv, McpEnv {
   ASSETS: Fetcher;
+  /** set per request: the OAuth library's storage (D1-backed) and helpers */
+  OAUTH_KV?: D1Kv;
+  OAUTH_PROVIDER?: OAuthHelpers;
 }
 
 const json = (body: unknown, status = 200) =>
@@ -43,12 +54,17 @@ async function api(req: Request, env: Env, url: URL, email: string, ctx: Executi
   return json({ error: 'Not found' }, 404);
 }
 
-export default {
+/** The app, its API and the connector's sign-in page: all behind Cloudflare Access. */
+const app = {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const isApi = url.pathname.startsWith('/api/');
     const auth = await verifyAccess(req, env);
     if (!auth.ok) return denied(auth.status, auth.reason, isApi);
+    if (url.pathname === '/authorize') {
+      if (!env.OAUTH_PROVIDER) return denied(500, 'The Claude connector is not set up.', false);
+      return authorize(req, env.OAUTH_PROVIDER, auth.email);
+    }
     if (isApi) {
       try {
         return await api(req, env, url, auth.email, ctx);
@@ -59,9 +75,47 @@ export default {
     }
     return env.ASSETS.fetch(req);
   },
+};
 
-  // Cron (wrangler.jsonc): keeps the chain tracker's Strava ride cache fresh.
+const DAY = 86_400;
+
+// The connector's resource URL has to be absolute, so build one provider per
+// origin the Worker is reached on (normally just ridebox.<account>.workers.dev).
+const providers = new Map<string, OAuthProvider<Env>>();
+function providerFor(origin: string): OAuthProvider<Env> {
+  let p = providers.get(origin);
+  if (!p) {
+    p = new OAuthProvider<Env>({
+      apiRoute: '/mcp',
+      apiHandler: mcpApiHandler,
+      defaultHandler: app,
+      authorizeEndpoint: '/authorize',
+      tokenEndpoint: '/oauth/token',
+      clientRegistrationEndpoint: '/oauth/register',
+      scopesSupported: SCOPES_SUPPORTED,
+      requiredScopes: [SCOPE],
+      resourceMetadata: { resource: `${origin}/mcp`, resource_name: 'RideBox' },
+      accessTokenTTL: 3600,
+      // stays connected while used at least every 60 days
+      refreshTokenTTL: 60 * DAY,
+      refreshTokenIdleTTL: 60 * DAY,
+      // Claude identifies itself with a Client ID Metadata Document or registers dynamically
+      clientIdMetadataDocumentEnabled: true,
+    });
+    providers.set(origin, p);
+  }
+  return p;
+}
+
+export default {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(req.url);
+    return providerFor(url.origin).fetch(req, { ...env, OAUTH_KV: new D1Kv(env.DB) }, ctx);
+  },
+
+  // Cron (wrangler.jsonc): keeps the chain tracker's Strava ride cache fresh and sweeps expired OAuth records.
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(scheduledChainSync(env).catch((e) => console.error('Scheduled chain sync', e)));
+    ctx.waitUntil(purgeExpiredKv(env.DB).catch((e) => console.error('OAuth purge', e)));
   },
 } satisfies ExportedHandler<Env>;

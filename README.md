@@ -63,6 +63,29 @@ Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads 
   - After each ride, **How did it feel?** on the summary feeds levels and adaptations.
   - Requests stream the coach's reasoning while it works. A daily cap (`COACH_DAILY_LIMIT` in `wrangler.jsonc`, default 40) guards against runaway cost; a new plan typically costs well under a dollar with Claude Opus, and a daily pick a few cents.
 
+## Claude connector (chat with your training in Claude)
+
+RideBox is also an MCP server, so you can add it to Claude (claude.ai on the web, desktop or phone, and Claude Code) as a **custom connector**. Then you can talk through your training in any Claude chat, and Claude can change things directly.
+
+- **Read:** today's fitness, fatigue and form, FTP and its estimate, progression levels, weekly history, the active plan and its weekly targets, the calendar, rides with per-interval results, Strava activities, and your workout library.
+- **Change:** schedule, move, replace, skip, remove, or make a workout easier or harder; add notes; save new workouts to the library; create or edit plans; update FTP, weight or max HR.
+- Changes save straight away and reach your browsers on their next sync (when the tab gets focus, or within 5 minutes). New workouts go through the same checks as the in-app coach's. Every change is logged, so you can ask Claude to "list recent changes" or "undo that".
+- It uses your Claude subscription, not `ANTHROPIC_API_KEY`, and the in-app coach keeps working as before.
+
+Dates use your time zone: the app saves it the first time it opens after this update (`RIDER_TIMEZONE` in `wrangler.jsonc` is an optional fallback until then).
+
+**One-time setup** (after deploying):
+
+1. **Let Claude reach the connector's endpoints past Cloudflare Access.** Claude's servers call these, not your browser, so they use OAuth tokens instead of an Access sign-in. In the Cloudflare dashboard → **Zero Trust** → **Access controls** → **Applications** → **Create new application** → **Self-hosted**. Name it something like *RideBox connector (public)* and add three public hostnames, each `ridebox.<your-subdomain>.workers.dev` with one of these paths:
+   - `mcp`
+   - `oauth/*`
+   - `.well-known/*`
+
+   Give it one policy: **Action: Bypass**, **Include: Everyone**. Leave the main RideBox Access application as it is, so `/authorize` (the page where you approve Claude) and the rest of the site still need your Access sign-in. If you protect the Worker from its **Access** tab (*Protect this Worker*) instead of the workers.dev hostname, add the bypass there in the same way.
+2. **Add the connector in Claude:** claude.ai → **Settings** → **Connectors** → **Add custom connector**. Name it *RideBox*, and set the URL to `https://ridebox.<your-subdomain>.workers.dev/mcp`. Click **Connect**: you sign in through Cloudflare Access as usual, see which app is asking, and click **Allow**. Turn it on in a chat from the tools menu.
+
+No new secrets are needed: the connector uses the existing `ALLOWED_EMAILS` (removing your email there cuts it off at once) and keeps its sign-ins in D1 (migration `0005_mcp.sql`, applied by the deploy). A connection lasts as long as you use it at least every 60 days. To disconnect, remove the connector in Claude.
+
 ## Getting workouts in
 
 - **TrainerRoad:** in **Settings**, drag the **TR → RideBox** bookmarklet to your bookmarks bar. Open any workout on trainerroad.com while logged in and click it. It copies the workout JSON to your clipboard; paste it into the box on the **Workouts** tab. (If the browser blocks clipboard access, it downloads `TR - <name>.json` instead; drop that file on the Workouts tab.) It uses the undocumented endpoint TrainerRoad's own page uses (the same one the open-source *trzwo* extension uses), so it could break if TrainerRoad changes its site.
@@ -135,7 +158,7 @@ To run the full private site locally (Worker, sync API, local database), put `DE
 
 ## Hosting on Cloudflare (private, password-protected)
 
-RideBox is served by a Cloudflare Worker (`worker/`) with a D1 database for sync (large rides are stored in chunks). **Cloudflare Access** puts a login screen in front of the entire site, so nobody else can see your rides or workouts or use your Claude and Strava connections. As a second line of defense the Worker checks the Access sign-in on every request and serves nothing if Access isn't set up (it fails closed).
+RideBox is served by a Cloudflare Worker (`worker/`) with a D1 database for sync (large rides are stored in chunks). **Cloudflare Access** puts a login screen in front of the entire site, so nobody else can see your rides or workouts or use your Claude and Strava connections. As a second line of defense the Worker checks the Access sign-in on every request and serves nothing if Access isn't set up (it fails closed). The only exceptions are the Claude connector's OAuth and `/mcp` endpoints, which require their own OAuth tokens instead (see *Claude connector*).
 
 One-time setup:
 

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.11.0",
+    "@cloudflare/workers-oauth-provider": "1.2.4",
     "@garmin/fitsdk": "^21.222.0",
     "idb": "^8.0.0",
     "react": "^18.3.1",

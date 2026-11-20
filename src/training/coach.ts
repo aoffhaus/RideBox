@@ -3,8 +3,7 @@
 // validating every workout before anything is saved.
 
 import type { RideRecord } from '../app/recorder';
-import type { Settings } from '../storage/db';
-import { uid } from '../storage/db';
+import { uid, type Settings } from '../storage/types';
 import { parseText } from '../workout/parsers';
 import { flatten, plannedStats, type Workout } from '../workout/model';
 import { newPlanned } from './calendar';

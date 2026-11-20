@@ -136,3 +136,33 @@ export function parseStepText(t: string): Step {
   }
   throw new Error(`Can't read power in "${t}" (use e.g. "@90%", "200w", "50-75%" or "free")`);
 }
+
+const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
+function durationText(sec: number): string {
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  // the parser reads at most two units ("1h15m", "2m30s"); use h:mm:ss for all three
+  if (h && m && r) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  return [h && `${h}h`, m && `${m}m`, r && `${r}s`].filter(Boolean).join('') || '0s';
+}
+function stepText(s: Step): string {
+  if (s.type === 'repeat') return `${s.count}x(${s.steps.map(stepText).join(', ')})`;
+  const parts = [durationText(s.duration)];
+  if (s.type === 'free') parts.push('free');
+  else {
+    const fmt = (v: number) => (s.unit === 'watts' ? `${Math.round(v)}w` : pct(v));
+    parts.push(s.type === 'steady' ? `@${fmt(s.power)}` : `${fmt(s.from)}-${fmt(s.to)}`);
+    if (s.cadence) parts.push(`${s.cadence}rpm`);
+  }
+  // the tokenizer splits on commas and parentheses, even inside quotes
+  const label = s.label?.replace(/[(),"\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (label) parts.push(`"${label}"`);
+  return parts.join(' ');
+}
+
+/** The inverse of parseText: a workout as shorthand, one step per line (cues are dropped). */
+export function toText(w: Workout): string {
+  return w.steps.map(stepText).join('\n');
+}
