@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RideSession, pickPortalJump, portalRoute } from '../src/app/session';
+import { RideSession, pickPortalJump } from '../src/app/session';
 import { DEFAULT_SETTINGS } from '../src/storage/db';
 import { parseText } from '../src/workout/parsers';
 import { ROUTE_PRESETS, rng } from '../src/world/route';
@@ -69,7 +69,9 @@ describe('portal runs', () => {
     expect(s.snapshot().workout?.finished).toBe(true);
     s.stop = () => {}; // no ride clock in tests
     const rec = s.finish();
-    expect(rec.routeName).toBe(`Portal run: ${s.worlds.join(' → ')}`);
+    expect(rec.workoutName).toBeTruthy();
+    expect(rec.routeName).toBe(rec.workoutName);
+    expect(rec.name).toBe(rec.workoutName);
     // ERG held the power throughout the workout (grade was never sent while it ran)
     const firstGrade = trainer.calls.findIndex((c) => c.startsWith('grade'));
     const lastErg = trainer.calls.map((c) => c.startsWith('erg')).lastIndexOf(true);
@@ -125,9 +127,4 @@ describe('portal runs', () => {
     expect(seen.size).toBe(ROUTE_PRESETS.length - 1);
   });
 
-  it('keeps long portal route names readable', () => {
-    expect(portalRoute(['A', 'B'])).toBe('A → B');
-    const many = Array.from({ length: 20 }, (_, i) => `W${i}`);
-    expect(portalRoute(many)).toBe('W0 → W1 → W2 → W3 → W4 → W5 → … 13 more → W19');
-  });
 });

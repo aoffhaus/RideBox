@@ -416,7 +416,8 @@ export class RideSession {
       id: uid(),
       name: workoutName ?? (this.portalRun ? 'Portal run' : `${this.route.preset.name} ride`),
       workoutName,
-      routeName: this.worlds.length > 1 ? `Portal run: ${portalRoute(this.worlds)}` : this.route.preset.name,
+      // a portal run has no single route: it goes by the workout that was ridden
+      routeName: this.portalRun ? workoutName ?? 'Portal run' : this.route.preset.name,
       startTime: this.startTime,
       ftp,
       samples: this.samples,
@@ -424,10 +425,4 @@ export class RideSession {
       summary: summarize(this.samples, ftp),
     };
   }
-}
-
-/** "A → B → C", collapsing long runs so the name stays readable. */
-export function portalRoute(worlds: string[], max = 8): string {
-  if (worlds.length <= max) return worlds.join(' → ');
-  return [...worlds.slice(0, max - 2), `… ${worlds.length - (max - 1)} more`, worlds[worlds.length - 1]].join(' → ');
 }
