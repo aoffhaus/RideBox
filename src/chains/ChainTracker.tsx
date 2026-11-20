@@ -99,29 +99,51 @@ export function ChainTracker({ phone = false }: { phone?: boolean }) {
 
   const current = PAGES.find((p) => p.id === page) ?? PAGES[0];
 
+  const syncPill = syncing && (
+    <span className="ct-sync-pill" role="status">
+      Syncing…
+    </span>
+  );
+  const subnav = (
+    <div className="ct-segmented ct-subnav" role="tablist" aria-label="Chain tracker pages">
+      {PAGES.map((p) => (
+        <button
+          key={p.id}
+          role="tab"
+          aria-selected={p === current}
+          className={p === current ? "ct-seg ct-active" : "ct-seg"}
+          onClick={() => {
+            setPage(p.id);
+            if (phone) window.scrollTo({ top: 0 });
+          }}
+        >
+          {p.title}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className={phone ? "ct ct-phone" : "page narrow ct"}>
-      <div className="ct-top">
-        {phone ? <h1 className="m-h1">Chains</h1> : <h2>Chain tracker</h2>}
-        {syncing && (
-          <span className="ct-sync-pill" role="status">
-            Syncing…
-          </span>
-        )}
-      </div>
-      <div className="ct-segmented ct-subnav" role="tablist" aria-label="Chain tracker pages">
-        {PAGES.map((p) => (
-          <button
-            key={p.id}
-            role="tab"
-            aria-selected={p === current}
-            className={p === current ? "ct-seg ct-active" : "ct-seg"}
-            onClick={() => setPage(p.id)}
-          >
-            {p.title}
-          </button>
-        ))}
-      </div>
+      {phone ? (
+        // the phone layout's sticky header (clears the status bar / notch)
+        <header className="m-head">
+          <div className="m-head-row">
+            <h1 className="m-h1">Chains</h1>
+            {syncPill}
+          </div>
+          {subnav}
+        </header>
+      ) : (
+        <>
+          <div className="ct-top">
+            <h2>Chain tracker</h2>
+            {syncPill}
+          </div>
+          {subnav}
+        </>
+      )}
+      <div className={phone ? "ct-body" : undefined}>
       {loadError ? (
         <div className="ct-msg ct-error" role="alert">
           <p>{loadError}</p>
@@ -136,6 +158,7 @@ export function ChainTracker({ phone = false }: { phone?: boolean }) {
           <current.Page />
         </Ctx.Provider>
       )}
+      </div>
       <div className="ct-toasts" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`ct-toast ct-${t.kind}`}>
