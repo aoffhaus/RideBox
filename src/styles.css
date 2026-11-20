@@ -712,6 +712,21 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .v-over { background: #3a2a14; color: #f2c94c; }
 .v-under { background: #3a1517; color: #ffb3b0; }
 .v-short { background: #2b3340; color: #8b96a5; }
+
+/* past workouts on phones */
+.m-sheet-body .actual { display: flex; flex-direction: column; gap: 10px; }
+.m-sheet-body .stats-grid.compact { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.m-sheet-body .stats-grid.compact .stat { border-radius: 12px; background: var(--panel-2); border: 0; }
+.m-sheet-body .stats-grid.compact .stat-v { font-size: 17px; font-weight: 800; }
+.m-sheet-body .metrics-readout { min-height: 40px; align-content: flex-start; }
+.m-sheet-body .legend { margin: 0; }
+.plan-list-m { display: flex; flex-direction: column; gap: 6px; }
+.plan-row-m { background: var(--panel-2); border-left: 4px solid #5b6573; border-radius: 10px; padding: 8px 10px; }
+.plan-row-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.plan-row-name { font-weight: 700; font-size: 14px; }
+.plan-row-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.plan-row-meta b { color: var(--text); }
+a.m-btn { text-decoration: none; }
 .card-actual { display: flex; flex-direction: column; gap: 2px; margin-top: 1px; }
 .card-metrics { gap: 6px; font-variant-numeric: tabular-nums; }
 .card-metrics .m-hr { color: #ff8fa0; }

@@ -12,13 +12,13 @@ import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../tr
 import { LEVEL_ZONES, ZONE_NAMES, difficultyLabel, rateWorkout, type LevelEvent, type LevelZone, type Levels } from '../training/levels';
 import type { AdaptSuggestion, CoachState } from '../training/coach';
 import type { AdaptInput } from '../training/coachSchema';
-import { flatten, formatDuration, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
+import { flatten, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
 import { WorkoutChart } from '../ui/WorkoutChart';
+import { ActualDetail } from '../ui/ActualDetail';
 import { LEVEL_COLORS } from '../ui/Levels';
 import { FitnessChart, SERIES, WeeklyBars } from '../ui/FitnessChart';
 import { StravaSettings } from '../ui/StravaSettings';
 import { TodayCard } from '../ui/Coach';
-import { distUnit, fmtDist, r0 } from '../ui/format';
 
 export interface MobileAppProps {
   settings: Settings;
@@ -302,7 +302,7 @@ export function MobileApp(p: MobileAppProps) {
           onToast={setToast}
         />
       )}
-      {sheet?.kind === 'activity' && <ActivitySheet entry={sheet.entry} rides={p.rides} settings={p.settings} onClose={close} />}
+      {sheet?.kind === 'activity' && <ActivitySheet entry={sheet.entry} rides={p.rides} acts={p.acts} settings={p.settings} onClose={close} />}
       {sheet?.kind === 'library' && (
         <LibrarySheet
           w={sheet.w}
@@ -692,6 +692,10 @@ function PlannedSheet(props: MobileAppProps & { p: PlannedWorkout; onClose: () =
         </>
       }
     >
+      {ride || act ? (
+        <ActualDetail ride={ride} act={act} intervals={ivs} settings={settings} compact />
+      ) : (
+        <>
       <div className="m-stats">
         <Stat label="Duration" value={fmtClock(s.duration)} />
         <Stat label="TSS" value={Math.round(s.tss)} />
@@ -705,15 +709,17 @@ function PlannedSheet(props: MobileAppProps & { p: PlannedWorkout; onClose: () =
       <div className="m-chart-lg">
         <WorkoutChart intervals={ivs} ftp={settings.ftp} height={120} />
       </div>
+        </>
+      )}
 
       <div className={`m-status st-${p.status}`}>
         <span className={`m-pill pill-${p.status}`}>{STATUS_LABEL[p.status]}</span>
-        {ride && (
-          <span className="small">
-            {ride.name} · {formatDuration(ride.summary.duration)} · {Math.round(ride.summary.tss)} TSS · {r0(ride.summary.np)} W NP
-          </span>
+        {ride && <span className="small muted">{ride.name}</span>}
+        {act && (
+          <a className="strava-link small" href={`https://www.strava.com/activities/${act.stravaId}`} target="_blank" rel="noreferrer">
+            {act.name} on Strava ↗
+          </a>
         )}
-        {act && <span className="small">Strava: {act.name}</span>}
       </div>
 
       {p.workout.description && <p className="m-desc">{p.workout.description}</p>}
@@ -771,27 +777,38 @@ function PlannedSheet(props: MobileAppProps & { p: PlannedWorkout; onClose: () =
   );
 }
 
-function ActivitySheet({ entry, rides, settings, onClose }: { entry: LoadEntry; rides: RideRecord[]; settings: Settings; onClose: () => void }) {
+function ActivitySheet({ entry, rides, acts, settings, onClose }: { entry: LoadEntry; rides: RideRecord[]; acts: StravaActivity[]; settings: Settings; onClose: () => void }) {
   const ride = entry.kind === 'ridebox' ? rides.find((r) => r.id === entry.id) : undefined;
+  const act = entry.kind === 'strava' ? acts.find((a) => a.id === entry.id) : undefined;
   return (
     <BottomSheet
       onClose={onClose}
       title={
         <>
-          <div className="m-sheet-kicker">{longDay(entry.date)} · {entry.kind === 'strava' ? 'Strava' : 'RideBox'}</div>
+          <div className="m-sheet-kicker">
+            {longDay(entry.date)} · {act ? `${act.sportType}${act.trainer ? ' (trainer)' : ''} · Strava` : 'RideBox'}
+            {ride?.workoutName ? ` · ${ride.workoutName}` : ''}
+          </div>
           {entry.name}
         </>
       }
     >
-      <div className="m-stats">
-        <Stat label="Time" value={fmtClock(entry.seconds)} />
-        <Stat label="TSS" value={Math.round(entry.tss)} sub={entry.source === 'estimate' ? 'estimated' : entry.source === 'hr' ? 'from HR' : undefined} />
-        {ride && <Stat label="NP" value={`${r0(ride.summary.np)} W`} />}
-        {ride && <Stat label="Avg power" value={`${r0(ride.summary.avgPower)} W`} />}
-        {ride?.summary.avgHr != null && <Stat label="Avg HR" value={r0(ride.summary.avgHr)} />}
-        {ride && <Stat label="Distance" value={`${fmtDist(ride.summary.distance, settings)} ${distUnit(settings)}`} />}
-      </div>
-      {!ride && entry.kind === 'ridebox' && <p className="muted">This ride isn&apos;t on this device yet.</p>}
+      {ride || act ? (
+        <ActualDetail ride={ride} act={act} settings={settings} tss={entry.tss} compact />
+      ) : (
+        <>
+          <div className="m-stats">
+            <Stat label="Time" value={fmtClock(entry.seconds)} />
+            <Stat label="TSS" value={Math.round(entry.tss)} />
+          </div>
+          <p className="muted">This activity isn&apos;t on this device yet.</p>
+        </>
+      )}
+      {act && (
+        <a className="m-btn" href={`https://www.strava.com/activities/${act.stravaId}`} target="_blank" rel="noreferrer">
+          View on Strava ↗
+        </a>
+      )}
     </BottomSheet>
   );
 }
