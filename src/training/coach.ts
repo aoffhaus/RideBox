@@ -8,7 +8,8 @@ import { parseText } from '../workout/parsers';
 import { flatten, plannedStats, type Workout } from '../workout/model';
 import { newPlanned } from './calendar';
 import type { AdaptChange, AdaptOutput, CoachContext, CoachEvent, CoachRequest, PlanInput, PlanOutput, TodayOutput, WorkoutChoice } from './coachSchema';
-import { addDays, estimateFtp, fitnessSeries, loadEntries, plannedLoad, weeklyTotals } from './load';
+import { ftpOn } from './ftp';
+import { addDays, dayKey, estimateFtp, fitnessSeries, loadEntries, plannedLoad, weeklyTotals } from './load';
 import { activityOutcome, computeLevels, rateWorkout, rideOutcome, stravaWorkout, type Levels } from './levels';
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from './model';
 
@@ -28,7 +29,7 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 /** The compact picture of the rider's training that goes with every coach request. */
 export function buildContext(s: CoachState, upcomingDays = 21): CoachContext {
   const { settings, today } = s;
-  const levels = s.levels ?? computeLevels(s.rides, s.acts, s.calendar, s.library, settings.ftp).levels;
+  const levels = s.levels ?? computeLevels(s.rides, s.acts, s.calendar, s.library, settings.ftp, Date.now(), (t) => ftpOn(settings, dayKey(t))).levels;
   const entries = loadEntries(s.rides, s.acts, settings.ftp, settings.maxHr);
   const series = fitnessSeries(entries, plannedLoad(s.calendar, settings.ftp), addDays(today, -400), today, today);
   const now = series[series.length - 1];
@@ -43,9 +44,10 @@ export function buildContext(s: CoachState, upcomingDays = 21): CoachContext {
       const base = { date: e.date, name: e.name, source: e.kind, minutes: Math.round(e.seconds / 60), tss: Math.round(e.tss) };
       const act = e.kind === 'strava' ? actsById.get(e.id) : undefined;
       const aw = act ? stravaWorkout(act, s.calendar, s.library) : undefined;
-      const ao = act && aw ? activityOutcome(act, aw, settings.ftp) : undefined;
+      const actFtp = act ? ftpOn(settings, e.date) : settings.ftp;
+      const ao = act && aw ? activityOutcome(act, aw, actFtp) : undefined;
       if (aw && ao) {
-        const rating = rateWorkout(aw, settings.ftp);
+        const rating = rateWorkout(aw, actFtp);
         return { ...base, zone: rating.zone, level: rating.level, outcome: ao.outcome, compliance: r1(ao.compliance) };
       }
       const ride = e.kind === 'ridebox' ? ridesById.get(e.id) : undefined;

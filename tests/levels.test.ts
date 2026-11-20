@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RideRecord } from '../src/app/recorder';
-import { activityOutcome, applyOutcome, computeLevels, difficultyLabel, normalizeWorkoutName, rateWorkout, rideOutcome, startLevels, stravaWorkout } from '../src/training/levels';
+import { activityOutcome, applyOutcome, computeLevels, difficultyLabel, normalizeWorkoutName, rateWorkout, rideOutcome, smoothedNp, startLevels, stravaWorkout } from '../src/training/levels';
 import type { StravaActivity } from '../src/training/model';
 import { flatten, plannedStats } from '../src/workout/model';
 import { BUILTIN_WORKOUTS } from '../src/workout/builtin';
@@ -19,6 +19,11 @@ describe('rateWorkout', () => {
     expect(rateWorkout(byName('30/30s'), 250).zone).toBe('vo2max');
     expect(rateWorkout(byName('Ramp Test'), 250).zone).toBe('test');
     expect(rateWorkout(parseText('# Sprints\n15m 55%\n8x(30s 150%, 4m30s 45%)\n10m 50%'), 250).zone).toBe('anaerobic');
+    // 2-minute efforts at 124% are VO2max, not anaerobic
+    const vo2 = rateWorkout(parseText('# Monadnock\n15m 55%\n6x(2m 124%, 2m 40%)\n15m 50%'), 250);
+    expect(vo2.zone).toBe('vo2max');
+    expect(vo2.level).toBeLessThan(8);
+    expect(rateWorkout(parseText('# Short\n15m 55%\n8x(1m 130%, 3m 45%)\n10m 50%'), 250).zone).toBe('anaerobic');
   });
 
   it('rates longer and harder versions higher', () => {
@@ -150,6 +155,15 @@ describe('computeLevels', () => {
       expect(activityOutcome(act({ weightedWatts: planned.np * 0.8 }), w, 250)?.outcome).toBe('fail');
       expect(activityOutcome(act({ movingTime: planned.duration * 0.6 }), w, 250)?.outcome).toBe('fail');
       expect(activityOutcome(act({ deviceWatts: false }), w, 250)).toBeUndefined();
+    });
+
+    it('compares against a planned NP smoothed like the ride\'s, so on/off workouts ridden as planned pass', () => {
+      const vo2 = parseText('# 30/30\n10m 50%\n10x(30s 130%, 30s 40%)\n10m 50%');
+      const raw = plannedStats(flatten(vo2), 250).np;
+      const smooth = smoothedNp(vo2, 250);
+      expect(smooth).toBeLessThan(raw * 0.95); // 30 s smoothing flattens 30/30s
+      const ride = act({ name: '30/30', weightedWatts: smooth, movingTime: plannedStats(flatten(vo2), 250).duration });
+      expect(activityOutcome(ride, vo2, 250)?.outcome).toBe('pass');
     });
 
     it('prefers the calendar workout the ride completed, if the names match', () => {
