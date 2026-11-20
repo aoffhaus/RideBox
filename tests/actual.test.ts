@@ -53,3 +53,11 @@ describe('Strava streams', () => {
     expect(s.length).toBe(6);
   });
 });
+
+describe('card hit count', async () => {
+  const { hitCount } = await import('../src/ui/CardActual');
+  it('counts targeted intervals within ±5%', () => {
+    const p = [...Array(60).fill(130), ...Array(120).fill(198), ...Array(60).fill(100)];
+    expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 2, of: 3 });
+  });
+});

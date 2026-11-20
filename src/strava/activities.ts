@@ -24,6 +24,7 @@ interface SummaryActivity {
   device_watts?: boolean;
   kilojoules?: number;
   average_heartrate?: number;
+  average_cadence?: number;
   max_heartrate?: number;
   trainer?: boolean;
 }
@@ -43,6 +44,7 @@ export function toActivity(a: SummaryActivity): StravaActivity {
     deviceWatts: a.device_watts,
     kj: a.kilojoules,
     avgHr: a.average_heartrate,
+    avgCadence: a.average_cadence,
     maxHr: a.max_heartrate,
     trainer: a.trainer,
   };

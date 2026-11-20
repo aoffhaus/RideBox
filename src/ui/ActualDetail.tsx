@@ -36,7 +36,7 @@ export function useActualSeries(ride?: RideRecord, act?: StravaActivity) {
 
 // ---------- chart ----------
 
-function linePath(values: (number | undefined)[], n: number, x: (i: number) => number, y: (v: number) => number, smooth = 1) {
+export function linePath(values: (number | undefined)[], n: number, x: (i: number) => number, y: (v: number) => number, smooth = 1) {
   const step = Math.max(1, Math.ceil(values.length / 1200));
   let d = '';
   let pen = false;

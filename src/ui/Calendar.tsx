@@ -9,6 +9,7 @@ import { WorkoutChart } from './WorkoutChart';
 import { rateWorkout, type Levels } from '../training/levels';
 import { LevelBadge } from './Levels';
 import { ActualDetail } from './ActualDetail';
+import { CardActual } from './CardActual';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const PHASE_COLORS: Record<string, string> = { base: '#2f80ed', build: '#27ae60', specialty: '#f2994a', peak: '#f2994a', taper: '#9b8afb', recovery: '#8a8f98', race: '#eb5757' };
@@ -68,6 +69,10 @@ export function Calendar(props: CalendarProps) {
     return m;
   }, [entries]);
   const stats = useMemo(() => new Map(calendar.map((p) => [p.id, plannedStats(flatten(p.workout), settings.ftp)])), [calendar, settings.ftp]);
+  const intervalsById = useMemo(() => new Map(calendar.map((p) => [p.id, flatten(p.workout)])), [calendar]);
+  const ridesById = useMemo(() => new Map(rides.map((r) => [r.id, r])), [rides]);
+  const actsById = useMemo(() => new Map(acts.map((x) => [x.id, x])), [acts]);
+  const tssById = useMemo(() => new Map(entries.map((e) => [e.id, e.tss])), [entries]);
   const activePlan = plans.find((p) => p.active);
   const phaseOn = (k: DayKey) => activePlan?.phases.find((ph) => ph.start <= k && k <= ph.end);
 
@@ -174,6 +179,9 @@ export function Calendar(props: CalendarProps) {
                     </div>
                     {items.map((p) => {
                       const s = stats.get(p.id)!;
+                      const ride = p.rideId ? ridesById.get(p.rideId) : undefined;
+                      const act = p.stravaId ? actsById.get(p.stravaId) : undefined;
+                      const ridden = p.status === 'done' && (ride || act);
                       return (
                         <div
                           key={p.id}
@@ -201,14 +209,28 @@ export function Calendar(props: CalendarProps) {
                             {p.status === 'done' ? '✓ ' : p.status === 'missed' ? '✕ ' : p.status === 'skipped' ? '⤼ ' : ''}
                             {p.workout.name}
                           </div>
-                          <div className="cal-card-meta">
-                            {formatDuration(s.duration)} · TSS {Math.round(s.tss)}
-                            {p.origin === 'adapt' && <span className="tag">adapted</span>}
-                          </div>
-                          <div className="cal-card-meta">
-                            <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} compact={view === 'month'} />
-                          </div>
-                          {view === 'week' && <WorkoutChart intervals={flatten(p.workout)} ftp={settings.ftp} height={36} />}
+                          {ridden ? (
+                            <CardActual
+                              ride={ride}
+                              act={act}
+                              intervals={intervalsById.get(p.id)}
+                              ftp={settings.ftp}
+                              tss={tssById.get(ride?.id ?? act?.id ?? '')}
+                              plannedTss={s.tss}
+                              chart={view === 'week'}
+                            />
+                          ) : (
+                            <>
+                              <div className="cal-card-meta">
+                                {formatDuration(s.duration)} · TSS {Math.round(s.tss)}
+                                {p.origin === 'adapt' && <span className="tag">adapted</span>}
+                              </div>
+                              <div className="cal-card-meta">
+                                <LevelBadge rating={rateWorkout(p.workout, settings.ftp)} levels={levels} compact={view === 'month'} />
+                              </div>
+                              {view === 'week' && <WorkoutChart intervals={intervalsById.get(p.id)!} ftp={settings.ftp} height={36} />}
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -224,7 +246,13 @@ export function Calendar(props: CalendarProps) {
                         title={e.kind === 'strava' ? 'From Strava' : 'RideBox ride'}
                       >
                         <div className="cal-card-name">{e.kind === 'strava' ? '◆ ' : '● '}{e.name}</div>
-                        <div className="cal-card-meta">{formatDuration(e.seconds)} · TSS {Math.round(e.tss)}</div>
+                        <CardActual
+                          ride={e.kind === 'ridebox' ? ridesById.get(e.id) : undefined}
+                          act={e.kind === 'strava' ? actsById.get(e.id) : undefined}
+                          ftp={settings.ftp}
+                          tss={e.tss}
+                          chart={view === 'week'}
+                        />
                       </div>
                     ))}
                   </div>
