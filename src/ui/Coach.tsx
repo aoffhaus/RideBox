@@ -415,8 +415,10 @@ export function AdaptReview({ state, input, onApply, onClose }: {
 
 const FEELS = ['Wrecked', 'Tired', 'OK', 'Good', 'Great'];
 
-export function TodayCard({ state, onRide, onAdd }: {
+export function TodayCard({ state, onRide, onAdd, canRide = true }: {
   state: CoachState;
+  /** false on the phone layout, which only schedules */
+  canRide?: boolean;
   onRide: (w: Workout, reason: string) => void;
   onAdd: (w: Workout, reason: string) => void;
 }) {
@@ -482,8 +484,8 @@ export function TodayCard({ state, onRide, onAdd }: {
                 <>
                   <div className="muted small">{o.reason}</div>
                   <div className="row">
-                    <button className="primary" onClick={() => onRide(o.workout, o.reason)}>Ride this</button>
-                    <button onClick={() => onAdd(o.workout, o.reason)}>Add to today</button>
+                    {canRide && <button className="primary" onClick={() => onRide(o.workout, o.reason)}>Ride this</button>}
+                    <button className={canRide ? '' : 'primary'} onClick={() => onAdd(o.workout, o.reason)}>Add to today</button>
                   </div>
                 </>
               }

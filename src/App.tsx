@@ -35,6 +35,36 @@ import { AdaptReview, PlanBuilder, TodayCard } from './ui/Coach';
 import { PlanManager } from './ui/Plans';
 import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
+import { MobileApp } from './mobile/MobileApp';
+
+const PHONE_QUERY = '(max-width: 760px), (pointer: coarse) and (max-width: 1024px)';
+const DESKTOP_KEY = 'ridebox-force-desktop';
+function readForceDesktop() {
+  try {
+    return localStorage.getItem(DESKTOP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeForceDesktop(on: boolean) {
+  try {
+    if (on) localStorage.setItem(DESKTOP_KEY, '1');
+    else localStorage.removeItem(DESKTOP_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+/** Phones (and small tablets) get the schedule-only layout. */
+function useIsPhone() {
+  const [phone, setPhone] = useState(() => window.matchMedia(PHONE_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY);
+    const h = () => setPhone(mq.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, []);
+  return phone;
+}
 
 // Strava's OAuth redirect lands here with ?state=…&code=…; read it once (effects can run twice).
 let pendingOAuth = parseOAuthReturn(location.search);
@@ -100,6 +130,8 @@ export function App() {
   const [planManager, setPlanManager] = useState<string | null>(null);
   const [adapt, setAdapt] = useState<AdaptInput | null>(null);
   const [lastReview, setLastReview] = useState<string | undefined>();
+  const isPhone = useIsPhone();
+  const [forceDesktop, setForceDesktop] = useState(readForceDesktop);
 
   const refresh = useCallback(async () => {
     setWorkouts(await listWorkouts());
@@ -370,6 +402,67 @@ export function App() {
     await saveSettings(s);
   }
 
+  const coachOverlays = (
+    <>
+      {planBuilder && <PlanBuilder state={coachState} onApply={applyPlan} onClose={() => setPlanBuilder(false)} />}
+      {planManager !== null && (
+        <PlanManager
+          plans={plans}
+          calendar={calendar}
+          initial={planManager || undefined}
+          onSave={savePlans}
+          onDelete={deletePlan}
+          onClose={() => setPlanManager(null)}
+        />
+      )}
+      {adapt && <AdaptReview state={coachState} input={adapt} onApply={applyAdapt} onClose={() => setAdapt(null)} />}
+    </>
+  );
+
+  if (isPhone && !forceDesktop && !session) {
+    return (
+      <>
+        <MobileApp
+          settings={settings}
+          workouts={workouts}
+          rides={rides}
+          acts={acts}
+          calendar={calendar}
+          plans={plans}
+          levels={levels}
+          levelHistory={levelHistory}
+          strava={strava}
+          syncStatus={syncStatus}
+          syncEmail={sync.email || undefined}
+          notice={notice}
+          error={error}
+          onClearMessages={() => {
+            setNotice('');
+            setError('');
+          }}
+          coachOn={coachOn}
+          coachState={coachState}
+          suggestion={suggestion}
+          onSaveCalendar={saveCalendar}
+          onDeleteCalendar={deleteCalendar}
+          onSettingsChange={updateSettings}
+          onStravaChange={setStrava}
+          onBuildPlan={() => setPlanBuilder(true)}
+          onManagePlans={() => setPlanManager('')}
+          onAdapt={setAdapt}
+          onDismissSuggestion={() => void markReviewed()}
+          onAddToday={addToday}
+          onSyncNow={() => void sync.syncNow()}
+          onDesktop={() => {
+            writeForceDesktop(true);
+            setForceDesktop(true);
+          }}
+        />
+        {coachOverlays}
+      </>
+    );
+  }
+
   if (session) return <RideScreen session={session} settings={settings} onEnd={endRide} onSettingsChange={updateSettings} />;
 
   const todays = calendar.filter((c) => c.date === today() && c.status === 'planned').sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
@@ -409,6 +502,17 @@ export function App() {
             <button onClick={() => connectHrm()} disabled={!bluetoothAvailable()}>{hrm && !(hrm instanceof SimulatedHrm) ? 'Reconnect' : 'Connect HRM'}</button>
           </span>
           <button className="ghost" onClick={useSimulator} title="Try the app without hardware">Simulator</button>
+          {isPhone && (
+            <button
+              className="ghost"
+              onClick={() => {
+                writeForceDesktop(false);
+                setForceDesktop(false);
+              }}
+            >
+              Phone layout
+            </button>
+          )}
           {syncStatus !== 'off' && (
             <span className={`sync sync-${syncStatus}`} title={`Synced across browsers${sync.email ? ` as ${sync.email}` : ''}`} onClick={() => void sync.syncNow()}>
               {SYNC_LABEL[syncStatus]}
@@ -670,18 +774,7 @@ export function App() {
           onStravaChange={setStrava}
         />
       )}
-      {planBuilder && <PlanBuilder state={coachState} onApply={applyPlan} onClose={() => setPlanBuilder(false)} />}
-      {planManager !== null && (
-        <PlanManager
-          plans={plans}
-          calendar={calendar}
-          initial={planManager || undefined}
-          onSave={savePlans}
-          onDelete={deletePlan}
-          onClose={() => setPlanManager(null)}
-        />
-      )}
-      {adapt && <AdaptReview state={coachState} input={adapt} onApply={applyAdapt} onClose={() => setAdapt(null)} />}
+      {coachOverlays}
     </div>
   );
 }
