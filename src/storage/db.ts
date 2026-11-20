@@ -55,12 +55,12 @@ export interface StoredWorkout {
 // backend by ./sync.ts when the app is served from there. Every write here stamps
 // the record and marks it dirty so the sync engine can push it.
 
-export const SYNCED_STORES = ['workouts', 'rides', 'kv', 'calendar', 'plans', 'strava_acts'] as const;
+export const SYNCED_STORES = ['workouts', 'rides', 'kv', 'calendar', 'plans', 'strava_acts', 'strava_streams'] as const;
 export type SyncedStore = (typeof SYNCED_STORES)[number];
 
 let dbp: Promise<IDBPDatabase> | null = null;
 export function db() {
-  dbp ??= openDB('ridebox', 2, {
+  dbp ??= openDB('ridebox', 3, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore('workouts', { keyPath: 'id' });
@@ -74,6 +74,8 @@ export function db() {
         // local-only bookkeeping: per-record write stamps, the dirty queue, sync cursor
         d.createObjectStore('meta');
       }
+      // second-by-second Strava data, downloaded once per activity
+      if (oldVersion < 3) d.createObjectStore('strava_streams', { keyPath: 'id' });
     },
   });
   return dbp;

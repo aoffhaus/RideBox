@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings } from '../storage/db';
-import { fetchStreams } from '../strava/activities';
-import { comparePlan, seriesFromRide, seriesFromStreams, seriesStats, verdict, type ActualSeries } from '../training/actual';
+import { downloadSeries, onStreamsChange, storedSeries } from '../strava/streams';
+import { comparePlan, seriesFromRide, seriesStats, verdict, type ActualSeries } from '../training/actual';
 import type { StravaActivity } from '../training/model';
 import { formatDuration, intervalFtpFraction, plannedStats, toWatts, totalDuration, zoneFor, type Interval } from '../workout/model';
 import { CADENCE_COLOR } from './WorkoutChart';
@@ -13,25 +13,34 @@ const r0 = (x: number | undefined) => (x == null || !Number.isFinite(x) ? '--' :
 
 // ---------- loading ----------
 
-/** The ride's 1 Hz series: straight from a RideBox ride, or fetched from Strava. */
-export function useActualSeries(ride?: RideRecord, act?: StravaActivity) {
+/**
+ * The ride's 1 Hz series: straight from a RideBox ride, or the saved Strava streams.
+ * With `download`, streams not saved yet are fetched from Strava (the detail view);
+ * otherwise they appear once the background sync has them (calendar cards).
+ */
+export function useActualSeries(ride?: RideRecord, act?: StravaActivity, download = false) {
   const fromRide = useMemo(() => (ride && ride.samples.length > 1 ? seriesFromRide(ride) : null), [ride]);
-  const [streams, setStreams] = useState<{ id: number; series: ActualSeries | null; error?: string } | null>(null);
-  const stravaId = !fromRide ? act?.stravaId : undefined;
+  const [streams, setStreams] = useState<{ id: string; series: ActualSeries | null | undefined; error?: string } | null>(null);
+  const [version, setVersion] = useState(0);
+  const id = !fromRide ? act?.id : undefined;
+  useEffect(() => (id ? onStreamsChange(() => setVersion((v) => v + 1)) : undefined), [id]);
   useEffect(() => {
-    if (!stravaId) return;
+    if (!id || !act) return;
     let live = true;
-    fetchStreams(stravaId)
-      .then((st) => live && setStreams({ id: stravaId, series: st.time ? seriesFromStreams(st) : null }))
-      .catch((e) => live && setStreams({ id: stravaId, series: null, error: (e as Error).message }));
+    (async () => {
+      let series = await storedSeries(id);
+      if (series === undefined && download) series = await downloadSeries(act);
+      if (live) setStreams({ id, series });
+    })().catch((e) => live && setStreams({ id, series: null, error: (e as Error).message }));
     return () => {
       live = false;
     };
-  }, [stravaId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, download, version]);
   if (fromRide) return { series: fromRide, loading: false };
-  if (!stravaId) return { series: null, loading: false };
-  if (streams?.id !== stravaId) return { series: null, loading: true };
-  return { series: streams.series, loading: false, error: streams.error };
+  if (!id) return { series: null, loading: false };
+  if (streams?.id !== id) return { series: null, loading: true };
+  return { series: streams.series ?? null, loading: false, error: streams.error };
 }
 
 // ---------- chart ----------
@@ -253,7 +262,7 @@ export function ActualDetail({ ride, act, intervals, settings, tss }: {
   intervals?: Interval[];
   settings: Settings;
 }) {
-  const { series, loading, error } = useActualSeries(ride, act);
+  const { series, loading, error } = useActualSeries(ride, act, true);
   const ftp = ride?.ftp || settings.ftp;
   const st = useMemo(() => (series ? seriesStats(series, ftp) : null), [series, ftp]);
   const plan = useMemo(() => (intervals?.length ? plannedStats(intervals, ftp) : null), [intervals, ftp]);

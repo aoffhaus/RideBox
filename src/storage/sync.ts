@@ -51,7 +51,7 @@ export function batchBySize<T extends { json?: string }>(docs: T[], maxBytes = 4
   return out;
 }
 
-const keyPathStores = new Set<SyncedStore>(['workouts', 'rides', 'calendar', 'plans', 'strava_acts']);
+const keyPathStores = new Set<SyncedStore>(['workouts', 'rides', 'calendar', 'plans', 'strava_acts', 'strava_streams']);
 
 class SyncEngine {
   status: SyncStatus = 'off';

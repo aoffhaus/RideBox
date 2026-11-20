@@ -48,10 +48,10 @@ function MiniChart({ series, intervals, ftp, height = 40 }: { series: ActualSeri
 
 /**
  * What was ridden, right on the calendar card: time and TSS (vs plan), power, heart rate,
- * cadence, how many intervals hit their target, and in week view a mini chart.
- * Strava streams are only fetched for the chart (week view), so month view costs no requests.
+ * cadence, how many intervals hit their target, and a mini chart. Strava activities use the
+ * saved streams (downloaded in the background), so the calendar itself makes no requests.
  */
-export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, tss, plannedTss, chart }: {
+export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, tss, plannedTss }: {
   ride?: RideRecord;
   act?: StravaActivity;
   intervals?: Interval[];
@@ -59,9 +59,8 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
   /** TSS from the load model (covers Strava activities without power) */
   tss?: number;
   plannedTss?: number;
-  chart: boolean;
 }) {
-  const { series } = useActualSeries(ride, chart ? act : undefined);
+  const { series } = useActualSeries(ride, act);
   const rideFtp = ride?.ftp || ftp;
   const st = useMemo(() => (series ? seriesStats(series, rideFtp) : null), [series, rideFtp]);
   const hits = useMemo(() => (series && intervals && intervals.length > 1 ? hitCount(intervals, rideFtp, series) : null), [series, intervals, rideFtp]);
@@ -99,7 +98,7 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
           </span>
         </div>
       )}
-      {chart && series && <MiniChart series={series} intervals={intervals} ftp={rideFtp} />}
+      {series && <MiniChart series={series} intervals={intervals} ftp={rideFtp} />}
     </div>
   );
 });

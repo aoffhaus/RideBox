@@ -62,22 +62,28 @@ export interface LoadEntry {
 }
 
 /**
+ * Recognizes Strava's copy of a RideBox ride: one RideBox uploaded, or anything
+ * starting within 2 minutes of a RideBox ride (e.g. sent via Garmin or a .fit upload).
+ */
+export function stravaCopyChecker(rides: RideRecord[]) {
+  const uploaded = new Set(rides.map((r) => r.strava?.activityId).filter((x): x is number => !!x));
+  const starts = rides.map((r) => r.startTime);
+  return (a: StravaActivity) => uploaded.has(a.stravaId) || starts.some((s) => Math.abs(s - a.start) < 120_000);
+}
+
+/**
  * Every completed activity as a load entry. Strava copies of RideBox rides (the
  * ones RideBox uploaded, or anything starting within 2 minutes of one) are dropped
  * so the same ride never counts twice.
  */
 export function loadEntries(rides: RideRecord[], acts: StravaActivity[], ftp: number, maxHr: number): LoadEntry[] {
   const out: LoadEntry[] = [];
-  const uploaded = new Set<number>();
-  const starts: number[] = [];
+  const isCopy = stravaCopyChecker(rides);
   for (const r of rides) {
-    if (r.strava?.activityId) uploaded.add(r.strava.activityId);
-    starts.push(r.startTime);
     out.push({ date: dayKey(r.startTime), tss: r.summary.tss, seconds: r.summary.duration, kind: 'ridebox', id: r.id, name: r.name, source: 'power' });
   }
   for (const a of acts) {
-    if (uploaded.has(a.stravaId)) continue;
-    if (starts.some((s) => Math.abs(s - a.start) < 120_000)) continue;
+    if (isCopy(a)) continue;
     const { tss, source } = stravaTss(a, ftp, maxHr);
     out.push({ date: dayKey(a.start), tss, seconds: a.movingTime, kind: 'strava', id: a.id, name: a.name, source });
   }
