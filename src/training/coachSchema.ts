@@ -78,9 +78,15 @@ export interface AdaptInput {
 
 export interface TodayInput {
   minutes: number;
-  /** 1 = exhausted … 5 = great */
-  feel: number;
+  /** 1 = exhausted … 5 = great; absent when the rider only asked for alternatives */
+  feel?: number;
   note?: string;
+  /** the day to recommend for (defaults to today) */
+  date?: string;
+  /** the calendar workout the rider wants alternatives to */
+  planned?: { name: string; zone: string; level: number; minutes: number; tss: number; rationale?: string };
+  /** true: exactly three different options instead of the planned workout */
+  alternatives?: boolean;
 }
 
 export type CoachRequest =

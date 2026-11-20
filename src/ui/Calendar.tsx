@@ -32,6 +32,8 @@ export interface CalendarProps {
   toolbar?: ReactNode;
   /** banner above the grid (pending adaptations) */
   banner?: ReactNode;
+  /** coach help inside a planned workout's dialog (when the coach is available) */
+  coachPanel?: (p: PlannedWorkout, onSwap: (w: Workout, reason: string) => void) => ReactNode;
 }
 
 /** Main color of a workout: the zone of its hardest sustained interval. */
@@ -282,6 +284,7 @@ export function Calendar(props: CalendarProps) {
           onOpenRide={onOpenRide}
           todayKey={t}
           calendar={calendar}
+          coach={props.coachPanel && selected.status !== 'done' ? props.coachPanel(selected, (w, reason) => onSave([{ ...selected, workout: w, rationale: reason }])) : undefined}
         />
       )}
       {openAct && (
@@ -330,7 +333,7 @@ export function Modal({ title, onClose, children }: { title: ReactNode; onClose:
   );
 }
 
-function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDelete, onRide, onMove, onOpenRide, todayKey, calendar }: {
+function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDelete, onRide, onMove, onOpenRide, todayKey, calendar, coach }: {
   p: PlannedWorkout;
   settings: Settings;
   levels: Levels;
@@ -344,6 +347,7 @@ function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDele
   onOpenRide: (id: string) => void;
   todayKey: DayKey;
   calendar: PlannedWorkout[];
+  coach?: ReactNode;
 }) {
   const ivs = flatten(p.workout);
   const s = plannedStats(ivs, settings.ftp);
@@ -395,6 +399,12 @@ function WorkoutDetail({ p, settings, levels, ride, act, onClose, onSave, onDele
         )}
         <button className="danger" onClick={onDelete}>Remove</button>
       </div>
+      {coach && (
+        <div className="detail-coach">
+          <div className="card-title">Coach</div>
+          {coach}
+        </div>
+      )}
     </Modal>
   );
 }
