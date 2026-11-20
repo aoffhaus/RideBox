@@ -10,6 +10,7 @@ There are no social features or game mechanics. RideBox runs on your own private
 2. Click **Connect trainer** → pick your KICKR, then **Connect HRM** → pick your strap.
    macOS asks once whether Chrome can use Bluetooth (System Settings → Privacy & Security → Bluetooth).
 3. On **Ride**, pick a workout (or Free ride) and a route, then **Start ride**. The workout clock starts when you pedal.
+   Pick **Portal Run** as the route to turn every interval gate of an ERG workout into a portal: ride through it and you land at a random spot in a random world (never the one you're in). Portals only open while ERG holds your power, so the jump in gradient is never felt; the last gate (the finish) is an ordinary arch, and the saved ride is named after the workout.
 4. After the ride, rename it if you like and click **Upload to Strava** (once connected, see below), or delete it. **Garmin Connect ↗** downloads the .fit and opens Garmin Connect's Import Data page so you can drop it in (Garmin has no upload API for personal apps). You can also download the **.fit** and upload it to intervals.icu, TrainingPeaks, or TrainerRoad.
 
 No trainer nearby? Click **Simulator** to try everything with a fake trainer and heart-rate strap.

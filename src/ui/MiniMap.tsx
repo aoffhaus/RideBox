@@ -85,7 +85,9 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
       last = now;
       pulse += dt;
       const s = session.snapshot();
-      const d = s.distance;
+      // a portal just swapped the route: wait for this effect to restart on the new one
+      if (session.route !== route) return;
+      const d = s.routeDistance;
       const p = route.at(d);
       // smooth the heading so the map doesn't spin on every bend
       const target = route.at(d + 30).heading;
@@ -259,7 +261,7 @@ export function MiniMap({ session, settings, snap }: { session: RideSession; set
   const st = snap.workout;
   let pct: number;
   if (st) pct = st.finished ? 100 : (st.elapsed / Math.max(1, st.elapsed + st.totalRemaining)) * 100;
-  else pct = ((snap.distance % route.length) / route.length) * 100;
+  else pct = ((snap.routeDistance % route.length) / route.length) * 100;
 
   return (
     <div className="minimap">

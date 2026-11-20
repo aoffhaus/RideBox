@@ -209,6 +209,13 @@ export class PostFX {
     this.bloom.scale = q.bloomScale;
   }
 
+  /** New theme: its own glow settings. */
+  setBloom(bloom: BloomParams) {
+    this.baseBloom = bloom.strength;
+    this.bloom.radius = bloom.radius;
+    this.bloom.threshold = bloom.threshold;
+  }
+
   /** Objects were added to or removed from the scene (refreshes what the AO pass ignores). */
   invalidateScene() {
     this.ao.invalidate();
