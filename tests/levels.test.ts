@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RideRecord } from '../src/app/recorder';
-import { applyOutcome, computeLevels, difficultyLabel, rateWorkout, rideOutcome, startLevels } from '../src/training/levels';
+import { activityOutcome, applyOutcome, computeLevels, difficultyLabel, normalizeWorkoutName, rateWorkout, rideOutcome, startLevels, stravaWorkout } from '../src/training/levels';
+import type { StravaActivity } from '../src/training/model';
+import { flatten, plannedStats } from '../src/workout/model';
 import { BUILTIN_WORKOUTS } from '../src/workout/builtin';
 import { parseText } from '../src/workout/parsers';
 
@@ -117,6 +119,52 @@ describe('computeLevels', () => {
     const idle = computeLevels([ride], acts, [], [w], 250, now).levels.threshold!;
     expect(idle).toBeCloseTo(start - 0.6, 5); // 10 weeks idle = 6 weeks of decay
     expect(computeLevels([ride], [], [], [w], 250, now).levels.threshold!).toBeCloseTo(idle, 5);
+  });
+
+  describe('Strava rides matched to workouts by name', () => {
+    const w = parseText('# Warlow -1\n10m 55%\n2x(20m 97%, 5m 50%)\n5m 50%');
+    const planned = plannedStats(flatten(w), 250);
+    const act = (over: Partial<StravaActivity> = {}): StravaActivity => ({
+      id: 'strava-9', stravaId: 9, name: 'Zwift - TrainerRoad: Warlow -1', sportType: 'VirtualRide', start: Date.UTC(2026, 0, 5),
+      movingTime: planned.duration, distance: 0, weightedWatts: Math.round(planned.np), deviceWatts: true, ...over,
+    });
+    const now = Date.UTC(2026, 0, 6);
+
+    it('normalizes the names other apps upload', () => {
+      expect(normalizeWorkoutName('Zwift - TrainerRoad: Warlow -1')).toBe('warlow -1');
+      expect(normalizeWorkoutName('TrainerRoad - Warlow  -1')).toBe('warlow -1');
+      expect(normalizeWorkoutName('Warlow -1')).toBe('warlow -1');
+      expect(normalizeWorkoutName('Zwift - Group Ride: The HERD')).toBe('group ride: the herd');
+    });
+
+    it('rates a matched ride as its workout, whatever its length', () => {
+      const { levels, history } = computeLevels([], [act()], [], [w], 250, now);
+      expect(history).toHaveLength(1);
+      expect(history[0].zone).toBe('threshold');
+      expect(levels.threshold).toBeCloseTo(rateWorkout(w, 250).level, 5);
+    });
+
+    it('judges the outcome from NP against plan and moving time against length', () => {
+      expect(activityOutcome(act(), w, 250)?.outcome).toBe('pass');
+      expect(activityOutcome(act({ weightedWatts: planned.np * 0.9 }), w, 250)?.outcome).toBe('struggle');
+      expect(activityOutcome(act({ weightedWatts: planned.np * 0.8 }), w, 250)?.outcome).toBe('fail');
+      expect(activityOutcome(act({ movingTime: planned.duration * 0.6 }), w, 250)?.outcome).toBe('fail');
+      expect(activityOutcome(act({ deviceWatts: false }), w, 250)).toBeUndefined();
+    });
+
+    it('prefers the calendar workout the ride completed, if the names match', () => {
+      const harder = parseText('# Warlow -1\n10m 55%\n3x(20m 99%, 5m 50%)\n5m 50%');
+      const cal = [{ id: 'p', date: '2026-01-05', workout: harder, status: 'done' as const, origin: 'manual' as const, stravaId: 'strava-9', createdAt: 0 }];
+      expect(stravaWorkout(act(), cal, [w])).toBe(harder);
+      expect(stravaWorkout(act({ name: 'Morning Ride' }), cal, [w])).toBeUndefined();
+    });
+
+    it('ignores Strava copies of RideBox rides and falls back to endurance for unmatched rides', () => {
+      const ride = { ...rideWith([{ target: 125, power: 125, secs: 60 }]), id: 'r1', startTime: Date.UTC(2026, 0, 5) + 30_000 };
+      expect(computeLevels([ride], [act()], [], [w], 250, now).history).toHaveLength(0);
+      const long = act({ name: 'Saturday laps', sportType: 'Ride', movingTime: 3 * 3600, weightedWatts: 170 });
+      expect(computeLevels([], [long], [], [w], 250, now).history[0].zone).toBe('endurance');
+    });
   });
 
   it('counts long steady outdoor rides as endurance', () => {

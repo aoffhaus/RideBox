@@ -9,7 +9,7 @@
 
 import type { RideRecord } from '../app/recorder';
 import { flatten, intervalFtpFraction, plannedStats, type Workout } from '../workout/model';
-import { dayKey } from './load';
+import { dayKey, stravaCopyChecker } from './load';
 import type { PlannedWorkout, StravaActivity } from './model';
 import { isRide } from './model';
 
@@ -167,6 +167,49 @@ export function rideOutcome(ride: RideRecord, plannedSeconds: number): { outcome
   return { outcome, compliance, coverage };
 }
 
+/**
+ * A workout name the way other apps put it on Strava, normalized for matching:
+ * "Zwift - TrainerRoad: Warlow -1" and "Warlow -1" both become "warlow -1".
+ */
+export function normalizeWorkoutName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/^zwift\s*[-–:]\s*/, '')
+    .replace(/^trainerroad\s*[-–:]\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The workout a Strava ride was, by name: the calendar workout it completed if
+ * the names match, else a library or calendar workout with the same name.
+ */
+export function stravaWorkout(a: StravaActivity, calendar: PlannedWorkout[], library: Workout[]): Workout | undefined {
+  if (!isRide(a.sportType)) return undefined;
+  const key = normalizeWorkoutName(a.name);
+  if (!key) return undefined;
+  const linked = calendar.find((p) => p.stravaId === a.id)?.workout;
+  if (linked && normalizeWorkoutName(linked.name) === key) return linked;
+  return library.find((w) => normalizeWorkoutName(w.name) === key) ?? calendar.find((p) => normalizeWorkoutName(p.workout.name) === key)?.workout;
+}
+
+/**
+ * How a Strava ride went against its workout, from the summary alone (no laps):
+ * normalized power against the workout's planned NP, and moving time against its
+ * length. Same thresholds as rideOutcome. Undefined without power-meter data.
+ */
+export function activityOutcome(a: StravaActivity, w: Workout, ftp: number): { outcome: Outcome; compliance: number; coverage: number } | undefined {
+  if (!a.deviceWatts || !a.weightedWatts) return undefined;
+  const planned = plannedStats(flatten(w), ftp);
+  if (!planned.np || !planned.duration) return undefined;
+  const compliance = Math.min(1.05, a.weightedWatts / planned.np);
+  const coverage = Math.min(1, a.movingTime / planned.duration);
+  const score = Math.min(compliance, coverage + 0.02);
+  const outcome: Outcome = score >= 0.95 ? 'pass' : score >= 0.85 ? 'struggle' : 'fail';
+  return { outcome, compliance, coverage };
+}
+
 export function applyOutcome(levels: Levels, r: WorkoutRating, outcome: Outcome, feel = 3): Levels {
   if (r.zone === 'recovery' || r.zone === 'test') return levels;
   const L = levels[r.zone];
@@ -214,7 +257,9 @@ export interface LevelEvent {
 /**
  * Replays every ride (oldest first) to get today's levels. A ride's workout is
  * the calendar workout it completed, or a library workout with the same name.
- * Long, steady outdoor rides from Strava count as endurance work.
+ * Strava rides whose name matches a workout (e.g. "Zwift - TrainerRoad: Warlow -1")
+ * are rated as that workout, judged from their summary power and duration at the
+ * current FTP. Other long, steady Strava rides count as endurance work.
  */
 export function computeLevels(
   rides: RideRecord[],
@@ -236,9 +281,18 @@ export function computeLevels(
     const { outcome } = rideOutcome(r, plannedStats(flatten(w), rideFtp).duration);
     evs.push({ t: r.startTime, name: r.name, rating, outcome, feel: r.feel });
   }
-  const uploaded = new Set(rides.map((r) => r.strava?.activityId).filter(Boolean));
+  const isCopy = stravaCopyChecker(rides);
   for (const a of acts) {
-    if (!isRide(a.sportType) || uploaded.has(a.stravaId) || a.movingTime < 75 * 60) continue;
+    if (!isRide(a.sportType) || isCopy(a)) continue;
+    // a workout ridden in another app (TrainerRoad, Zwift…) and matched by name
+    const w = stravaWorkout(a, calendar, library);
+    if (w) {
+      const rating = rateWorkout(w, ftp);
+      const res = activityOutcome(a, w, ftp);
+      if (res) evs.push({ t: a.start, name: a.name, rating, outcome: res.outcome });
+      if (res || rating.zone === 'test' || rating.zone === 'recovery') continue;
+    }
+    if (a.movingTime < 75 * 60) continue;
     const np = a.weightedWatts && a.deviceWatts ? a.weightedWatts : undefined;
     if (!np || np / ftp >= 0.78) continue;
     const minutes = a.movingTime / 60;

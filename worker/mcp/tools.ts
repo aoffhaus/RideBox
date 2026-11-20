@@ -8,7 +8,7 @@ import { lapStats, type RideRecord } from '../../src/app/recorder';
 import { uid, type Settings, type StoredWorkout } from '../../src/storage/types';
 import { moveTo, newPlanned, scaleWorkout } from '../../src/training/calendar';
 import { buildContext, resolveChoice } from '../../src/training/coach';
-import { computeLevels, difficultyLabel, rateWorkout, rideOutcome, ZONE_NAMES, type Levels } from '../../src/training/levels';
+import { activityOutcome, computeLevels, difficultyLabel, rateWorkout, rideOutcome, stravaWorkout, ZONE_NAMES, type Levels } from '../../src/training/levels';
 import { addDays, dayKey, dayStart, estimateFtp, fitnessSeries, formLabel, loadEntries, plannedLoad, stravaTss, weeklyTotals, type LoadEntry } from '../../src/training/load';
 import type { DayKey, PlanPhase, PlannedWorkout, StravaActivity, TrainingPlan } from '../../src/training/model';
 import { normalizePlan, setActive } from '../../src/training/plans';
@@ -343,6 +343,10 @@ function rideDetails(r: RideRecord, d: RiderData) {
 
 function actDetails(a: StravaActivity, d: RiderData) {
   const t = stravaTss(a, d.settings.ftp, d.settings.maxHr);
+  // a workout ridden in another app, matched by name (rated at the current FTP)
+  const w = stravaWorkout(a, d.calendar, derive(d).workouts);
+  const rating = w ? rateWorkout(w, d.settings.ftp) : undefined;
+  const outcome = w ? activityOutcome(a, w, d.settings.ftp) : undefined;
   return {
     activity_id: a.id,
     source: 'strava',
@@ -361,6 +365,11 @@ function actDetails(a: StravaActivity, d: RiderData) {
     max_hr: a.maxHr,
     avg_cadence: a.avgCadence != null ? Math.round(a.avgCadence) : undefined,
     indoor: a.trainer,
+    workout: w?.name,
+    zone: rating ? ZONE_NAMES[rating.zone] : undefined,
+    workout_level: rating?.level,
+    outcome: outcome?.outcome,
+    compliance: outcome ? r2(outcome.compliance) : undefined,
   };
 }
 
@@ -369,7 +378,7 @@ const listActivities: Tool<ToolCtx> = {
   title: 'Activities',
   description:
     'Completed activities between two dates, newest first: RideBox rides (with the workout, outcome pass / struggle / fail, compliance with targets, how it felt 1-5, NP, IF, TSS) ' +
-    'and Strava activities (sport, distance, climbing, power, heart rate, TSS). Strava copies of RideBox rides are left out. Defaults to the last 14 days.',
+    'and Strava activities (sport, distance, climbing, power, heart rate, TSS; workouts ridden in other apps that match a workout by name also get zone, level, outcome and compliance, judged from NP vs. plan). Strava copies of RideBox rides are left out. Defaults to the last 14 days.',
   inputSchema: {
     properties: { from: date('First day (default: 13 days ago)'), to: date('Last day (default: today)'), limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Max activities (default 50)' } },
     additionalProperties: false,
