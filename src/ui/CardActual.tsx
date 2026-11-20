@@ -14,7 +14,7 @@ export function hitCount(intervals: Interval[], ftp: number, s: ActualSeries) {
 }
 
 /** Tiny plan-vs-actual chart: planned blocks, actual power, heart rate. */
-function MiniChart({ series, intervals, ftp, height = 40 }: { series: ActualSeries; intervals?: Interval[]; ftp: number; height?: number }) {
+export function MiniChart({ series, intervals, ftp, height = 40 }: { series: ActualSeries; intervals?: Interval[]; ftp: number; height?: number }) {
   const W = 300;
   const H = height;
   const n = Math.max(series.length, intervals ? totalDuration(intervals) : 0, 1);
@@ -51,6 +51,24 @@ function MiniChart({ series, intervals, ftp, height = 40 }: { series: ActualSeri
  * cadence, how many intervals hit their target, and a mini chart. Strava activities use the
  * saved streams (downloaded in the background), so the calendar itself makes no requests.
  */
+export function useCardStats(ride: RideRecord | undefined, act: StravaActivity | undefined, intervals: Interval[] | undefined, ftp: number, tss?: number) {
+  const { series } = useActualSeries(ride, act);
+  const rideFtp = ride?.ftp || ftp;
+  const st = useMemo(() => (series ? seriesStats(series, rideFtp) : null), [series, rideFtp]);
+  const hits = useMemo(() => (series && intervals && intervals.length > 1 ? hitCount(intervals, rideFtp, series) : null), [series, intervals, rideFtp]);
+  return {
+    series,
+    rideFtp,
+    hits,
+    duration: ride?.summary.duration ?? st?.duration ?? act?.movingTime,
+    tss: r0(ride?.summary.tss ?? st?.tss ?? tss),
+    np: r0(ride?.summary.np ?? st?.np ?? act?.weightedWatts),
+    avgPower: r0(ride?.summary.avgPower ?? st?.avgPower ?? act?.avgWatts),
+    hr: r0(ride?.summary.avgHr ?? st?.avgHr ?? act?.avgHr),
+    cadence: r0(ride?.summary.avgCadence ?? st?.avgCadence ?? act?.avgCadence),
+  };
+}
+
 export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, tss, plannedTss }: {
   ride?: RideRecord;
   act?: StravaActivity;
@@ -60,17 +78,7 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
   tss?: number;
   plannedTss?: number;
 }) {
-  const { series } = useActualSeries(ride, act);
-  const rideFtp = ride?.ftp || ftp;
-  const st = useMemo(() => (series ? seriesStats(series, rideFtp) : null), [series, rideFtp]);
-  const hits = useMemo(() => (series && intervals && intervals.length > 1 ? hitCount(intervals, rideFtp, series) : null), [series, intervals, rideFtp]);
-
-  const duration = ride?.summary.duration ?? st?.duration ?? act?.movingTime;
-  const actualTss = r0(ride?.summary.tss ?? st?.tss ?? tss);
-  const np = r0(ride?.summary.np ?? st?.np ?? act?.weightedWatts);
-  const avgW = r0(ride?.summary.avgPower ?? st?.avgPower ?? act?.avgWatts);
-  const hr = r0(ride?.summary.avgHr ?? st?.avgHr ?? act?.avgHr);
-  const cad = r0(ride?.summary.avgCadence ?? st?.avgCadence ?? act?.avgCadence);
+  const { series, rideFtp, hits, duration, tss: actualTss, np, avgPower: avgW, hr, cadence: cad } = useCardStats(ride, act, intervals, ftp, tss);
   const watts = np ?? avgW;
 
   return (

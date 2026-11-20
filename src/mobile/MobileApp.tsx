@@ -12,9 +12,10 @@ import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../tr
 import { LEVEL_ZONES, ZONE_NAMES, difficultyLabel, rateWorkout, type LevelEvent, type LevelZone, type Levels } from '../training/levels';
 import type { AdaptSuggestion, CoachState } from '../training/coach';
 import type { AdaptInput } from '../training/coachSchema';
-import { flatten, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
+import { flatten, type Interval, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
 import { WorkoutChart } from '../ui/WorkoutChart';
 import { ActualDetail } from '../ui/ActualDetail';
+import { MiniChart, useCardStats } from '../ui/CardActual';
 import { LEVEL_COLORS } from '../ui/Levels';
 import { FitnessChart, SERIES, WeeklyBars } from '../ui/FitnessChart';
 import { StravaSettings } from '../ui/StravaSettings';
@@ -61,6 +62,7 @@ type Sheet =
   | { kind: 'swap'; id: string }
   | { kind: 'coach' };
 
+const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DOW1 = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const STATUS_LABEL: Record<PlannedWorkout['status'], string> = { planned: 'Planned', done: 'Completed', missed: 'Missed', skipped: 'Skipped' };
 
@@ -201,6 +203,103 @@ function WorkoutCard({ w, ftp, levels, status, tag, onClick }: {
       <div className="m-wcard-chart">
         <WorkoutChart intervals={ivs} ftp={ftp} height={44} compact />
       </div>
+    </button>
+  );
+}
+
+/** One number on an agenda card: big value, small caps label. */
+function Metric({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="m-tile-m">
+      <div className="m-tile-v">
+        {value ?? '--'}
+      </div>
+      <div className="m-tile-l">{label}</div>
+    </div>
+  );
+}
+
+const STATUS_MARK: Partial<Record<PlannedWorkout['status'], ReactNode>> = {
+  done: <span className="m-tile-mark ok" aria-label="Completed">✓</span>,
+  missed: <span className="m-tile-mark err" aria-label="Missed">✕</span>,
+};
+
+/**
+ * Agenda card: chart on the left, name and big numbers on the right, difficulty underneath.
+ * Planned workouts show duration / TSS / IF; ridden ones show what happened (time, TSS vs plan,
+ * NP, average power, heart rate) over a plan-vs-actual chart.
+ */
+function AgendaCard({ w, name, kicker, ftp, levels, status, tag, ride, act, tss, onClick }: {
+  w?: Workout;
+  name: string;
+  /** subtitle when there's no workout to rate (unplanned rides) */
+  kicker?: string;
+  ftp: number;
+  levels: Levels;
+  status?: PlannedWorkout['status'];
+  tag?: string;
+  ride?: RideRecord;
+  act?: StravaActivity;
+  tss?: number;
+  onClick: () => void;
+}) {
+  const ivs = useMemo<Interval[] | undefined>(() => (w ? flatten(w) : undefined), [w]);
+  const plan = useMemo(() => (ivs ? plannedStats(ivs, ftp) : null), [ivs, ftp]);
+  const ridden = !!(ride || act) && (!w || status === 'done');
+  const a = useCardStats(ridden ? ride : undefined, ridden ? act : undefined, ivs, ftp, tss);
+  const rating = w ? rateWorkout(w, ftp) : null;
+  const diff = rating ? difficultyLabel(rating, levels) : null;
+  const sub = rating && rating.zone !== 'recovery' && rating.zone !== 'test' ? `${ZONE_NAMES[rating.zone]} ${rating.level.toFixed(1)}` : kicker;
+  const color = w ? workoutColor(w, ftp) : '#6b7686';
+  return (
+    <button className={`m-tile ${status ? `st-${status}` : ''}${w ? '' : ' unplanned'}`} style={{ borderLeftColor: color }} onClick={onClick}>
+      <div className="m-tile-main">
+        {(ivs || (ridden && a.series)) && (
+          <div className="m-tile-chart">
+            {ridden && a.series ? (
+              <MiniChart series={a.series} intervals={ivs} ftp={a.rideFtp} height={76} />
+            ) : (
+              <WorkoutChart intervals={ivs!} ftp={ftp} height={76} compact />
+            )}
+          </div>
+        )}
+        <div className="m-tile-info">
+          <div className="m-tile-top">
+            <span className="m-tile-name">{name}</span>
+            {status && STATUS_MARK[status]}
+          </div>
+          {sub && <div className="m-tile-sub">{sub}</div>}
+          <div className="m-tile-metrics">
+            {ridden ? (
+              <>
+                <Metric label="Time" value={a.duration != null ? fmtClock(a.duration) : undefined} />
+                <Metric label={plan ? `TSS /${Math.round(plan.tss)}` : 'TSS'} value={a.tss} />
+                <Metric label="NP" value={a.np} />
+                <Metric label="Avg W" value={a.avgPower} />
+                <Metric label="HR" value={a.hr} />
+              </>
+            ) : plan ? (
+              <>
+                <Metric label="Time" value={fmtClock(plan.duration)} />
+                <Metric label="TSS" value={Math.round(plan.tss)} />
+                <Metric label="IF" value={plan.if.toFixed(2)} />
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {(diff || tag || (status && status !== 'planned' && status !== 'done' && status !== 'missed') || (a.hits && a.hits.of > 0)) && (
+        <div className="m-tile-foot">
+          {diff && <span className={`m-diff ${diff.cls}`}>{diff.label}</span>}
+          {status === 'skipped' && <span className="m-pill pill-skipped">{STATUS_LABEL[status]}</span>}
+          {tag && <span className="m-pill pill-tag">{tag}</span>}
+          {a.hits && a.hits.of > 0 && (
+            <span className={`verdict ${a.hits.hit === a.hits.of ? 'v-hit' : a.hits.hit >= a.hits.of * 0.7 ? 'v-over' : 'v-under'}`}>
+              {a.hits.hit}/{a.hits.of} on target
+            </span>
+          )}
+        </div>
+      )}
     </button>
   );
 }
@@ -426,6 +525,9 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     return m;
   }, [entries]);
   const stats = useMemo(() => new Map(p.calendar.map((c) => [c.id, plannedStats(flatten(c.workout), ftp)])), [p.calendar, ftp]);
+  const ridesById = useMemo(() => new Map(p.rides.map((r) => [r.id, r])), [p.rides]);
+  const actsById = useMemo(() => new Map(p.acts.map((x) => [x.id, x])), [p.acts]);
+  const tssById = useMemo(() => new Map(entries.map((e) => [e.id, e.tss])), [entries]);
   const activePlan = p.plans.find((x) => x.active);
   const phase = activePlan?.phases.find((ph) => ph.start <= addDays(week, 3) && addDays(week, 3) <= ph.end);
 
@@ -614,36 +716,44 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
                 else dayRefs.current.delete(d);
               }}
             >
-              <div className="m-day-head">
-                <div>
-                  <span className="m-day-rel">{relDay(d, t)}</span>
-                  <span className="m-day-date">{dayStart(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                </div>
+              <div className="m-day-date-col">
+                <span className="m-day-dow">{DOW[(dayStart(d).getDay() + 6) % 7]}</span>
+                <span className="m-day-num">{dayStart(d).getDate()}</span>
                 <button className="m-icon-btn add" aria-label={`Add a workout on ${longDay(d)}`} onClick={() => p.onOpen({ kind: 'add', date: d })}>
                   {Icon.plus}
                 </button>
               </div>
-              {items.map((c) => (
-                <WorkoutCard
-                  key={c.id}
-                  w={c.workout}
-                  ftp={ftp}
-                  levels={p.levels}
-                  status={c.status}
-                  tag={c.origin === 'adapt' ? 'Adapted' : undefined}
-                  onClick={() => p.onOpen({ kind: 'planned', id: c.id })}
-                />
-              ))}
-              {extra.map((e) => (
-                <button key={e.id} className="m-acard" onClick={() => p.onOpen({ kind: 'activity', entry: e })}>
-                  <span className="m-acard-ico">{e.kind === 'strava' ? '◆' : '●'}</span>
-                  <span className="m-acard-name">{e.name}</span>
-                  <span className="muted small">
-                    {fmtHm(e.seconds)} · {Math.round(e.tss)} TSS
-                  </span>
-                </button>
-              ))}
-              {!items.length && !extra.length && <div className="m-rest">{d < t ? 'No workout' : 'Rest day'}</div>}
+              <div className="m-day-items">
+                {items.map((c) => (
+                  <AgendaCard
+                    key={c.id}
+                    w={c.workout}
+                    name={c.workout.name}
+                    ftp={ftp}
+                    levels={p.levels}
+                    status={c.status}
+                    tag={c.origin === 'adapt' ? 'Adapted' : undefined}
+                    ride={c.rideId ? ridesById.get(c.rideId) : undefined}
+                    act={c.stravaId ? actsById.get(c.stravaId) : undefined}
+                    tss={tssById.get(c.rideId ?? c.stravaId ?? '')}
+                    onClick={() => p.onOpen({ kind: 'planned', id: c.id })}
+                  />
+                ))}
+                {extra.map((e) => (
+                  <AgendaCard
+                    key={e.id}
+                    name={e.name}
+                    kicker={e.kind === 'strava' ? 'From Strava' : 'RideBox ride'}
+                    ftp={ftp}
+                    levels={p.levels}
+                    ride={e.kind === 'ridebox' ? ridesById.get(e.id) : undefined}
+                    act={e.kind === 'strava' ? actsById.get(e.id) : undefined}
+                    tss={e.tss}
+                    onClick={() => p.onOpen({ kind: 'activity', entry: e })}
+                  />
+                ))}
+                {!items.length && !extra.length && <div className="m-rest">{d < t ? 'No workout' : 'Rest day'}</div>}
+              </div>
             </section>
           );
         })}
