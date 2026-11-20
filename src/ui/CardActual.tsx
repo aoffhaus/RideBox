@@ -47,8 +47,8 @@ export function MiniChart({ series, intervals, ftp, height = 40 }: { series: Act
 }
 
 /**
- * What was ridden, right on the calendar card: time and TSS (vs plan), power, heart rate,
- * cadence, how many intervals hit their target, and a mini chart. Strava activities use the
+ * What was ridden, right on the calendar card: time and TSS (vs plan), NP, average power,
+ * heart rate, how many intervals hit their target, and a mini chart. Strava activities use the
  * saved streams (downloaded in the background), so the calendar itself makes no requests.
  */
 export function useCardStats(ride: RideRecord | undefined, act: StravaActivity | undefined, intervals: Interval[] | undefined, ftp: number, tss?: number) {
@@ -78,8 +78,7 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
   tss?: number;
   plannedTss?: number;
 }) {
-  const { series, rideFtp, hits, duration, tss: actualTss, np, avgPower: avgW, hr, cadence: cad } = useCardStats(ride, act, intervals, ftp, tss);
-  const watts = np ?? avgW;
+  const { series, rideFtp, hits, duration, tss: actualTss, np, avgPower: avgW, hr } = useCardStats(ride, act, intervals, ftp, tss);
 
   return (
     <div className="card-actual">
@@ -92,11 +91,11 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
           </span>
         )}
       </div>
-      {(watts != null || hr != null || cad != null) && (
+      {(np != null || avgW != null || hr != null) && (
         <div className="cal-card-meta card-metrics">
-          {watts != null && <span title={np != null ? 'Normalized power' : 'Average power'}>{watts}W{np != null ? ' NP' : ''}</span>}
-          {hr != null && <span className="m-hr" title="Average heart rate">♥{hr}</span>}
-          {cad != null && <span className="m-cad" title="Average cadence">{cad}rpm</span>}
+          {np != null && <span title="Normalized power">{np}W NP</span>}
+          {avgW != null && <span title="Average power">{avgW}W avg</span>}
+          {hr != null && <span title="Average heart rate">♥{hr}</span>}
         </div>
       )}
       {hits && hits.of > 0 && (
