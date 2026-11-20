@@ -20,6 +20,7 @@ import { LEVEL_COLORS } from '../ui/Levels';
 import { FitnessChart, SERIES, WeeklyBars } from '../ui/FitnessChart';
 import { StravaSettings } from '../ui/StravaSettings';
 import { TodayCard } from '../ui/Coach';
+import { ChainTracker } from '../chains/ChainTracker';
 
 export interface MobileAppProps {
   settings: Settings;
@@ -52,7 +53,7 @@ export interface MobileAppProps {
   onDesktop: () => void;
 }
 
-type MTab = 'calendar' | 'workouts' | 'progress' | 'more';
+type MTab = 'calendar' | 'workouts' | 'progress' | 'chains' | 'more';
 
 type Sheet =
   | { kind: 'planned'; id: string }
@@ -108,6 +109,12 @@ const Icon = {
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 17l5-5 4 4 8-9" />
       <path d="M15 7h5v5" />
+    </svg>
+  ),
+  chains: (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.5" y="8.5" width="10" height="7" rx="3.5" />
+      <rect x="11.5" y="8.5" width="10" height="7" rx="3.5" />
     </svg>
   ),
   more: (
@@ -365,13 +372,22 @@ export function MobileApp(p: MobileAppProps) {
           <WorkoutsScreen workouts={p.workouts} ftp={ftp} levels={p.levels} onOpen={(w) => setSheet({ kind: 'library', w })} />
         ) : tab === 'progress' ? (
           <ProgressScreen {...p} />
+        ) : tab === 'chains' ? (
+          p.strava.server ? (
+            <ChainTracker phone />
+          ) : (
+            <div className="m-pad">
+              <h1 className="m-h1">Chains</h1>
+              <p className="muted">The chain tracker runs on your private Cloudflare site. Open RideBox there to use it.</p>
+            </div>
+          )
         ) : (
           <MoreScreen {...p} onOpenActivity={(entry) => setSheet({ kind: 'activity', entry })} />
         )}
       </main>
 
       <nav className="m-tabbar">
-        {(['calendar', 'workouts', 'progress', 'more'] as MTab[]).map((t) => (
+        {(['calendar', 'workouts', 'progress', 'chains', 'more'] as MTab[]).map((t) => (
           <button
             key={t}
             className={tab === t ? 'active' : ''}

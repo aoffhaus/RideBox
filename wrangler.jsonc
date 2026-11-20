@@ -26,6 +26,8 @@
       "migrations_dir": "worker/migrations"
     }
   ],
+  // Chain tracker: sync Strava rides every 30 minutes (UTC), about 2 of Strava's 1,000 daily reads.
+  "triggers": { "crons": ["*/30 * * * *"] },
   "vars": {
     // max Claude coach requests per day (a guard against runaway cost)
     "COACH_DAILY_LIMIT": "40"
