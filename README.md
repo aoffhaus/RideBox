@@ -76,7 +76,7 @@ Dates use your time zone: the app saves it the first time it opens after this up
 
 **One-time setup** (after deploying):
 
-1. **Let Claude reach the connector's endpoints past Cloudflare Access.** Claude's servers call these, not your browser, so they use OAuth tokens instead of an Access sign-in. In the Cloudflare dashboard → **Zero Trust** → **Access controls** → **Applications** → **Create new application** → **Self-hosted**. Name it something like *RideBox connector (public)* and add three public hostnames, each `ridebox.<your-subdomain>.workers.dev` with one of these paths:
+1. **Let Claude reach the connector's endpoints past Cloudflare Access.** Claude's servers call these, not your browser, so they use OAuth tokens instead of an Access sign-in. In the Cloudflare dashboard → **Zero Trust** → **Access controls** → **Applications** → **Create new application** → **Self-hosted**. Name it something like *RideBox connector (public)* and add three public hostnames. For each one set **Subdomain** to `ridebox` (the Worker's name), **Domain** to `<your-subdomain>.workers.dev`, and **Path** to one of these (lowercase, exactly as written):
    - `mcp`
    - `oauth/*`
    - `.well-known/*`
