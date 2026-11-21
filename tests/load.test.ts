@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RideRecord } from '../src/app/recorder';
-import { addDays, bestAverage, dayKey, daysBetween, estimateFtp, fitnessSeries, loadEntries, stravaTss, weeklyTotals } from '../src/training/load';
+import { addDays, bestAverage, dayKey, daysBetween, estimateFtp, fitnessSeries, ftpStravaCandidates, loadEntries, stravaTss, weeklyTotals } from '../src/training/load';
 import type { StravaActivity } from '../src/training/model';
 
 const ride = (id: string, start: number, tss: number, power: number[] = [], activityId?: number): RideRecord => ({
@@ -118,6 +118,56 @@ describe('FTP estimate', () => {
     const now = new Date(2026, 5, 30).getTime();
     const power = [...Array(600).fill(150), ...Array(1200).fill(300), ...Array(600).fill(150)];
     const est = estimateFtp([ride('recent', now - 10 * 86_400_000, 90, power), ride('old', now - 200 * 86_400_000, 90, Array(1300).fill(400))], 90, now);
-    expect(est).toMatchObject({ ftp: 285, best20: 300, rideId: 'recent' });
+    expect(est).toMatchObject({ ftp: 285, best20: 300, rideId: 'recent', source: 'ridebox' });
+  });
+
+  describe('with Strava rides', () => {
+    const now = new Date(2026, 5, 30, 12).getTime();
+    const day = 86_400_000;
+    const effort = (watts: number) => [...Array(600).fill(150), ...Array(1200).fill(watts), ...Array(600).fill(150)];
+    const pm = (id: number, start: number, over: Partial<StravaActivity> = {}): StravaActivity =>
+      act({ id: `strava-${id}`, stravaId: id, name: `Strava ${id}`, start, movingTime: 2400, deviceWatts: true, avgWatts: 200, ...over });
+    const rbRide = ride('rb', now - 5 * day, 90, effort(220));
+
+    it('counts a power-meter Strava ride when it holds the best 20 minutes', () => {
+      const a = pm(1, now - 3 * day);
+      const est = estimateFtp([rbRide], 90, now, [{ act: a, power: effort(280) }]);
+      expect(est).toMatchObject({ ftp: 266, best20: 280, rideId: 'strava-1', source: 'strava', name: 'Strava 1', date: dayKey(a.start) });
+    });
+
+    it('still picks a RideBox ride when it is the better effort', () => {
+      const est = estimateFtp([ride('rb', now - 5 * day, 90, effort(300))], 90, now, [{ act: pm(1, now - 3 * day), power: effort(280) }]);
+      expect(est).toMatchObject({ best20: 300, source: 'ridebox', rideId: 'rb' });
+    });
+
+    it('ignores Strava rides without a real power meter, other sports, short or old ones', () => {
+      const big = effort(400);
+      const skipped = [
+        pm(1, now - 3 * day, { deviceWatts: false }), // Strava's estimated watts
+        pm(2, now - 3 * day, { deviceWatts: undefined }),
+        pm(3, now - 3 * day, { sportType: 'Run' }),
+        pm(4, now - 3 * day, { movingTime: 900 }),
+        pm(5, now - 120 * day),
+      ];
+      const est = estimateFtp([rbRide], 90, now, skipped.map((a) => ({ act: a, power: big })));
+      expect(est).toMatchObject({ best20: 220, source: 'ridebox' });
+      expect(ftpStravaCandidates([rbRide], skipped, 90, now)).toEqual([]);
+    });
+
+    it('never counts Strava copies of RideBox rides twice', () => {
+      const uploaded = ride('up', now - 2 * day, 90, effort(230), 77);
+      const copies = [
+        pm(77, now - 10 * day), // the one RideBox uploaded (matched by id)
+        pm(78, uploaded.startTime + 60_000), // same ride sent again via Garmin, starts within 2 minutes
+      ];
+      const est = estimateFtp([uploaded], 90, now, copies.map((a) => ({ act: a, power: effort(400) })));
+      expect(est).toMatchObject({ best20: 230, source: 'ridebox', rideId: 'up' });
+      expect(ftpStravaCandidates([uploaded], [...copies, pm(79, now - 1 * day)], 90, now).map((a) => a.id)).toEqual(['strava-79']);
+    });
+
+    it('treats gaps in a Strava power stream as zero watts', () => {
+      const power = Array.from({ length: 1200 }, (_, i) => (i % 2 ? 300 : null)) as number[];
+      expect(estimateFtp([], 90, now, [{ act: pm(1, now - 1 * day), power }])).toMatchObject({ best20: 150, ftp: 143 });
+    });
   });
 });

@@ -188,6 +188,38 @@ describe('connector tools', () => {
     expect(plan.other_plans[0]).toMatchObject({ name: 'Build', active: false });
   });
 
+  it('counts saved power streams of Strava rides in the FTP estimate', async () => {
+    const db = await seeded();
+    const day = 86_400_000;
+    const now = Date.now();
+    const effort = (watts: number) => [...Array(300).fill(150), ...Array(1200).fill(watts), ...Array(300).fill(150)];
+    const pm = (n: number, start: number, over: Record<string, unknown> = {}) => ({
+      id: `strava-${n}`, stravaId: n, name: `Ride ${n}`, sportType: 'Ride', start, movingTime: 1800, distance: 0, deviceWatts: true, ...over,
+    });
+    const rbPower = effort(210);
+    const rb = {
+      id: 'rb1', name: 'RideBox', routeName: 'r', startTime: now - 5 * day, ftp: 250, laps: [],
+      samples: rbPower.map((p, i) => ({ t: i * 1000, elapsed: i, power: p, speed: 0, distance: 0, altitude: 0 })),
+      summary: { duration: rbPower.length, distance: 0, avgPower: 0, maxPower: 0, np: 0, if: 0, tss: 50, climb: 0, kj: 0 },
+      strava: { status: 'done', activityId: 900 },
+    };
+    const acts = [
+      pm(1, now - 3 * day), // power meter, streams saved: counts
+      pm(2, now - 2 * day, { deviceWatts: false }), // estimated watts: ignored
+      pm(900, now - 5 * day), // Strava's copy of the RideBox ride: ignored
+      pm(3, now - 1 * day), // power meter, streams not downloaded yet
+    ];
+    const streams: [string, number[]][] = [['strava-1', effort(268)], ['strava-2', effort(400)], ['strava-900', effort(400)]];
+    await writeDoc(db, { store: 'rides', id: 'rb1', updated_at: 1, json: JSON.stringify(rb) });
+    for (const a of acts) await writeDoc(db, { store: 'strava_acts', id: a.id, updated_at: 1, json: JSON.stringify(a) });
+    for (const [id, power] of streams) {
+      await writeDoc(db, { store: 'strava_streams', id, updated_at: 1, json: JSON.stringify({ id, stravaId: 0, fetchedAt: 1, series: { length: power.length, power } }) });
+    }
+    const s = await tool(db, 'get_training_summary');
+    expect(s.athlete.ftp_estimate).toMatchObject({ ftp: 255, best_20min_watts: 268, from: { source: 'strava', name: 'Ride 1' } });
+    expect(s.notes.join(' ')).toContain('1 Strava power-meter ride from the last 90 days has no saved power data yet');
+  });
+
   it('refuses to undo over a later change', async () => {
     const db = await seeded();
     const a = await tool(db, 'set_workout_note', { id: 'c1', note: 'one' });

@@ -9,7 +9,7 @@ import { flatten, plannedStats, type Workout } from '../workout/model';
 import { newPlanned } from './calendar';
 import type { AdaptChange, AdaptOutput, CoachContext, CoachEvent, CoachRequest, PlanInput, PlanOutput, TodayOutput, WorkoutChoice } from './coachSchema';
 import { ftpOn } from './ftp';
-import { addDays, dayKey, estimateFtp, fitnessSeries, loadEntries, plannedLoad, weeklyTotals } from './load';
+import { addDays, dayKey, estimateFtp, fitnessSeries, loadEntries, plannedLoad, weeklyTotals, type StravaPower } from './load';
 import { activityOutcome, computeLevels, rateWorkout, rideOutcome, stravaWorkout, type Levels } from './levels';
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from './model';
 
@@ -22,6 +22,8 @@ export interface CoachState {
   library: Workout[];
   levels?: Levels;
   today: DayKey;
+  /** saved power streams of Strava rides, so the FTP estimate can count them */
+  stravaPower?: StravaPower[];
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -68,7 +70,7 @@ export function buildContext(s: CoachState, upcomingDays = 21): CoachContext {
   const plan = s.plans.find((p) => p.active);
   return {
     today,
-    athlete: { ftp: settings.ftp, weightKg: settings.riderKg, maxHr: settings.maxHr, ftpEstimate: estimateFtp(s.rides)?.ftp, levels },
+    athlete: { ftp: settings.ftp, weightKg: settings.riderKg, maxHr: settings.maxHr, ftpEstimate: estimateFtp(s.rides, 90, Date.now(), s.stravaPower)?.ftp, levels },
     fitness: { ctl: r1(now?.ctl ?? 0), atl: r1(now?.atl ?? 0), tsb: r1(now?.tsb ?? 0), ctlChange7d: r1((now?.ctl ?? 0) - (weekAgo?.ctl ?? 0)) },
     weeklyHistory: weeklyTotals(entries, addDays(today, -56), today).map((w) => ({
       week: w.week,

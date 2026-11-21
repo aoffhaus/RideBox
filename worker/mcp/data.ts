@@ -6,7 +6,7 @@
 import type { RideRecord, Sample } from '../../src/app/recorder';
 import { DEFAULT_SETTINGS, type Settings, type StoredWorkout } from '../../src/storage/types';
 import { reconcile } from '../../src/training/calendar';
-import { dayKey } from '../../src/training/load';
+import { dayKey, type StravaPower } from '../../src/training/load';
 import type { PlannedWorkout, StravaActivity, TrainingPlan } from '../../src/training/model';
 import { flatten, plannedStats } from '../../src/workout/model';
 import { getBlob, writeDoc, type SyncedStoreName } from '../sync';
@@ -124,6 +124,21 @@ export async function loadRides(db: D1Database): Promise<{ rides: RideRecord[]; 
   for (const id of gone) await db.prepare('DELETE FROM ride_cache WHERE id = ?').bind(id).run();
   const rides = [...cache.values()].filter((c) => live.has(c.id)).map((c) => fromLite(JSON.parse(c.json) as LiteRide));
   return { rides: rides.sort((a, b) => b.startTime - a.startTime), pending: Math.max(0, stale.length - INDEX_PER_CALL) };
+}
+
+/**
+ * Saved power streams of the Strava activities given (normally the FTP estimate's
+ * candidates). Activities whose streams the app hasn't downloaded yet, or that have
+ * no power stream, are left out.
+ */
+export async function loadStravaPower(db: D1Database, acts: StravaActivity[]): Promise<StravaPower[]> {
+  const out: StravaPower[] = [];
+  for (const act of acts) {
+    const doc = await readDoc<{ series?: { power?: number[] } }>(db, 'strava_streams', act.id);
+    const power = doc?.value.series?.power;
+    if (power?.length) out.push({ act, power });
+  }
+  return out;
 }
 
 async function kvValue<T>(db: D1Database, key: string): Promise<T | undefined> {

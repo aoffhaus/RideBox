@@ -10,7 +10,7 @@ import { moveTo, newPlanned, scaleWorkout } from '../../src/training/calendar';
 import { buildContext, resolveChoice } from '../../src/training/coach';
 import { ftpOn, validFtpHistory, withFtpHistory, withWeightHistory } from '../../src/training/ftp';
 import { activityOutcome, computeLevels, difficultyLabel, rateWorkout, rideOutcome, stravaWorkout, ZONE_NAMES, type Levels } from '../../src/training/levels';
-import { addDays, dayKey, dayStart, estimateFtp, fitnessSeries, formLabel, loadEntries, plannedLoad, stravaTss, weeklyTotals, type LoadEntry } from '../../src/training/load';
+import { addDays, dayKey, dayStart, estimateFtp, fitnessSeries, formLabel, ftpStravaCandidates, loadEntries, plannedLoad, stravaTss, weeklyTotals, type LoadEntry } from '../../src/training/load';
 import type { DayKey, PlanPhase, PlannedWorkout, StravaActivity, TrainingPlan } from '../../src/training/model';
 import { normalizePlan, setActive } from '../../src/training/plans';
 import { flatten, plannedStats, type Workout } from '../../src/workout/model';
@@ -18,6 +18,7 @@ import { toText } from '../../src/workout/parsers';
 import {
   currentJson,
   getChange,
+  loadStravaPower,
   markUndone,
   readDoc,
   recentChanges,
@@ -206,7 +207,10 @@ const getTrainingSummary: Tool<ToolCtx> = {
     const projection = series
       .filter((x) => x.future && x.date >= addDays(d.today, 7) && weekday(x.date) === weekday(d.today))
       .map((x) => ({ date: x.date, ctl: r1(x.ctl), atl: r1(x.atl), tsb: r1(x.tsb) }));
-    const est = estimateFtp(d.rides, 90, d.now);
+    const ftpCandidates = ftpStravaCandidates(d.rides, d.acts, 90, d.now);
+    const stravaPower = await loadStravaPower(ctx.db, ftpCandidates);
+    const est = estimateFtp(d.rides, 90, d.now, stravaPower);
+    const noStreams = ftpCandidates.length - stravaPower.length;
     return {
       today: d.today,
       weekday: weekday(d.today),
@@ -215,7 +219,15 @@ const getTrainingSummary: Tool<ToolCtx> = {
         ftp: d.settings.ftp,
         ftp_history: d.settings.ftpHistory,
         weight_history: d.settings.weightHistory,
-        ftp_estimate: est ? { ftp: est.ftp, best_20min_watts: est.best20, date: est.date, method: '95% of best 20 minutes in the last 90 days of RideBox rides' } : null,
+        ftp_estimate: est
+          ? {
+              ftp: est.ftp,
+              best_20min_watts: est.best20,
+              date: est.date,
+              from: { source: est.source, name: est.name },
+              method: '95% of best 20 minutes in the last 90 days, from RideBox rides and Strava rides recorded with a power meter',
+            }
+          : null,
         weight_kg: d.settings.riderKg,
         max_hr: d.settings.maxHr,
         units: d.settings.units,
@@ -235,6 +247,9 @@ const getTrainingSummary: Tool<ToolCtx> = {
       notes: [
         'TSS for Strava activities uses power when there is a power meter, else heart rate, else a duration estimate.',
         'Progression levels: a productive workout is 0 to +1 above the zone level; never plan more than +1.5 above.',
+        ...(noStreams
+          ? [`${noStreams} Strava power-meter ride${noStreams === 1 ? '' : 's'} from the last 90 days ${noStreams === 1 ? 'has' : 'have'} no saved power data yet, so the FTP estimate doesn't include ${noStreams === 1 ? 'it' : 'them'}; opening RideBox downloads it.`]
+          : []),
         ...(d.ridesPending ? [`${d.ridesPending} RideBox rides are still being indexed; numbers may change slightly on the next call.`] : []),
       ],
     };
