@@ -218,9 +218,9 @@ function WorkoutCard({ w, ftp, levels, status, tag, onClick }: {
 }
 
 /** One number on an agenda card: big value, small caps label. */
-function Metric({ label, value }: { label: string; value: ReactNode }) {
+function Metric({ label, value, wide }: { label: string; value: ReactNode; wide?: boolean }) {
   return (
-    <div className="m-tile-m">
+    <div className={`m-tile-m${wide ? ' wide' : ''}`}>
       <div className="m-tile-v">
         {value ?? '--'}
       </div>
@@ -285,8 +285,8 @@ function AgendaCard({ w, name, kicker, ftp, levels, status, tag, ride, act, tss,
                 <Metric label="Time" value={a.duration != null ? fmtClock(a.duration) : undefined} />
                 <Metric label={plan ? `TSS /${Math.round(plan.tss)}` : 'TSS'} value={a.tss} />
                 <Metric label="IF" value={a.intensity != null && Number.isFinite(a.intensity) ? a.intensity.toFixed(2) : undefined} />
-                <Metric label="Avg/NP W" value={a.avgPower != null || a.np != null ? `${a.avgPower ?? '–'}/${a.np ?? '–'}` : undefined} />
-                <Metric label="Avg/Max HR" value={a.hr != null ? `${a.hr}${a.maxHr != null ? `/${a.maxHr}` : ''}` : undefined} />
+                <Metric wide label="Avg/NP W" value={a.avgPower != null || a.np != null ? `${a.avgPower ?? '–'}/${a.np ?? '–'}` : undefined} />
+                <Metric wide label="Avg/Max HR" value={a.hr != null ? `${a.hr}${a.maxHr != null ? `/${a.maxHr}` : ''}` : undefined} />
               </>
             ) : plan ? (
               <>

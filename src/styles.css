@@ -582,8 +582,9 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .m-tile-mark.ok { color: var(--ok); }
 .m-tile-mark.err { color: var(--err); }
 .m-tile-sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
-.m-tile-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 8px; margin-top: auto; padding-top: 8px; }
-.m-tile-m { min-width: 0; }
+.m-tile-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px 8px; margin-top: auto; padding-top: 8px; }
+.m-tile-m { min-width: 0; grid-column: span 2; }
+.m-tile-m.wide { grid-column: span 3; }
 .m-tile-v { font-size: 17px; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-tile-l { white-space: nowrap; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
 .m-tile-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; border-top: 1px solid var(--border); background: rgba(255,255,255,0.02); }
