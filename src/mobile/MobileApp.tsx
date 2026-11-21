@@ -284,9 +284,9 @@ function AgendaCard({ w, name, kicker, ftp, levels, status, tag, ride, act, tss,
               <>
                 <Metric label="Time" value={a.duration != null ? fmtClock(a.duration) : undefined} />
                 <Metric label={plan ? `TSS /${Math.round(plan.tss)}` : 'TSS'} value={a.tss} />
-                <Metric label="NP" value={a.np} />
-                <Metric label="Avg W" value={a.avgPower} />
-                <Metric label="HR" value={a.hr} />
+                <Metric label="IF" value={a.intensity != null && Number.isFinite(a.intensity) ? a.intensity.toFixed(2) : undefined} />
+                <Metric label="Avg/NP W" value={a.avgPower != null || a.np != null ? `${a.avgPower ?? '–'}/${a.np ?? '–'}` : undefined} />
+                <Metric label="Avg/Max HR" value={a.hr != null ? `${a.hr}${a.maxHr != null ? `/${a.maxHr}` : ''}` : undefined} />
               </>
             ) : plan ? (
               <>
