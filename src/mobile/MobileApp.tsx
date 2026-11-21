@@ -370,7 +370,7 @@ export function MobileApp(p: MobileAppProps) {
     <div className="m-app">
       <main className="m-main">
         {tab === 'calendar' ? (
-          <CalendarScreen {...p} onOpen={setSheet} />
+          <CalendarScreen {...p} onOpen={setSheet} onToast={setToast} />
         ) : tab === 'workouts' ? (
           <WorkoutsScreen workouts={p.workouts} ftp={ftp} levels={p.levels} onOpen={(w) => setSheet({ kind: 'library', w })} />
         ) : tab === 'progress' ? (
@@ -519,7 +519,7 @@ export function MobileApp(p: MobileAppProps) {
 
 // ---------- calendar ----------
 
-function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
+function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToast: (s: string) => void }) {
   const t = today();
   const ftp = p.settings.ftp;
   const [selected, setSelected] = useState<DayKey>(t);
@@ -771,6 +771,97 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     );
   };
 
+  // ---- press and hold a workout, then drag it to another day ----
+  const [drag, setDrag] = useState<{ id: string; from: DayKey; x: number; y: number; target?: DayKey } | null>(null);
+  const press = useRef<{ id: string; from: DayKey; sx: number; sy: number; x: number; y: number; target?: DayKey; active: boolean; timer: number } | null>(null);
+  const agendaEl = useRef<HTMLDivElement>(null);
+  const calRef = useRef(p.calendar);
+  calRef.current = p.calendar;
+  const saveRef = useRef(p.onSaveCalendar);
+  saveRef.current = p.onSaveCalendar;
+  const toastRef = useRef(p.onToast);
+  toastRef.current = p.onToast;
+
+  const startPress = (c: PlannedWorkout) => (e: TouchEvent) => {
+    if (e.touches.length !== 1 || c.status === 'done') return;
+    const { clientX: x, clientY: y } = e.touches[0];
+    const d = { id: c.id, from: c.date, sx: x, sy: y, x, y, active: false, timer: 0 } as NonNullable<typeof press.current>;
+    d.timer = window.setTimeout(() => {
+      d.active = true;
+      d.target = c.date;
+      navigator.vibrate?.(15);
+      setDrag({ id: c.id, from: c.date, x: d.x, y: d.y, target: c.date });
+    }, 400);
+    press.current = d;
+  };
+
+  useEffect(() => {
+    const el = agendaEl.current;
+    if (!el) return;
+    let speed = 0;
+    let frame = 0;
+    const dayAt = (x: number, y: number) => ((document.elementFromPoint(x, y)?.closest('[data-day]') as HTMLElement | null)?.dataset.day as DayKey | undefined);
+    const update = () => {
+      const d = press.current;
+      if (!d?.active) return;
+      d.target = dayAt(d.x, d.y) ?? d.target;
+      setDrag({ id: d.id, from: d.from, x: d.x, y: d.y, target: d.target });
+    };
+    // Scroll the list while the finger is held near the top or bottom edge.
+    const tick = () => {
+      frame = 0;
+      if (!speed || !press.current?.active) return;
+      window.scrollBy(0, speed);
+      update();
+      frame = requestAnimationFrame(tick);
+    };
+    const move = (e: globalThis.TouchEvent) => {
+      const d = press.current;
+      if (!d) return;
+      const { clientX: x, clientY: y } = e.touches[0];
+      if (!d.active) {
+        // Moving before the hold completes means the finger is scrolling.
+        if (Math.hypot(x - d.sx, y - d.sy) > 10) {
+          clearTimeout(d.timer);
+          press.current = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      d.x = x;
+      d.y = y;
+      update();
+      const top = (headRef.current?.getBoundingClientRect().bottom ?? 0) + 70;
+      const bottom = window.innerHeight - 140;
+      speed = y < top ? -Math.min(24, (top - y) / 3) : y > bottom ? Math.min(24, (y - bottom) / 3) : 0;
+      if (speed && !frame) frame = requestAnimationFrame(tick);
+    };
+    const end = (e: globalThis.TouchEvent) => {
+      const d = press.current;
+      press.current = null;
+      speed = 0;
+      if (!d) return;
+      clearTimeout(d.timer);
+      if (!d.active) return;
+      e.preventDefault(); // no tap-to-open after a drag
+      setDrag(null);
+      const c = calRef.current.find((x) => x.id === d.id);
+      if (!c || !d.target || d.target === c.date) return;
+      saveRef.current([moveTo(c, d.target, calRef.current, today())]);
+      toastRef.current(`Moved to ${longDay(d.target)}`);
+    };
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end, { passive: false });
+    el.addEventListener('touchcancel', end, { passive: false });
+    return () => {
+      el.removeEventListener('touchmove', move);
+      el.removeEventListener('touchend', end);
+      el.removeEventListener('touchcancel', end);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  const dragging = drag ? p.calendar.find((c) => c.id === drag.id) : undefined;
+
   const ma = dayStart(monthAnchor);
   const monthLabel = (monthOpen ? ma : dayStart(addDays(week, 3))).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
@@ -850,7 +941,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
         )}
       </header>
 
-      <div className="m-agenda">
+      <div className={`m-agenda${drag ? ' dragging' : ''}`} ref={agendaEl}>
         <div ref={topSentinelRef} className="m-agenda-more" aria-hidden />
         {agendaDays.map((d, i) => {
           const items = byDay.get(d) ?? [];
@@ -860,7 +951,8 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
             <Fragment key={d}>
             {weekHead}
             <section
-              className={`m-day${d === t ? ' today' : ''}${d === selected ? ' sel' : ''}`}
+              data-day={d}
+              className={`m-day${d === t ? ' today' : ''}${d === selected ? ' sel' : ''}${drag?.target === d && d !== drag.from ? ' drop' : ''}`}
               ref={(el) => {
                 if (el) dayRefs.current.set(d, el);
                 else dayRefs.current.delete(d);
@@ -875,8 +967,13 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
               </div>
               <div className="m-day-items">
                 {items.map((c) => (
-                  <AgendaCard
+                  <div
                     key={c.id}
+                    className={`m-drag${drag?.id === c.id ? ' lifted' : ''}`}
+                    onTouchStart={startPress(c)}
+                    onContextMenu={(e) => c.status !== 'done' && e.preventDefault()}
+                  >
+                  <AgendaCard
                     w={c.workout}
                     name={c.workout.name}
                     ftp={ftp}
@@ -888,6 +985,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
                     tss={tssById.get(c.rideId ?? c.stravaId ?? '')}
                     onClick={() => p.onOpen({ kind: 'planned', id: c.id })}
                   />
+                  </div>
                 ))}
                 {extra.map((e) => (
                   <AgendaCard
@@ -910,6 +1008,12 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
         })}
         <div ref={sentinelRef} className="m-agenda-more" aria-hidden />
       </div>
+      {drag && dragging && (
+        <div className="m-drag-ghost" style={{ left: drag.x, top: drag.y, borderLeftColor: workoutColor(dragging.workout, ftp) }}>
+          <b>{dragging.workout.name}</b>
+          {drag.target && <span className="muted small">{drag.target === drag.from ? 'Drop on another day' : `→ ${longDay(drag.target)}`}</span>}
+        </div>
+      )}
     </>
   );
 }
