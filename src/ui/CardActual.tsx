@@ -65,6 +65,8 @@ export function useCardStats(ride: RideRecord | undefined, act: StravaActivity |
     np: r0(ride?.summary.np ?? st?.np ?? act?.weightedWatts),
     avgPower: r0(ride?.summary.avgPower ?? st?.avgPower ?? act?.avgWatts),
     hr: r0(ride?.summary.avgHr ?? st?.avgHr ?? act?.avgHr),
+    maxHr: r0(ride?.summary.maxHr ?? st?.maxHr ?? act?.maxHr),
+    intensity: ride?.summary.if ?? st?.if ?? (act?.weightedWatts && rideFtp ? act.weightedWatts / rideFtp : undefined),
     cadence: r0(ride?.summary.avgCadence ?? st?.avgCadence ?? act?.avgCadence),
   };
 }
@@ -78,7 +80,7 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
   tss?: number;
   plannedTss?: number;
 }) {
-  const { series, rideFtp, hits, duration, tss: actualTss, np, avgPower: avgW, hr } = useCardStats(ride, act, intervals, ftp, tss);
+  const { series, rideFtp, hits, duration, tss: actualTss, np, avgPower: avgW, hr, maxHr, intensity } = useCardStats(ride, act, intervals, ftp, tss);
 
   return (
     <div className="card-actual">
@@ -93,9 +95,18 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
       </div>
       {(np != null || avgW != null || hr != null) && (
         <div className="cal-card-meta card-metrics">
-          {np != null && <span title="Normalized power">{np}W NP</span>}
-          {avgW != null && <span title="Average power">{avgW}W avg</span>}
-          {hr != null && <span title="Average heart rate">♥{hr}</span>}
+          {intensity != null && Number.isFinite(intensity) && <span title="Intensity factor (NP / FTP)">IF {intensity.toFixed(2)}</span>}
+          {(avgW != null || np != null) && (
+            <span title="Average / normalized power">
+              {avgW ?? '–'}/{np ?? '–'}W
+            </span>
+          )}
+          {hr != null && (
+            <span title="Average / max heart rate">
+              ♥{hr}
+              {maxHr != null ? `/${maxHr}` : ''}
+            </span>
+          )}
         </div>
       )}
       {hits && hits.of > 0 && (
