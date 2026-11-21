@@ -6,7 +6,7 @@
 import type { RideRecord } from '../app/recorder';
 import { db, putOne } from '../storage/db';
 import { seriesFromStreams, type ActualSeries } from '../training/actual';
-import { stravaCopyChecker } from '../training/load';
+import { ftpStravaCandidates, stravaCopyChecker, type StravaPower } from '../training/load';
 import type { StravaActivity } from '../training/model';
 import { fetchStreams, StravaHttpError } from './activities';
 
@@ -86,4 +86,14 @@ export function syncMissingStreams(acts: StravaActivity[], rides: RideRecord[], 
     }
   })();
   return running;
+}
+
+/** Saved power series of the Strava rides that can count toward the FTP estimate (see ftpStravaCandidates). */
+export async function savedStravaPower(acts: StravaActivity[], rides: RideRecord[], now = Date.now()): Promise<StravaPower[]> {
+  const out: StravaPower[] = [];
+  for (const act of ftpStravaCandidates(rides, acts, 90, now)) {
+    const power = (await storedSeries(act.id))?.power;
+    if (power?.length) out.push({ act, power });
+  }
+  return out;
 }

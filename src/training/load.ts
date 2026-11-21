@@ -171,20 +171,61 @@ export function bestAverage(power: number[], window: number): number {
 export interface FtpEstimate {
   ftp: number;
   best20: number;
+  /** the RideBox ride's id, or the Strava activity's (`strava-<id>`) */
   rideId: string;
   date: DayKey;
+  source: 'ridebox' | 'strava';
+  name: string;
 }
 
-/** FTP ≈ 95% of the best 20-minute power in the last `days` days of RideBox rides. */
-export function estimateFtp(rides: RideRecord[], days = 90, now = Date.now()): FtpEstimate | null {
+/** A Strava activity with its saved 1 Hz power series (from the `strava_streams` store). */
+export interface StravaPower {
+  act: StravaActivity;
+  power: number[];
+}
+
+const FTP_WINDOW = 1200;
+
+/**
+ * Strava activities that can count toward the FTP estimate: rides inside the
+ * window, at least 20 minutes long, with watts from a real power meter (not
+ * Strava's estimate), and not Strava's copy of a RideBox ride (that one is
+ * already counted from RideBox's own samples). Their streams are what to load.
+ */
+export function ftpStravaCandidates(rides: RideRecord[], acts: StravaActivity[], days = 90, now = Date.now()): StravaActivity[] {
+  const isCopy = stravaCopyChecker(rides);
+  return acts.filter(
+    (a) => isRide(a.sportType) && a.deviceWatts === true && a.movingTime >= FTP_WINDOW && a.start <= now && now - a.start <= days * 86_400_000 && !isCopy(a),
+  );
+}
+
+/**
+ * FTP ≈ 95% of the best 20-minute power in the last `days` days, from RideBox
+ * rides and from Strava rides recorded with a power meter (`strava`: activities
+ * with their saved power streams; anything that isn't a candidate is ignored).
+ */
+export function estimateFtp(rides: RideRecord[], days = 90, now = Date.now(), strava: StravaPower[] = []): FtpEstimate | null {
   let best: FtpEstimate | null = null;
+  const consider = (power: number[], e: Omit<FtpEstimate, 'ftp' | 'best20'>) => {
+    const b = bestAverage(power, FTP_WINDOW);
+    if (b > 0 && (!best || b > best.best20)) best = { ftp: Math.round(b * 0.95), best20: Math.round(b), ...e };
+  };
   for (const r of rides) {
     if (now - r.startTime > days * 86_400_000) continue;
-    const b = bestAverage(
+    consider(
       r.samples.map((s) => s.power),
-      1200,
+      { rideId: r.id, date: dayKey(r.startTime), source: 'ridebox', name: r.name },
     );
-    if (b > 0 && (!best || b > best.best20)) best = { ftp: Math.round(b * 0.95), best20: Math.round(b), rideId: r.id, date: dayKey(r.startTime) };
+  }
+  if (strava.length) {
+    const ok = new Set(ftpStravaCandidates(rides, strava.map((s) => s.act), days, now).map((a) => a.id));
+    for (const { act, power } of strava) {
+      if (!ok.has(act.id)) continue;
+      consider(
+        power.map((p) => (Number.isFinite(p) && p > 0 ? p : 0)),
+        { rideId: act.id, date: dayKey(act.start), source: 'strava', name: act.name },
+      );
+    }
   }
   return best;
 }

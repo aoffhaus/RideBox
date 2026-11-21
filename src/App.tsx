@@ -23,7 +23,7 @@ import { sync, type SyncStatus } from './storage/sync';
 import { importStravaActivities } from './strava/activities';
 import type { PlannedWorkout, StravaActivity, TrainingPlan } from './training/model';
 import { reconcile } from './training/calendar';
-import { dayKey, today } from './training/load';
+import { dayKey, today, type StravaPower } from './training/load';
 import { ftpOn, withRiderHistory } from './training/ftp';
 import { Calendar } from './ui/Calendar';
 import { computeLevels, ZONE_NAMES } from './training/levels';
@@ -34,7 +34,7 @@ import { addDays } from './training/load';
 import { newPlanned } from './training/calendar';
 import { AdaptReview, PlanBuilder, PlannedCoach, TodayCard } from './ui/Coach';
 import { PlanManager } from './ui/Plans';
-import { invalidateStreams, syncMissingStreams } from './strava/streams';
+import { invalidateStreams, onStreamsChange, savedStravaPower, syncMissingStreams } from './strava/streams';
 import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
 import { MobileApp } from './mobile/MobileApp';
@@ -272,9 +272,24 @@ export function App() {
   );
   // the coach runs in the private Worker, so it's only offered when the site is served from there
   const coachOn = syncStatus !== 'off';
+  // power streams of Strava rides, so the coach's FTP estimate counts them too
+  const [stravaPower, setStravaPower] = useState<StravaPower[]>([]);
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      savedStravaPower(acts, rides)
+        .then((p) => live && setStravaPower(p))
+        .catch((e) => console.warn('Strava power', e));
+    load();
+    const off = onStreamsChange(load);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [acts, rides]);
   const coachState: CoachState = useMemo(
-    () => ({ settings, rides, acts, calendar, plans, library: workouts.map((w) => w.workout), levels, today: today() }),
-    [settings, rides, acts, calendar, plans, workouts, levels],
+    () => ({ settings, rides, acts, calendar, plans, library: workouts.map((w) => w.workout), levels, today: today(), stravaPower }),
+    [settings, rides, acts, calendar, plans, workouts, levels, stravaPower],
   );
   const activePlan = plans.find((p) => p.active);
   const suggestion = coachOn ? adaptSuggestion(activePlan, calendar, today(), lastReview) : null;
