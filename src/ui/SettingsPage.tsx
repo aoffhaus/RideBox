@@ -141,7 +141,9 @@ export function SettingsPage({ settings, onSave, strava, onStravaChange, onImpor
               e.target.value = '';
               if (!f) return;
               try {
-                const n = await importAll(JSON.parse(await f.text()) as Backup);
+                const backup = JSON.parse(await f.text()) as Backup;
+                const replace = window.confirm('Replace records that already exist here with the backup’s copies?\n\nOK = replace (an old backup can overwrite newer data on all your devices).\nCancel = only add what is missing.');
+                const n = await importAll(backup, { overwrite: replace });
                 alert(`Loaded ${n} records. Reloading…`);
                 location.reload();
               } catch (err) {

@@ -108,7 +108,7 @@ export async function writeDoc(db: D1Database, d: DocIn): Promise<boolean> {
     await putBlob(db, blob, body);
     body = null;
   }
-  await db
+  const res = await db
     .prepare(
       `INSERT INTO docs (store, id, updated_at, deleted, blob, json, server_at) VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (store, id) DO UPDATE SET updated_at = excluded.updated_at, deleted = excluded.deleted,
@@ -117,6 +117,11 @@ export async function writeDoc(db: D1Database, d: DocIn): Promise<boolean> {
     )
     .bind(d.store, d.id, d.updated_at, d.deleted ? 1 : 0, blob, body, Date.now())
     .run();
+  // a concurrent newer write won: drop the chunks we just wrote rather than orphan them
+  if (blob && res.meta?.changes === 0) {
+    await deleteBlob(db, blob);
+    return false;
+  }
   if (prev?.blob && prev.blob !== blob) await deleteBlob(db, prev.blob);
   return true;
 }

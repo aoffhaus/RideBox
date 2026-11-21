@@ -3,6 +3,7 @@ import type { ConnState, HeartRateMonitor, Trainer } from './ble/types';
 import { bluetoothAvailable, pairHeartRate, pairTrainer } from './ble/bluetooth';
 import { SimulatedHrm, SimulatedTrainer } from './ble/simulated';
 import { RideSession } from './app/session';
+import { clearDraft, loadDraft, saveDraft } from './app/draft';
 import type { RideRecord } from './app/recorder';
 import { DEFAULT_SETTINGS, deleteOne, deleteRide, getFlag, listAll, listRides, putOne, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
 import { BUILTIN_WORKOUTS } from './workout/builtin';
@@ -165,6 +166,33 @@ export function App() {
     setPlans(await listAll<TrainingPlan>('plans'));
     setLastReview((await getFlag('coach-last-review')) as string | undefined);
   }, []);
+
+  // A ride that was interrupted (reload, crash, closed tab): offer to keep what was recorded.
+  useEffect(() => {
+    void (async () => {
+      const draft = await loadDraft().catch(() => undefined);
+      if (!draft) return;
+      const mins = Math.round(draft.samples.length / 60);
+      if (window.confirm(`An unfinished ride was found (${draft.name}, about ${mins} min). Save it to History?`)) {
+        await saveRide(draft);
+        await refresh();
+        setTab('history');
+      }
+      await clearDraft();
+    })();
+  }, [refresh]);
+
+  // while riding, keep a draft so nothing is lost if the page goes away
+  useEffect(() => {
+    if (!session) return;
+    const save = () => void saveDraft(session.draftRecord()).catch(() => undefined);
+    const t = window.setInterval(save, 15_000);
+    window.addEventListener('pagehide', save);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener('pagehide', save);
+    };
+  }, [session]);
 
   // today's planned workout is the default pick on the Ride tab
   const preselected = useRef(false);
@@ -415,6 +443,7 @@ export function App() {
       const planned = calendar.find((c) => `cal:${c.id}` === selected);
       if (planned) await saveCalendar([{ ...planned, status: 'done', rideId: rec.id }]);
     }
+    await clearDraft().catch(() => undefined);
     setSession(null);
     void refresh();
     setTab('history');

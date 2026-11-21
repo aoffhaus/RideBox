@@ -149,12 +149,19 @@ export async function exportAll(): Promise<Backup> {
   return { app: 'ridebox', version: 1, exportedAt: Date.now(), stores };
 }
 
-/** Merges a backup in (existing records with the same id are replaced). Returns the record count. */
-export async function importAll(b: Backup): Promise<number> {
+/**
+ * Merges a backup in. Records this browser already has are kept by default: a restored
+ * record gets a fresh write stamp, so replacing would let an old backup overwrite newer
+ * data on every synced browser. Pass `overwrite` to replace them. Returns how many were written.
+ */
+export async function importAll(b: Backup, opts: { overwrite?: boolean } = {}): Promise<number> {
   if (b?.app !== 'ridebox' || !b.stores) throw new Error('Not a RideBox backup file.');
+  const d = await db();
   let n = 0;
   for (const s of SYNCED_STORES) {
     for (const [key, value] of b.stores[s] ?? []) {
+      const id = s === 'kv' ? key : (value as { id: string }).id;
+      if (!opts.overwrite && (await d.get(s, id)) !== undefined) continue;
       if (s === 'kv') await put('kv', value, key);
       else await put(s, value);
       n++;

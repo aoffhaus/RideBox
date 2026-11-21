@@ -90,10 +90,20 @@ export async function freshToken(env: StravaEnv, store: AuthStore, now = Date.no
   const a = await store.get();
   if (!a) return null;
   if (a.expires_at - 120 > now / 1000) return a.access_token;
-  const t = await tokenRequest(env, { grant_type: 'refresh_token', refresh_token: a.refresh_token });
-  await store.put({ ...a, access_token: t.access_token, refresh_token: t.refresh_token, expires_at: t.expires_at });
-  return t.access_token;
+  // Refresh tokens rotate, so concurrent callers share one refresh instead of racing.
+  let p = refreshing.get(store);
+  if (!p) {
+    p = tokenRequest(env, { grant_type: 'refresh_token', refresh_token: a.refresh_token })
+      .then(async (t) => {
+        await store.put({ ...a, access_token: t.access_token, refresh_token: t.refresh_token, expires_at: t.expires_at });
+        return t.access_token;
+      })
+      .finally(() => refreshing.delete(store));
+    refreshing.set(store, p);
+  }
+  return p;
 }
+const refreshing = new WeakMap<AuthStore, Promise<string>>();
 
 function cookie(req: Request, name: string) {
   const m = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(req.headers.get('Cookie') ?? '');

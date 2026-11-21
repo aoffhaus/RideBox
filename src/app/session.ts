@@ -102,6 +102,8 @@ export class RideSession {
   private portalArmed = false;
   readonly engine?: WorkoutEngine;
   readonly startTime = Date.now();
+  /** Stable for the whole ride, so a recovered draft and the finished ride are the same record. */
+  readonly id = uid();
   readonly samples: Sample[] = [];
   readonly laps: Lap[] = [];
   readonly arch = new ArchTracker();
@@ -406,14 +408,27 @@ export class RideSession {
     };
   }
 
+  /** The ride so far, without stopping it: saved periodically so a reload or crash doesn't lose it. */
+  draftRecord(): RideRecord {
+    const laps = [...this.laps];
+    if (this.samples.length > this.lapStart) {
+      laps.push({ startIndex: this.lapStart, endIndex: this.samples.length, label: this.engine ? this.intervalName(this.lastIntervalIndex) : undefined });
+    }
+    return this.buildRecord(laps);
+  }
+
   /** Stop the ride and produce the record to save. */
   finish(): RideRecord {
     this.stop();
     this.closeLap(this.engine ? this.intervalName(this.lastIntervalIndex) ?? 'Cool down' : undefined);
+    return this.buildRecord(this.laps);
+  }
+
+  private buildRecord(laps: Lap[]): RideRecord {
     const ftp = this.opts.settings.ftp;
     const workoutName = this.engine?.workout.name;
     return {
-      id: uid(),
+      id: this.id,
       name: workoutName ?? (this.portalRun ? 'Portal run' : `${this.route.preset.name} ride`),
       workoutName,
       // a portal run has no single route: it goes by the workout that was ridden
@@ -421,7 +436,7 @@ export class RideSession {
       startTime: this.startTime,
       ftp,
       samples: this.samples,
-      laps: this.laps.length ? this.laps : [{ startIndex: 0, endIndex: this.samples.length }],
+      laps: laps.length ? laps : [{ startIndex: 0, endIndex: this.samples.length }],
       summary: summarize(this.samples, ftp),
     };
   }

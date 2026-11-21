@@ -69,6 +69,15 @@ describe('worker strava', () => {
     expect(await freshToken(env, memStore(auth()), 0)).toBe('A');
   });
 
+  it('shares one refresh between concurrent callers', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ access_token: 'NEW', refresh_token: 'R3', expires_at: 3e9 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const store = memStore(auth({ expires_at: 1000 }));
+    const [a, b] = await Promise.all([freshToken(env, store, 1000 * 1000), freshToken(env, store, 1000 * 1000)]);
+    expect([a, b]).toEqual(['NEW', 'NEW']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('only proxies the Strava endpoints RideBox uses, adding the token', async () => {
     expect(allowed('GET', 'athlete/activities')).toBe(true);
     expect(allowed('POST', 'uploads')).toBe(true);

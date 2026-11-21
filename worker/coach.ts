@@ -72,10 +72,20 @@ async function usedToday(env: CoachEnv): Promise<{ day: string; requests: number
   return { day, requests: row?.requests ?? 0 };
 }
 
+/** Counts the request up front, so parallel or failing requests can't slip past the daily cap. */
+async function reserve(env: CoachEnv, day: string) {
+  await env.DB.prepare(
+    `INSERT INTO coach_usage (day, requests, input_tokens, output_tokens) VALUES (?, 1, 0, 0)
+     ON CONFLICT (day) DO UPDATE SET requests = requests + 1`,
+  )
+    .bind(day)
+    .run();
+}
+
 async function record(env: CoachEnv, day: string, input: number, output: number) {
   await env.DB.prepare(
-    `INSERT INTO coach_usage (day, requests, input_tokens, output_tokens) VALUES (?, 1, ?, ?)
-     ON CONFLICT (day) DO UPDATE SET requests = requests + 1, input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens`,
+    `INSERT INTO coach_usage (day, requests, input_tokens, output_tokens) VALUES (?, 0, ?, ?)
+     ON CONFLICT (day) DO UPDATE SET input_tokens = input_tokens + excluded.input_tokens, output_tokens = output_tokens + excluded.output_tokens`,
   )
     .bind(day, input, output)
     .run();
@@ -109,6 +119,7 @@ export async function coach(env: CoachEnv, req: Request, kind: string, ctx: Exec
   const { day, requests } = await usedToday(env);
   if (requests >= limit) return json({ error: `Daily coach limit reached (${limit} requests). It resets at midnight UTC; raise COACH_DAILY_LIMIT in wrangler.jsonc if you need more.` }, 429);
 
+  await reserve(env, day);
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: env.ANTHROPIC_BASE_URL || undefined, timeout: 15 * 60_000, maxRetries: 2 });
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
   const out = writable.getWriter();

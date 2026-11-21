@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RideSession } from '../src/app/session';
 import { DEFAULT_SETTINGS } from '../src/storage/db';
 import { parseText } from '../src/workout/parsers';
@@ -48,5 +48,30 @@ describe('mini map projections', () => {
     expect(checked).toBeGreaterThan(1000);
     expect(s.snapshot().workout?.finished).toBe(true);
     expect(s.snapshot().upcoming).toEqual([]);
+  });
+});
+
+describe('ride draft (crash recovery)', () => {
+  it('snapshots the ride without stopping it and keeps the same id as the finished ride', () => {
+    const trainer = fakeTrainer();
+    const s = new RideSession({ trainer, settings: DEFAULT_SETTINGS, workout: parseText('1m @60%\n1m @80%'), routePreset: 'rolling' });
+    for (let i = 0; i < 400; i++) {
+      trainer.push(180);
+      s.tick(0.1);
+    }
+    const draft = s.draftRecord();
+    const n = draft.samples.length;
+    expect(n).toBeGreaterThan(30);
+    // the open interval shows up as a lap, and drafting doesn't close it for real
+    expect(draft.laps.at(-1)?.endIndex).toBe(draft.samples.length);
+    expect(s.laps.length).toBeLessThan(draft.laps.length + 1);
+    for (let i = 0; i < 100; i++) {
+      trainer.push(180);
+      s.tick(0.1);
+    }
+    expect(s.samples.length).toBeGreaterThan(n);
+    vi.stubGlobal('window', { clearInterval() {} });
+    expect(s.finish().id).toBe(draft.id);
+    vi.unstubAllGlobals();
   });
 });
