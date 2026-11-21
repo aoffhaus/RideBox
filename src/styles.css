@@ -547,9 +547,9 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .m-day-date-col .m-icon-btn.add { margin: 4px 0 0 -8px; }
 .m-day-items { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .m-rest { color: var(--muted); font-size: 14px; padding: 6px 0; }
-.m-earlier { display: block; width: 100%; margin: 4px 0 0; padding: 8px 0; background: transparent; border: 0; color: var(--muted); font-size: 13px; font-weight: 600; }
-.m-earlier:hover:not(:disabled) { background: transparent; border: 0; color: var(--text); }
-.m-week-divider { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 18px 0 8px; font-size: 14px; border-bottom: 1px solid var(--border); }
+.m-week-divider { padding: 18px 0 10px; font-size: 14px; border-bottom: 1px solid var(--border); }
+.m-week-divider-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.m-week-divider .m-plan, .m-week-divider .m-banner { margin-left: 0; margin-right: 0; }
 .m-agenda-more { height: 1px; }
 
 /* agenda card: chart | name + numbers, difficulty footer */

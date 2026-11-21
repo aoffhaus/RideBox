@@ -1,7 +1,7 @@
 // Phone layout: a schedule-first app with a bottom tab bar (Calendar, Workouts,
 // Progress, More). There's no riding here; rides happen on the desktop site.
 
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings, StoredWorkout } from '../storage/db';
 import type { StravaConfig } from '../strava/strava';
@@ -527,15 +527,18 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
   const [monthAnchor, setMonthAnchor] = useState<DayKey>(t);
   const week = weekStart(selected);
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
-  // The agenda is one continuous list of weeks: it grows forward as you scroll
-  // and backward when you jump to (or ask for) an earlier week.
-  const [range, setRange] = useState(() => ({ from: weekStart(t), weeks: 6 }));
+  // The agenda is one continuous list of weeks that grows in both directions
+  // as you scroll toward either end.
+  const [range, setRange] = useState(() => ({ from: addDays(weekStart(t), -14), weeks: 8 }));
   const rangeEnd = addDays(range.from, range.weeks * 7 - 1);
   const agendaDays = useMemo(() => Array.from({ length: range.weeks * 7 }, (_, i) => addDays(range.from, i)), [range]);
   const dayRefs = useRef(new Map<DayKey, HTMLElement>());
   const scrollPending = useRef(false);
   const autoScrolling = useRef(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const topSentinelRef = useRef<HTMLDivElement>(null);
+  // When weeks are added above, remember where a day sat so the view doesn't jump.
+  const anchor = useRef<{ day: DayKey; top: number } | null>(null);
 
   const byDay = useMemo(() => {
     const m = new Map<DayKey, PlannedWorkout[]>();
@@ -576,12 +579,11 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     }
     return { plannedTss, plannedSec, doneTss, doneSec };
   };
-  const firstPhase = phaseOf(range.from);
-  const { plannedTss, plannedSec, doneTss, doneSec } = weekTotals(range.from);
 
   const go = (d: DayKey, scroll = true) => {
     const ws = weekStart(d);
     if (ws < range.from) {
+      captureAnchor();
       setRange({ from: ws, weeks: Math.round((dayStart(rangeEnd).getTime() - dayStart(ws).getTime()) / (7 * 864e5)) + 1 });
     } else if (d > rangeEnd) {
       setRange({ from: range.from, weeks: Math.round((dayStart(ws).getTime() - dayStart(range.from).getTime()) / (7 * 864e5)) + 3 });
@@ -597,6 +599,8 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     const off = (headRef.current?.getBoundingClientRect().height ?? 0) + 12;
     const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - off);
     if (Math.abs(top - window.scrollY) < 2) return;
+    // Gliding across months of list is slow; long jumps go straight there.
+    if (Math.abs(top - window.scrollY) > window.innerHeight * 3) smooth = false;
     // Don't let the scroll-follow logic below re-select days while we glide past them.
     autoScrolling.current = true;
     let timer = 0;
@@ -606,7 +610,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
       window.removeEventListener('scrollend', done);
     };
     window.addEventListener('scrollend', done);
-    timer = window.setTimeout(done, smooth ? 1200 : 100);
+    timer = window.setTimeout(done, smooth ? 1500 : 100);
     window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
   };
   useEffect(() => {
@@ -615,9 +619,34 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     scrollToDay(selected, true);
   }, [selected, range]); // eslint-disable-line react-hooks/exhaustive-deps
   // open on today
-  useEffect(() => {
-    if (t !== weekStart(t)) scrollToDay(t, false);
+  useLayoutEffect(() => {
+    scrollToDay(t, false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const captureAnchor = () => {
+    const day = agendaRef.current[0];
+    const el = dayRefs.current.get(day);
+    anchor.current = el ? { day, top: el.getBoundingClientRect().top } : null;
+  };
+  // After weeks are added above, shift the scroll by however far the anchor
+  // day moved, before the browser paints.
+  useLayoutEffect(() => {
+    const a = anchor.current;
+    anchor.current = null;
+    const el = a && dayRefs.current.get(a.day);
+    if (!a || !el) return;
+    const delta = el.getBoundingClientRect().top - a.top;
+    if (delta) window.scrollBy(0, delta);
+  }, [range.from]);
+  // We correct the scroll ourselves; the browser's own anchoring would double it.
+  useEffect(() => {
+    const root = document.documentElement;
+    const prev = root.style.overflowAnchor;
+    root.style.overflowAnchor = 'none';
+    return () => {
+      root.style.overflowAnchor = prev;
+    };
+  }, []);
 
   // Keep the week strip in step with the day at the top of the list.
   const agendaRef = useRef(agendaDays);
@@ -629,7 +658,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
       frame = requestAnimationFrame(() => {
         frame = 0;
         if (autoScrolling.current) return;
-        const line = (headRef.current?.getBoundingClientRect().height ?? 0) + 12;
+        const line = (headRef.current?.getBoundingClientRect().height ?? 0) + 16;
         const top = agendaRef.current.find((d) => (dayRefs.current.get(d)?.getBoundingClientRect().bottom ?? 0) > line);
         if (top) setSelected(top);
       });
@@ -656,6 +685,22 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     return () => io.disconnect();
   }, [range.weeks]);
 
+  // Same at the top: load earlier weeks as the start of the list comes into view.
+  useEffect(() => {
+    const el = topSentinelRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (es) => {
+        if (!es.some((e) => e.isIntersecting)) return;
+        captureAnchor();
+        setRange((r) => ({ from: addDays(r.from, -28), weeks: r.weeks + 4 }));
+      },
+      { rootMargin: '1200px 0px 0px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [range.from]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const swipe = useSwipe(
     () => go(addDays(selected, 7)),
     () => go(addDays(selected, -7)),
@@ -681,15 +726,47 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
     const w = weekTotals(ws);
     const ph = phaseOf(ws);
     const fmt = (k: DayKey) => dayStart(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const current = ws === weekStart(t);
+    const showDone = ws <= t;
     return (
-      <div className="m-week-divider">
-        <span>
-          <b>{fmt(ws)} – {fmt(addDays(ws, 6))}</b>
-          {ph && <span style={{ color: 'var(--accent-2)' }}> · {ph.name}</span>}
-        </span>
-        <span className="muted small">
-          {w.doneTss ? `${Math.round(w.doneTss)} / ` : ''}{Math.round(w.plannedTss)} TSS · {fmtHm(w.plannedSec)}
-        </span>
+      <div className={`m-week-divider${current ? ' current' : ''}`}>
+        <div className="m-week-divider-top">
+          <span>
+            <b>{current ? 'This week' : `${fmt(ws)} – ${fmt(addDays(ws, 6))}`}</b>
+            {ph && <span style={{ color: 'var(--accent-2)' }}> · {ph.name}</span>}
+          </span>
+          <span className="muted small">
+            {showDone
+              ? `${Math.round(w.doneTss)} / ${Math.round(w.plannedTss)} TSS · ${fmtHm(w.doneSec)} / ${fmtHm(w.plannedSec)}`
+              : `${Math.round(w.plannedTss)} TSS · ${fmtHm(w.plannedSec)}`}
+          </span>
+        </div>
+        {current && (
+          <>
+            <div className="m-bar">
+              <div style={{ width: `${w.plannedTss ? Math.min(100, (w.doneTss / w.plannedTss) * 100) : w.doneTss ? 100 : 0}%` }} />
+            </div>
+            {activePlan && (
+              <div className="m-plan">
+                <b>{activePlan.name}</b>
+                <span className="muted small">
+                  {activePlan.eventDate ? `Event ${fmt(activePlan.eventDate)}` : `Until ${fmt(activePlan.end)}`}
+                </span>
+              </div>
+            )}
+            {p.suggestion && (
+              <div className="m-banner">
+                <div>{p.suggestion.text}</div>
+                <div className="m-banner-actions">
+                  <button className="m-btn primary sm" onClick={() => p.onAdapt({ reason: p.suggestion!.reason, from: p.suggestion!.from, to: p.suggestion!.to })}>
+                    {p.suggestion.reason === 'extend' ? 'Plan next weeks' : 'Rearrange'}
+                  </button>
+                  <button className="m-btn ghost sm" onClick={p.onDismissSuggestion}>Not now</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     );
   };
@@ -773,49 +850,12 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void }) {
         )}
       </header>
 
-      <section className="m-weeksum">
-        <div className="m-weeksum-top">
-          <span>
-            {firstPhase ? <b style={{ color: 'var(--accent-2)' }}>{firstPhase.name}</b> : <b>{range.from === weekStart(t) ? 'This week' : 'Week'}</b>}
-            {range.from !== weekStart(t) && <span className="muted"> · {dayStart(range.from).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
-          </span>
-          <span className="muted small">
-            {Math.round(doneTss)} / {Math.round(plannedTss)} TSS · {fmtHm(doneSec)} / {fmtHm(plannedSec)}
-          </span>
-        </div>
-        <div className="m-bar">
-          <div style={{ width: `${plannedTss ? Math.min(100, (doneTss / plannedTss) * 100) : doneTss ? 100 : 0}%` }} />
-        </div>
-      </section>
-
-      {activePlan && (
-        <div className="m-plan">
-          <b>{activePlan.name}</b>
-          <span className="muted small">
-            {activePlan.eventDate ? `Event ${dayStart(activePlan.eventDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : `Until ${dayStart(activePlan.end).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-          </span>
-        </div>
-      )}
-      {p.suggestion && (
-        <div className="m-banner">
-          <div>{p.suggestion.text}</div>
-          <div className="m-banner-actions">
-            <button className="m-btn primary sm" onClick={() => p.onAdapt({ reason: p.suggestion!.reason, from: p.suggestion!.from, to: p.suggestion!.to })}>
-              {p.suggestion.reason === 'extend' ? 'Plan next weeks' : 'Rearrange'}
-            </button>
-            <button className="m-btn ghost sm" onClick={p.onDismissSuggestion}>Not now</button>
-          </div>
-        </div>
-      )}
-
       <div className="m-agenda">
-        <button className="m-earlier" onClick={() => go(addDays(range.from, -7))}>
-          Show earlier week
-        </button>
+        <div ref={topSentinelRef} className="m-agenda-more" aria-hidden />
         {agendaDays.map((d, i) => {
           const items = byDay.get(d) ?? [];
           const extra = (actsByDay.get(d) ?? []).filter((e) => !linked.has(e.id));
-          const weekHead = i > 0 && i % 7 === 0 ? weekDivider(d) : null;
+          const weekHead = i % 7 === 0 ? weekDivider(d) : null;
           return (
             <Fragment key={d}>
             {weekHead}
