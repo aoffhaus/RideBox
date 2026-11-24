@@ -10,7 +10,7 @@ import { ElevationProfile } from './ElevationProfile';
 import { MiniMap } from './MiniMap';
 import { RideSettings, type RideSettingsPatch } from './RideSettings';
 import { RideHud } from './RideHud';
-import { IntervalList } from './IntervalList';
+import { IntervalList, RepeatSummary } from './IntervalList';
 
 interface Props {
   session: RideSession;
@@ -18,6 +18,12 @@ interface Props {
   onEnd: () => void;
   /** Persist settings changed from the in-ride settings popover. */
   onSettingsChange?: (s: Settings) => void;
+}
+
+/** Gem world (Crystal Canyon) and the rainy city (Neon Rain) always run at low graphics; every other world at high. */
+const LOW_GRAPHICS_THEMES = ['crystal', 'neoncity'];
+export function graphicsForTheme(theme: string | undefined): 'high' | 'low' {
+  return theme && LOW_GRAPHICS_THEMES.includes(theme) ? 'low' : 'high';
 }
 
 export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props) {
@@ -40,6 +46,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   const modalRef = useRef({ help: false, end: false, settings: false });
   modalRef.current = { help: showHelp, end: confirmEnd, settings: showSettings };
   const engine = session.engine;
+  const graphics = graphicsForTheme(session.route.preset.theme);
   const ftp = settings.ftp;
 
   // In-ride settings: apply visuals live, then persist like the Settings page.
@@ -62,7 +69,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
   // The 3D view; rebuilt when the graphics quality changes (the ride keeps going).
   useEffect(() => {
     const cur = settingsRef.current;
-    const view = new WorldView(viewRef.current!, session, settings.graphics, cur.gradeExaggeration);
+    const view = new WorldView(viewRef.current!, session, graphics, cur.gradeExaggeration);
     worldRef.current = view;
     view.setEffortReactions(cur.effortReactions);
     view.setSprintEffect(cur.sprintEffect);
@@ -72,7 +79,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
       worldRef.current = null;
       view.dispose();
     };
-  }, [session, settings.graphics]);
+  }, [session, graphics]);
   const applyRideSettings = useCallback(
     (patch: RideSettingsPatch) => {
       if (patch.gradeExaggeration != null) worldRef.current?.setGradeExaggeration(patch.gradeExaggeration);
@@ -167,8 +174,10 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
           {!snap.started && <span className="badge badge-warn">Start pedaling to begin</span>}
         </div>
         <IntervalList session={session} snap={snap} ftp={ftp} />
+        <RepeatSummary session={session} snap={snap} ftp={ftp} />
         {snap.intervalStats && (
           <table className="iv-stats">
+            <caption>Ride average</caption>
             <tbody>
               <tr><td>Avg power</td><td>{r0(snap.intervalStats.avgPower)} W</td></tr>
               <tr><td>Avg HR</td><td>{r0(snap.intervalStats.avgHr)} bpm</td></tr>
@@ -221,7 +230,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
         </div>
       )}
 
-      {showSettings && <RideSettings settings={settings} onChange={applyRideSettings} onClose={closeSettings} getStats={getStats} />}
+      {showSettings && <RideSettings settings={{ ...settings, graphics }} graphicsFixed onChange={applyRideSettings} onClose={closeSettings} getStats={getStats} />}
 
       {showHelp && (
         <div className="modal-bg" onClick={() => setShowHelp(false)}>

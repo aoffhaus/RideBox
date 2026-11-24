@@ -19,12 +19,14 @@ interface Props {
   onClose: () => void;
   /** Live frame rate / render resolution from the 3D view. */
   getStats?: () => RenderStats | undefined;
+  /** The world picks its own graphics level, so hide the choice. */
+  graphicsFixed?: boolean;
 }
 
 const DEBOUNCE_MS = 150;
 
 /** Small in-ride settings popover. Changes apply live without leaving the ride. */
-export function RideSettings({ settings, onChange, onClose, getStats }: Props) {
+export function RideSettings({ settings, onChange, onClose, getStats, graphicsFixed }: Props) {
   const [s, setS] = useState<RideSettingsPatch>({
     gradeExaggeration: settings.gradeExaggeration,
     effortReactions: settings.effortReactions,
@@ -94,14 +96,14 @@ export function RideSettings({ settings, onChange, onClose, getStats }: Props) {
           </span>
           {res && <small className="muted">{res}</small>}
         </div>
-        <label className="field">
+        {!graphicsFixed && <label className="field">
           <span>Graphics quality</span>
           <select value={graphics} onChange={(e) => update({ graphics: e.target.value as Settings['graphics'] })}>
             <option value="high">High (shadows, effects)</option>
             <option value="low">Low (older or slower computers)</option>
           </select>
           <small className="muted">Resolution drops automatically if the frame rate dips. Switch to Low if it&apos;s still choppy.</small>
-        </label>
+        </label>}
         <label className="field">
           <span>Effort reactions: {reactLabel(react)}</span>
           <input type="range" min={0} max={1.5} step={0.05} value={react} onChange={(e) => update({ effortReactions: Number(e.target.value) })} />

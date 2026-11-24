@@ -20,6 +20,15 @@ export function intervalWindow(count: number, current: number, before = 2, after
  * inside the window.
  */
 export function avgPowerBetween(samples: readonly Sample[], start: number, end: number): number | undefined {
+  return avgBetween(samples, start, end, (s) => s.power);
+}
+
+/** Average heart rate over [start, end) seconds of ride time (ignores samples without HR). */
+export function avgHrBetween(samples: readonly Sample[], start: number, end: number): number | undefined {
+  return avgBetween(samples, start, end, (s) => s.hr);
+}
+
+function avgBetween(samples: readonly Sample[], start: number, end: number, get: (s: Sample) => number | undefined): number | undefined {
   // binary search for the first sample with elapsed >= start
   let lo = 0;
   let hi = samples.length;
@@ -31,8 +40,11 @@ export function avgPowerBetween(samples: readonly Sample[], start: number, end: 
   let sum = 0;
   let n = 0;
   for (let i = lo; i < samples.length && samples[i].elapsed < end; i++) {
-    sum += samples[i].power;
-    n++;
+    const v = get(samples[i]);
+    if (v) {
+      sum += v;
+      n++;
+    }
   }
   return n ? sum / n : undefined;
 }
