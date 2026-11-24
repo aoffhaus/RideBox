@@ -142,12 +142,6 @@ export const WorkoutChart = memo(function WorkoutChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [samples?.length, total, maxHr]);
 
-  const cadPath = useMemo(() => {
-    if (!samples?.length) return '';
-    return cadencePath(samples, x, (rpm) => H - (rpm / CADENCE_MAX) * (H - 4));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [samples?.length, total, H]);
-
   return (
     <div className="workout-chart-wrap">
       <svg
@@ -171,19 +165,11 @@ export const WorkoutChart = memo(function WorkoutChart({
           />
         ))}
         {hrPath && <path d={hrPath} fill="none" stroke="#ff6b81" strokeWidth={1.5} vectorEffect="non-scaling-stroke" opacity={0.9} />}
-        {cadPath && <path d={cadPath} fill="none" stroke={CADENCE_COLOR} strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" opacity={0.95} />}
         {powerPath && <path d={powerPath} fill="none" stroke="#fff" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />}
         {elapsed != null && (
           <line x1={x(elapsed)} x2={x(elapsed)} y1={0} y2={H} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" />
         )}
       </svg>
-      {cadPath && (
-        // HTML overlay legend (SVG text would be stretched by preserveAspectRatio="none").
-        <div className="workout-chart-legend" title={`Cadence, scaled 0–${CADENCE_MAX} rpm to chart height`}>
-          <span className="swatch" style={{ background: CADENCE_COLOR }} />
-          Cadence <span className="dim">rpm (0–{CADENCE_MAX})</span>
-        </div>
-      )}
       {active != null && intervals[active] && (
         <IntervalTooltip iv={intervals[active]} ftp={ftp} k={k} leftPct={((intervals[active].start + intervals[active].duration / 2) / total) * 100} />
       )}

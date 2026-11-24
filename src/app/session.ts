@@ -126,6 +126,7 @@ export class RideSession {
   private lastControlAt = -1;
   private timer?: number;
   private lastTick = performance.now();
+  /** Running totals for the whole ride (not reset per interval). */
   private ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0 };
   private listeners = new Set<() => void>();
   /** called when the planned workout finishes */
@@ -253,7 +254,6 @@ export class RideSession {
         pt = this.route.at(this.routeDistance);
       }
       this.lastIntervalIndex = st.index;
-      this.ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0 };
     }
     this.portalArmed = this.portalOpen(st);
     if (st?.finished && !this.completedFired) {
