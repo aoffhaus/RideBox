@@ -2,9 +2,10 @@
 
 import type { AppData, SyncStatus } from "./types";
 import {
-  applyDefaultGear,
+  applyTrainerBike,
   METERS_PER_MILE,
   type Chain,
+  type TrainerSwitch,
   type Install,
   type Lube,
   type QuickLink,
@@ -23,6 +24,8 @@ export interface Model {
   /** Bikes whose chains are rotated. */
   chainBikes: Set<string>;
   defaultVirtualBike: string;
+  /** Trainer bike changes, oldest first. */
+  trainerHistory: { from: string; bike_id: string }[];
   sync: SyncStatus;
   user: string | null;
   bikeName(id: string): string;
@@ -44,9 +47,11 @@ export function toModel(d: AppData): Model {
   const installs: Install[] = d.installs.map((i) => ({ ...i, installed_at: ms(i.installed_at), link_id: i.link_id ?? "" }));
   const lubes: Lube[] = d.lubes.map((l) => ({ ...l, lubed_at: ms(l.lubed_at), chain_id: l.chain_id ?? "" }));
   const links: QuickLink[] = d.quicklinks.map((q) => ({ ...q, added_at: ms(q.added_at), start_uses: Number(q.start_uses) || 0 }));
-  const defaults: Record<string, string> = {};
-  if (d.settings.default_bike_virtual_ride) defaults.VirtualRide = d.settings.default_bike_virtual_ride;
-  const rides = applyDefaultGear(
+  const trainerSwitches: TrainerSwitch[] = (d.settings.virtual_bike_history ?? []).map((h) => ({
+    from: h.from ? ms(h.from) : -Infinity,
+    bike_id: h.bike_id,
+  }));
+  const rides = applyTrainerBike(
     d.rides.map(([activity_id, gear_id, start, distance_m, moving_time_s, type, trainer]) => ({
       activity_id,
       gear_id,
@@ -56,7 +61,7 @@ export function toModel(d: AppData): Model {
       type,
       trainer: trainer === 1,
     })),
-    defaults,
+    trainerSwitches,
   );
   // Not configured yet: bikes that have a logged install.
   const chainBikes = new Set(d.settings.chain_bikes ?? installs.map((i) => i.bike_id));
@@ -70,6 +75,7 @@ export function toModel(d: AppData): Model {
     rides,
     chainBikes,
     defaultVirtualBike: d.settings.default_bike_virtual_ride,
+    trainerHistory: d.settings.virtual_bike_history ?? [],
     sync: d.sync,
     user: d.user,
     bikeName: (id) => bikes.get(id) ?? id,

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { currentLink, linkUses, mToMi } from "../calc";
 import { api } from "../api";
-import { when } from "../fmt";
+import { fromLocalInput, nowMinute, toIso, toLocalInput, when } from "../fmt";
 import { ErrorText, Field, useApp, useSubmit } from "../ui";
 
 function AddChain() {
@@ -211,20 +211,34 @@ function Bikes() {
 
 export function UntaggedRides() {
   const { model } = useApp();
-  const { busy, error, submit } = useSubmit();
+  const { busy, error, submit, setError } = useSubmit();
   const bikeIds = [...model.bikes.keys()];
+  const [bike, setBike] = useState(model.defaultVirtualBike);
+  const [at, setAt] = useState(() => toLocalInput(nowMinute()));
   if (!bikeIds.length) return null;
+
+  const first = model.trainerHistory.length === 0;
+  const name = (id: string) => (id ? model.bikeName(id) : "No bike");
+  const apply = () => {
+    const ms = fromLocalInput(at);
+    if (!first && Number.isNaN(ms)) return setError("Pick when the bike went on the trainer.");
+    submit(
+      () =>
+        api.saveSettings({
+          default_bike_virtual_ride: bike,
+          ...(first ? {} : { effective_from: toIso(ms) }),
+        }),
+      "Saved",
+    );
+  };
+
   return (
     <div className="ct-card">
       <Field
-        label="Virtual rides with no bike count toward"
-        hint="Applies to Strava VirtualRide activities (Zwift etc.) with no bike tagged. Rides you tag with a bike on Strava keep that tag."
+        label="Bike on the trainer"
+        hint="Virtual rides with no bike tagged on Strava count toward the bike that was on the trainer when they started. Switching bikes only affects rides from the time you choose onward."
       >
-        <select
-          value={model.defaultVirtualBike}
-          disabled={busy}
-          onChange={(e) => submit(() => api.saveSettings({ default_bike_virtual_ride: e.currentTarget.value }), "Saved")}
-        >
+        <select value={bike} disabled={busy} onChange={(e) => setBike(e.currentTarget.value)}>
           <option value="">No bike (ignore them)</option>
           {bikeIds.map((b) => (
             <option key={b} value={b}>
@@ -233,7 +247,25 @@ export function UntaggedRides() {
           ))}
         </select>
       </Field>
+      {!first && (
+        <Field label="Switched at">
+          <input type="datetime-local" value={at} disabled={busy} onChange={(e) => setAt(e.currentTarget.value)} />
+        </Field>
+      )}
+      <button className="ct-btn ct-primary ct-wide" disabled={busy || bike === model.defaultVirtualBike} onClick={apply}>
+        {first ? "Save" : "Switch trainer bike"}
+      </button>
       <ErrorText error={error} />
+      {model.trainerHistory.length > 0 && (
+        <p className="ct-caption">
+          {[...model.trainerHistory].reverse().map((h, i) => (
+            <span key={h.from + h.bike_id}>
+              {i > 0 && <br />}
+              {name(h.bike_id)} · {h.from ? `since ${when(Date.parse(h.from))}` : "from the start"}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }

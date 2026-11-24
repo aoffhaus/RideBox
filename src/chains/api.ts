@@ -53,5 +53,5 @@ export const api = {
     call("PUT", `${BASE}/lubes/${id}`, b),
   deleteLube: (id: string) => call("DELETE", `${BASE}/lubes/${id}`),
   addQuickLink: (b: { chain_id: string; start_uses: number; note: string }) => call("POST", `${BASE}/quicklinks`, b),
-  saveSettings: (b: { chain_bikes?: string[]; default_bike_virtual_ride?: string }) => call("PUT", `${BASE}/settings`, b),
+  saveSettings: (b: { chain_bikes?: string[]; default_bike_virtual_ride?: string; effective_from?: string }) => call("PUT", `${BASE}/settings`, b),
 };

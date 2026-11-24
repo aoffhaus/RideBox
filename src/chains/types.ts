@@ -56,7 +56,10 @@ export interface SyncStatus {
 export interface Settings {
   /** Bikes whose chains are rotated. Null means not set yet. */
   chain_bikes: string[] | null;
+  /** Bike on the trainer now. */
   default_bike_virtual_ride: string;
+  /** Which bike was on the trainer when, oldest first. from "" = since the beginning; bike_id "" = none. */
+  virtual_bike_history: { from: string; bike_id: string }[];
 }
 
 export interface AppData {
