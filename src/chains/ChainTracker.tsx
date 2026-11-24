@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { toModel, type Model } from "./data";
+import type { AppData } from "./types";
 import { Chains } from "./pages/Chains";
 import { History } from "./pages/History";
 import { Home } from "./pages/Home";
@@ -33,10 +34,30 @@ function readPage(): PageId {
   return "bikes";
 }
 
+// Last server response, so the tracker opens instantly and refreshes in the background.
+const DATA_KEY = "ridebox.chains.data";
+
+function readCache(): Model | null {
+  try {
+    const raw = localStorage.getItem(DATA_KEY);
+    return raw ? toModel(JSON.parse(raw) as AppData) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(d: AppData) {
+  try {
+    localStorage.setItem(DATA_KEY, JSON.stringify(d));
+  } catch {
+    /* storage blocked or full */
+  }
+}
+
 /** `phone`: rendered inside the phone layout (bigger heading, gutters). */
 export function ChainTracker({ phone = false }: { phone?: boolean }) {
   const [page, setPageState] = useState<PageId>(readPage);
-  const [model, setModel] = useState<Model | null>(null);
+  const [model, setModel] = useState<Model | null>(readCache);
   const [loadError, setLoadError] = useState("");
   const [toasts, setToasts] = useState<{ id: number; msg: string; kind: "ok" | "error" }[]>([]);
   const [syncing, setSyncing] = useState(false);
@@ -58,7 +79,9 @@ export function ChainTracker({ phone = false }: { phone?: boolean }) {
   }, []);
 
   const reload = useCallback(async () => {
-    setModel(toModel(await api.data()));
+    const d = await api.data();
+    writeCache(d);
+    setModel(toModel(d));
     setLoadError("");
   }, []);
 
@@ -68,7 +91,9 @@ export function ChainTracker({ phone = false }: { phone?: boolean }) {
     let live = true;
     (async () => {
       try {
-        const m = toModel(await api.data());
+        const d = await api.data();
+        writeCache(d);
+        const m = toModel(d);
         if (!live) return;
         setModel(m);
         const last = m.sync.last_sync ? Date.parse(m.sync.last_sync) : 0;
