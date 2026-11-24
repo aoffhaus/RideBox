@@ -15,6 +15,7 @@ import {
 import { api } from "../api";
 import { fromLocalInput, hours, miles, nowMinute, toIso, toLocalInput, when } from "../fmt";
 import { ErrorText, Field, Modal, Stat, useApp, useSubmit } from "../ui";
+import { UntaggedRides } from "./Settings";
 
 function UsageBlock({ since, rides }: { since: string; rides: Ride[] }) {
   const total = usage(rides);
@@ -294,6 +295,7 @@ export function Home() {
           </section>
         );
       })}
+      <UntaggedRides />
       {dialog?.kind === "swap" && <SwapDialog bikeId={dialog.bikeId} onClose={() => setDialog(null)} />}
       {dialog?.kind === "lube" && <LubeDialog bikeId={dialog.bikeId} onClose={() => setDialog(null)} />}
     </>

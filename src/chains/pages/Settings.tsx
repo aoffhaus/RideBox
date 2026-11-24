@@ -209,7 +209,7 @@ function Bikes() {
   );
 }
 
-function UntaggedRides() {
+export function UntaggedRides() {
   const { model } = useApp();
   const { busy, error, submit } = useSubmit();
   const bikeIds = [...model.bikes.keys()];
