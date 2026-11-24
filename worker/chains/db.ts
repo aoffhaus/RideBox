@@ -98,9 +98,20 @@ export class Db implements SyncStore {
   async settings(): Promise<Settings> {
     const { results } = await this.db.prepare("SELECT key, value FROM ct_settings").all<{ key: string; value: string }>();
     const m = Object.fromEntries(results.map((r) => [r.key, r.value]));
+    const current = m.default_bike_virtual_ride ?? "";
+    let history: Settings["virtual_bike_history"] = [];
+    try {
+      const parsed = m.virtual_bike_history ? JSON.parse(m.virtual_bike_history) : [];
+      if (Array.isArray(parsed)) history = parsed;
+    } catch {
+      /* ignore a corrupt value */
+    }
+    // Set before history existed: that bike was on the trainer all along.
+    if (history.length === 0 && current) history = [{ from: "", bike_id: current }];
     return {
       chain_bikes: m.chain_bikes === undefined ? null : m.chain_bikes.split(",").filter(Boolean),
-      default_bike_virtual_ride: m.default_bike_virtual_ride ?? "",
+      default_bike_virtual_ride: current,
+      virtual_bike_history: history,
     };
   }
 
