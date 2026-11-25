@@ -4,7 +4,7 @@ import { MetricsChart } from './ActualDetail';
 import { CADENCE_COLOR } from './WorkoutChart';
 import type { RideRecord } from '../app/recorder';
 import { lapStats } from '../app/recorder';
-import type { Settings } from '../storage/db';
+import { getRidePhotos, type Settings } from '../storage/db';
 import { downloadBlob, rideFileName, rideToFit, sendToGarmin } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { distUnit, elevUnit, fmtDist, fmtElev, r0 } from './format';
@@ -51,6 +51,65 @@ function StravaPanel({ ride, connected, onUpload }: { ride: RideRecord; connecte
         Hiding mutes the activity: it&apos;s still on your profile, but doesn&apos;t appear in followers&apos; feeds or count toward their notifications.
         Strava doesn&apos;t let apps upload as Only You; to make every upload private, set{' '}
         <a href="https://www.strava.com/settings/privacy" target="_blank" rel="noreferrer">Privacy Controls → Activities</a> to Only You on Strava.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Screenshots from the ride. Strava's API doesn't let apps attach photos, so these
+ * are offered to share (phone/tablet: straight into the Strava app) or save, then add
+ * on Strava.
+ */
+function RidePhotos({ ride }: { ride: RideRecord }) {
+  const [photos, setPhotos] = useState<{ blob: Blob; url: string; file: File }[]>([]);
+  useEffect(() => {
+    let urls: string[] = [];
+    let live = true;
+    void getRidePhotos(ride.id)
+      .then((blobs) => {
+        if (!live) return;
+        const base = rideFileName(ride).replace(/\.fit$/, '');
+        const items = blobs.map((blob, i) => ({ blob, url: URL.createObjectURL(blob), file: new File([blob], `${base}-${i + 1}.jpg`, { type: 'image/jpeg' }) }));
+        urls = items.map((p) => p.url);
+        setPhotos(items);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [ride.id]);
+  if (!photos.length) return null;
+  const files = photos.map((p) => p.file);
+  const canShare = typeof navigator.canShare === 'function' && navigator.canShare({ files });
+  const share = () => void navigator.share({ files, title: ride.name }).catch(() => {});
+  const save = () => photos.forEach((p) => downloadBlob(p.blob, p.file.name));
+  const st = ride.strava;
+  return (
+    <div className="card ride-photos">
+      <div className="row space">
+        <div className="card-title">Ride photos</div>
+        <div className="row">
+          {canShare && <button className="primary" onClick={share}>Share…</button>}
+          <button onClick={save}>Save {photos.length > 1 ? 'photos' : 'photo'}</button>
+        </div>
+      </div>
+      <div className="row ride-photos-strip">
+        {photos.map((p) => (
+          <a key={p.url} href={p.url} target="_blank" rel="noreferrer">
+            <img src={p.url} alt="Screenshot from the ride" style={{ width: 240, maxWidth: '45%', borderRadius: 6, display: 'block' }} />
+          </a>
+        ))}
+      </div>
+      <div className="muted small">
+        Strava doesn&apos;t let apps add photos, so add these yourself:{' '}
+        {st?.status === 'done' && st.activityId ? (
+          <a href={activityUrl(st.activityId)} target="_blank" rel="noreferrer">open the activity on Strava ↗</a>
+        ) : (
+          'once the ride is on Strava, open it'
+        )}{' '}
+        and choose Edit → Add photos (or share them straight to the Strava app on your phone).
       </div>
     </div>
   );
@@ -150,6 +209,7 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
       <FeelPicker ride={ride} onFeel={onFeel} />
       {children}
       <StravaPanel ride={ride} connected={stravaConnected} onUpload={(r, opts) => onStravaUpload({ ...r, name: name.trim() || r.name }, opts)} />
+      <RidePhotos ride={ride} />
       <div className="stats-grid">
         {[
           ['Time', formatDuration(s.duration)],

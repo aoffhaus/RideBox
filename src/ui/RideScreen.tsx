@@ -11,6 +11,7 @@ import { MiniMap } from './MiniMap';
 import { RideSettings, type RideSettingsPatch } from './RideSettings';
 import { RideHud } from './RideHud';
 import { IntervalList, RepeatSummary } from './IntervalList';
+import { PhotoPlanner } from '../app/photos';
 
 interface Props {
   session: RideSession;
@@ -80,6 +81,19 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
       view.dispose();
     };
   }, [session, graphics]);
+  // Ride photos: a highlight at the hardest 30 s and a scenic shot every few minutes.
+  useEffect(() => {
+    const planner = new PhotoPlanner();
+    const id = window.setInterval(() => {
+      const kind = planner.tick(session.samples);
+      if (!kind) return;
+      void worldRef.current?.capture().then((b) => {
+        if (b) session.photos.set(kind, b);
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [session]);
+
   const applyRideSettings = useCallback(
     (patch: RideSettingsPatch) => {
       if (patch.gradeExaggeration != null) worldRef.current?.setGradeExaggeration(patch.gradeExaggeration);
