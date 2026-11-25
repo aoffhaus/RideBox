@@ -160,21 +160,28 @@ export interface PeriodTotals {
   plannedSec: number;
   doneTss: number;
   doneSec: number;
+  /** Part of planned that was skipped or missed (still included in planned). */
+  skippedTss: number;
+  skippedSec: number;
 }
 
 /**
  * Planned vs done totals for the days `from`..`to` (inclusive).
- * Planned = every planned workout in the period, ridden or not (skipped ones were
- * dropped from the plan, so they don't count). Done = everything completed,
+ * Planned = every planned workout in the period, including skipped and missed ones
+ * (those are also reported separately as skipped). Done = everything completed,
  * planned or not: RideBox rides plus imported Strava activities.
  */
 export function periodTotals(cal: PlannedWorkout[], entries: LoadEntry[], ftp: number, from: DayKey, to: DayKey): PeriodTotals {
-  const t: PeriodTotals = { plannedTss: 0, plannedSec: 0, doneTss: 0, doneSec: 0 };
+  const t: PeriodTotals = { plannedTss: 0, plannedSec: 0, doneTss: 0, doneSec: 0, skippedTss: 0, skippedSec: 0 };
   for (const c of cal) {
-    if (c.date < from || c.date > to || c.status === 'skipped') continue;
+    if (c.date < from || c.date > to) continue;
     const s = plannedStats(flatten(c.workout), ftp);
     t.plannedTss += s.tss;
     t.plannedSec += s.duration;
+    if (c.status === 'skipped' || c.status === 'missed') {
+      t.skippedTss += s.tss;
+      t.skippedSec += s.duration;
+    }
   }
   for (const e of entries) {
     if (e.date < from || e.date > to) continue;

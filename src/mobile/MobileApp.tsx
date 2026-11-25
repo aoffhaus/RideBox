@@ -751,6 +751,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToas
             {showDone
               ? `${Math.round(w.doneTss)} / ${Math.round(w.plannedTss)} TSS · ${fmtHm(w.doneSec)} / ${fmtHm(w.plannedSec)}`
               : `${Math.round(w.plannedTss)} TSS · ${fmtHm(w.plannedSec)}`}
+            {w.skippedSec > 0 && ` · ${Math.round(w.skippedTss)} TSS skipped`}
           </span>
         </div>
         {current && (

@@ -117,7 +117,7 @@ export function Calendar(props: CalendarProps) {
         </div>
         {weeks.map((w) => {
           const days = Array.from({ length: 7 }, (_, i) => addDays(w, i));
-          const { plannedTss, plannedSec, doneTss, doneSec } = periodTotals(calendar, entries, settings.ftp, w, addDays(w, 6));
+          const { plannedTss, plannedSec, doneTss, doneSec, skippedTss, skippedSec } = periodTotals(calendar, entries, settings.ftp, w, addDays(w, 6));
           const ph = phaseOn(addDays(w, 3));
           return (
             <div className="cal-row" key={w}>
@@ -237,6 +237,7 @@ export function Calendar(props: CalendarProps) {
                 {ph && <div className="cal-week-phase" style={{ color: phaseColor(ph.name) }}>{ph.name}</div>}
                 <div className="muted">Planned</div>
                 <div className="nowrap">{Math.round(plannedTss)} TSS · {(plannedSec / 3600).toFixed(1)} h</div>
+                {skippedSec > 0 && <div className="muted small nowrap">Skipped {Math.round(skippedTss)} TSS · {(skippedSec / 3600).toFixed(1)} h</div>}
                 <div className="muted">Done</div>
                 <div className="nowrap">{Math.round(doneTss)} TSS · {(doneSec / 3600).toFixed(1)} h</div>
               </div>

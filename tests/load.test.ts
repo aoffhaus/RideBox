@@ -130,8 +130,11 @@ describe('periodTotals', () => {
     const cal = [pw('a', '2026-06-01', 'done'), pw('b', '2026-06-02', 'missed'), pw('c', '2026-06-03', 'planned'), pw('d', '2026-06-04', 'skipped'), pw('e', '2026-06-09', 'planned')];
     const entries = loadEntries([ride('r1', new Date(2026, 5, 1, 8).getTime(), 80)], [act({ start: new Date(2026, 5, 5, 9).getTime(), weightedWatts: 200, deviceWatts: true })], 250, 190);
     const t = periodTotals(cal, entries, 250, '2026-06-01', '2026-06-07');
-    expect(t.plannedTss).toBeCloseTo(300, 0);
-    expect(t.plannedSec).toBe(3 * 3600);
+    // done, missed, planned and skipped all count as planned; missed + skipped are flagged as skipped
+    expect(t.plannedTss).toBeCloseTo(400, 0);
+    expect(t.plannedSec).toBe(4 * 3600);
+    expect(t.skippedSec).toBe(2 * 3600);
+    expect(t.skippedTss).toBeCloseTo(200, 0);
     // planned ride + unplanned Strava ride both count as done
     expect(t.doneSec).toBe(7200);
     expect(t.doneTss).toBeGreaterThan(80);
