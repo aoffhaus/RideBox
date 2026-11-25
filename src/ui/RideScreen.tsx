@@ -12,6 +12,7 @@ import { RideSettings, type RideSettingsPatch } from './RideSettings';
 import { RideHud } from './RideHud';
 import { IntervalList, RepeatSummary } from './IntervalList';
 import { PhotoPlanner } from '../app/photos';
+import { drawPhotoStats, photoStats } from './photoOverlay';
 
 interface Props {
   session: RideSession;
@@ -81,13 +82,15 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
       view.dispose();
     };
   }, [session, graphics]);
-  // Ride photos: a highlight at the hardest 30 s and a scenic shot every few minutes.
+  // Ride photos: a highlight in the hardest effort and a scenic shot every few minutes, with the stats on them.
   useEffect(() => {
     const planner = new PhotoPlanner();
     const id = window.setInterval(() => {
       const kind = planner.tick(session.samples);
       if (!kind) return;
-      void worldRef.current?.capture().then((b) => {
+      // the numbers at the moment the shot is asked for
+      const ps = photoStats(session.snapshot(), settingsRef.current, session.engine?.workout.name ?? session.route.preset.name);
+      void worldRef.current?.capture(1280, (ctx, w, h) => drawPhotoStats(ctx, w, h, ps)).then((b) => {
         if (b) session.photos.set(kind, b);
       });
     }, 1000);
