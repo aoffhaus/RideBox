@@ -266,7 +266,13 @@ async function handleApi(req: Request, env: ChainEnv, url: URL, user: string): P
       await db.setSetting("chain_bikes", [...new Set(list as string[])].sort().join(","));
     }
     if ("default_bike_virtual_ride" in b) {
-      await db.setSetting("default_bike_virtual_ride", str(b, "default_bike_virtual_ride", { max: 40 }));
+      const bike = str(b, "default_bike_virtual_ride", { max: 40 });
+      const history = (await db.settings()).virtual_bike_history;
+      // The first choice covers all past rides; later ones start at the given time (default now).
+      const from = history.length === 0 ? "" : "effective_from" in b ? iso(b, "effective_from") : new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      const next = [...history.filter((h) => h.from !== from), { from, bike_id: bike }].sort((a, c) => a.from.localeCompare(c.from));
+      await db.setSetting("virtual_bike_history", JSON.stringify(next));
+      await db.setSetting("default_bike_virtual_ride", next[next.length - 1].bike_id);
     }
     return json({ ok: true });
   }

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDefaultGear,
+  applyTrainerBike,
   assignRides,
   bikeLubeStatus,
   bikeStatus,
@@ -278,5 +279,19 @@ describe("indoor/outdoor and quick links", () => {
     expect(linkUses(nw, installs)).toBe(1);
     expect(currentLink("A", [old, nw, other])).toBe(nw);
     expect(currentLink("C", [old, nw, other])).toBeNull();
+  });
+});
+
+describe("trainer bike history", () => {
+  it("attributes untagged virtual rides to the bike on the trainer at the time", () => {
+    const early = ride(utc(2026, 5, 2), { gear: null, km: 10, type: "VirtualRide" });
+    const late = ride(utc(2026, 6, 2), { gear: null, km: 20, type: "VirtualRide" });
+    const tagged = ride(utc(2026, 6, 3), { gear: OTHER_BIKE, km: 5, type: "VirtualRide" });
+    const out = applyTrainerBike([early, late, tagged], [
+      { from: -Infinity, bike_id: BIKE },
+      { from: utc(2026, 6, 1), bike_id: OTHER_BIKE },
+    ]);
+    expect(out.map((r) => r.gear_id)).toEqual([BIKE, OTHER_BIKE, OTHER_BIKE]);
+    expect(applyTrainerBike([early], [])).toEqual([early]);
   });
 });

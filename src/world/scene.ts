@@ -889,6 +889,8 @@ function setLimb(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
 /** The 3D world view. Reads the session each frame; never changes it. */
 export class WorldView {
   private renderer: THREE.WebGLRenderer;
+  /** pending screenshot requests, served right after the next frame renders */
+  private captures: { maxWidth: number; resolve: (b: Blob | null) => void }[] = [];
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(60, 1, 0.3, 12000);
   private rider: RiderModel;
@@ -1423,6 +1425,7 @@ export class WorldView {
     for (const h of this.viewHooks) h(this.camera);
     if (this.post) this.post.render(dt);
     else this.renderer.render(this.scene, this.camera);
+    if (this.captures.length) this.serveCaptures();
     if (trace) {
       (window as unknown as { __rbInfo?: unknown }).__rbInfo = { ...this.renderer.info.render };
       (window as unknown as { __rbScene?: unknown }).__rbScene = this.scene;
@@ -1431,7 +1434,47 @@ export class WorldView {
     }
   };
 
+  /**
+   * A JPEG of the 3D view (not the HTML HUD), at most `maxWidth` px wide. Taken right after the
+   * next frame renders, while the drawing buffer still holds it (the canvas isn't
+   * created with preserveDrawingBuffer). Resolves null if no frame renders soon,
+   * e.g. the tab is in the background.
+   */
+  capture(maxWidth = 1280): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      let done = false;
+      const once = (b: Blob | null) => {
+        if (!done) {
+          done = true;
+          resolve(b);
+        }
+      };
+      this.captures.push({ maxWidth, resolve: once });
+      setTimeout(() => once(null), 10_000);
+    });
+  }
+
+  private serveCaptures() {
+    const src = this.renderer.domElement;
+    const reqs = this.captures;
+    this.captures = [];
+    for (const r of reqs) {
+      try {
+        const k = Math.min(1, r.maxWidth / src.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(src.width * k);
+        c.height = Math.round(src.height * k);
+        c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
+        c.toBlob((b) => r.resolve(b), 'image/jpeg', 0.88);
+      } catch {
+        r.resolve(null);
+      }
+    }
+  }
+
   dispose() {
+    for (const r of this.captures) r.resolve(null);
+    this.captures = [];
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     releaseWorld(this.builtFor);

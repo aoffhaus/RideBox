@@ -38,6 +38,8 @@ export interface RideRecord {
   id: string;
   name: string;
   workoutName?: string;
+  /** what the workout trains, e.g. "Sweet Spot"; set when the ride finishes */
+  focus?: string;
   routeName: string;
   startTime: number;
   ftp: number;

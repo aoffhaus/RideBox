@@ -4,7 +4,7 @@ import { formatDuration, intervalFtpFraction, zoneFor, type Interval } from '../
 import { r0 } from './format';
 import { ivColor } from './MiniMap';
 import { targetText } from './RideHud';
-import { avgPowerBetween, intervalWindow } from './intervalWindow';
+import { avgHrBetween, avgPowerBetween, intervalWindow } from './intervalWindow';
 
 function ivName(iv: Interval, ftp: number) {
   return iv.label ?? (iv.free ? 'Free ride' : zoneFor(intervalFtpFraction(iv, ftp)).name);
@@ -103,6 +103,78 @@ export function IntervalList({ session, snap, ftp }: { session: RideSession; sna
       {doneHidden > 0 && <div className="ivl-more">{doneHidden} done</div>}
       <ol className="ivl-list">{rows}</ol>
       {moreHidden > 0 && <div className="ivl-more">+{moreHidden} more</div>}
+    </div>
+  );
+}
+
+/**
+ * Repeated intervals (same length and target power) that have been ridden at least
+ * once: their average power and heart rate for each rep side by side, so fading or
+ * drifting across a set is easy to see at a glance.
+ */
+export function RepeatSummary({ session, snap, ftp }: { session: RideSession; snap: Snapshot; ftp: number }) {
+  const engine = session.engine;
+  const st = snap.workout;
+  const cache = useRef(new Map<number, { p?: number; hr?: number }>());
+  if (!engine || !st) return null;
+  const ivs = engine.intervals;
+  const cur = st.finished ? ivs.length : st.index;
+  const k = (st.intensity ?? 100) / 100;
+
+  const groups = new Map<string, Interval[]>();
+  for (const iv of ivs) {
+    if (iv.free) continue;
+    const sig = `${iv.duration}|${iv.powerStart}|${iv.powerEnd}|${iv.unit}`;
+    groups.set(sig, [...(groups.get(sig) ?? []), iv]);
+  }
+  const rep = [...groups.values()].filter((g) => g.length >= 2 && g[0].index < cur);
+  if (!rep.length) return null;
+
+  const statsOf = (iv: Interval) => {
+    let v = cache.current.get(iv.index);
+    if (!v) {
+      v = {
+        p: avgPowerBetween(session.samples, iv.start, iv.start + iv.duration),
+        hr: avgHrBetween(session.samples, iv.start, iv.start + iv.duration),
+      };
+      cache.current.set(iv.index, v);
+    }
+    return v;
+  };
+
+  return (
+    <div className="rep">
+      <div className="ivl-head">
+        <span>Repeats</span>
+      </div>
+      {rep.map((g) => {
+        const done = g.filter((iv) => iv.index < cur);
+        const rows = done.map((iv) => statsOf(iv));
+        const tgt = targetText(g[0], ftp, k);
+        return (
+          <div key={g[0].index} className="rep-group">
+            <div className="rep-title">
+              {ivName(g[0], ftp)} <small>{formatDuration(g[0].duration)}{tgt ? ` @ ${tgt}` : ''} · {done.length}/{g.length}</small>
+            </div>
+            <div className="rep-line">
+              <span className="rep-k">W</span>
+              <span className="rep-vals">
+                {rows.map((r, i) => (
+                  <b key={i}>{r.p != null ? r0(r.p) : '–'}</b>
+                ))}
+              </span>
+            </div>
+            <div className="rep-line">
+              <span className="rep-k">HR</span>
+              <span className="rep-vals rep-hr">
+                {rows.map((r, i) => (
+                  <b key={i}>{r.hr != null ? r0(r.hr) : '–'}</b>
+                ))}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -127,6 +127,26 @@ export function estimatedTimeS(distance_m: number, speed_mph = ESTIMATE_SPEED_MP
  * Give rides with no gear_id a bike based on their type, e.g. {VirtualRide: bike_id}.
  * Rides already tagged with a bike on Strava keep their tag.
  */
+export interface TrainerSwitch {
+  /** ms the bike went on the trainer; -Infinity = since the beginning. */
+  from: number;
+  bike_id: string;
+}
+
+/**
+ * Give untagged virtual rides the bike that was on the trainer when they started.
+ * Switches must be sorted oldest first. Rides before the first switch get the first bike.
+ */
+export function applyTrainerBike(rides: Ride[], switches: TrainerSwitch[]): Ride[] {
+  if (switches.length === 0) return rides;
+  return rides.map((r) => {
+    if (r.gear_id || r.type !== "VirtualRide") return r;
+    let bike = switches[0].bike_id;
+    for (const s of switches) if (s.from <= r.start) bike = s.bike_id;
+    return bike ? { ...r, gear_id: bike } : r;
+  });
+}
+
 export function applyDefaultGear(rides: Ride[], defaults: Record<string, string>): Ride[] {
   if (Object.keys(defaults).length === 0) return rides;
   return rides.map((r) => (!r.gear_id && defaults[r.type] ? { ...r, gear_id: defaults[r.type] } : r));
