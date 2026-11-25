@@ -128,6 +128,11 @@ export interface IntervalComparison {
 /** Seconds at the start of each interval ignored when scoring it (ramp-up to the new target). */
 export const INTERVAL_SETTLE_SECONDS = 10;
 
+/** Seconds to skip at the start of an interval of this length (none when it is too short to spare them). */
+export function settleSkip(duration: number): number {
+  return duration > INTERVAL_SETTLE_SECONDS * 2 ? INTERVAL_SETTLE_SECONDS : 0;
+}
+
 /** Line the actual series up with the planned intervals by elapsed time. */
 export function comparePlan(intervals: Interval[], ftp: number, s: ActualSeries): IntervalComparison[] {
   return intervals.map((iv) => {
@@ -137,9 +142,12 @@ export function comparePlan(intervals: Interval[], ftp: number, s: ActualSeries)
     const w0 = toWatts(iv.powerStart, iv.unit, ftp);
     const w1 = toWatts(iv.powerEnd, iv.unit, ftp);
     const targetW = iv.free ? undefined : intervalFtpFraction(iv, ftp) * ftp;
-    const hr = present(s.hr, from, to);
     // skip the settle window for scoring, unless the interval is too short to spare it
-    const scoreFrom = iv.duration > INTERVAL_SETTLE_SECONDS * 2 ? from + INTERVAL_SETTLE_SECONDS : from;
+    const skip = settleSkip(iv.duration);
+    const scoreFrom = from + skip;
+    const hr = present(s.hr, scoreFrom, to);
+    // the target over the scored window (a ramp's average shifts when its start is skipped)
+    const scoredTargetW = iv.free ? undefined : w0 + (w1 - w0) * ((skip + iv.duration) / (2 * iv.duration));
     const avgPower = n && s.power && scoreFrom < Math.min(to, s.length) ? mean(s.power.slice(scoreFrom, to)) : undefined;
     return {
       index: iv.index,
@@ -152,9 +160,9 @@ export function comparePlan(intervals: Interval[], ftp: number, s: ActualSeries)
       actualDuration: n,
       avgPower,
       avgHr: mean(hr),
-      maxHr: hr.length ? Math.max(...hr) : undefined,
-      avgCadence: mean(present(s.cadence, from, to, true)),
-      ratio: avgPower != null && targetW ? avgPower / targetW : undefined,
+      maxHr: hr.length ? Math.max(...present(s.hr, from, to)) : undefined,
+      avgCadence: mean(present(s.cadence, scoreFrom, to, true)),
+      ratio: avgPower != null && scoredTargetW ? avgPower / scoredTargetW : undefined,
     };
   });
 }

@@ -171,11 +171,21 @@ export interface PeriodTotals {
  * (those are also reported separately as skipped). Done = everything completed,
  * planned or not: RideBox rides plus imported Strava activities.
  */
+const statsCache = new WeakMap<object, { ftp: number; s: ReturnType<typeof plannedStats> }>();
+/** plannedStats of a workout, cached per workout object and FTP. */
+function cachedStats(w: PlannedWorkout['workout'], ftp: number) {
+  const hit = statsCache.get(w);
+  if (hit && hit.ftp === ftp) return hit.s;
+  const s = plannedStats(flatten(w), ftp);
+  statsCache.set(w, { ftp, s });
+  return s;
+}
+
 export function periodTotals(cal: PlannedWorkout[], entries: LoadEntry[], ftp: number, from: DayKey, to: DayKey): PeriodTotals {
   const t: PeriodTotals = { plannedTss: 0, plannedSec: 0, doneTss: 0, doneSec: 0, skippedTss: 0, skippedSec: 0 };
   for (const c of cal) {
     if (c.date < from || c.date > to) continue;
-    const s = plannedStats(flatten(c.workout), ftp);
+    const s = cachedStats(c.workout, ftp);
     t.plannedTss += s.tss;
     t.plannedSec += s.duration;
     if (c.status === 'skipped' || c.status === 'missed') {

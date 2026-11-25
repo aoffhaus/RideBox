@@ -4,6 +4,7 @@ import { intervalFtpFraction, zoneFor, type Workout } from '../workout/model';
 import { DEFAULT_RIDER, stepSpeed, type RiderParams } from '../physics/rider';
 import { ROUTE_PRESETS, generateRoute, rng, type Route, type RoutePresetId } from '../world/route';
 import { ArchTracker } from '../world/arches';
+import { settleSkip } from '../training/actual';
 import { summarize, type Lap, type RideRecord, type Sample } from './recorder';
 import type { Settings } from '../storage/db';
 import { uid } from '../storage/db';
@@ -122,7 +123,7 @@ export class RideSession {
   private lastControlAt = -1;
   private timer?: number;
   private lastTick = performance.now();
-  private ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0 };
+  private ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0, seen: 0 };
   private listeners = new Set<() => void>();
   /** called when the planned workout finishes */
   onWorkoutComplete?: () => void;
@@ -239,7 +240,7 @@ export class RideSession {
         pt = this.route.at(this.routeDistance);
       }
       this.lastIntervalIndex = st.index;
-      this.ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0 };
+      this.ivAcc = { p: 0, hr: 0, hrN: 0, cad: 0, cadN: 0, n: 0, seen: 0 };
     }
     this.portalArmed = this.portalOpen(st);
     if (st?.finished && !this.completedFired) {
@@ -269,6 +270,12 @@ export class RideSession {
         target: target ?? undefined,
       });
       const a = this.ivAcc;
+      // the first seconds of an interval don't count toward its live averages
+      const ivDur = st ? this.engine?.intervals[st.index]?.duration : undefined;
+      if (a.seen++ < (ivDur != null ? settleSkip(ivDur) : 0)) {
+        this.listeners.forEach((f) => f());
+        return;
+      }
       a.n++;
       a.p += this.power;
       if (this.hr) {

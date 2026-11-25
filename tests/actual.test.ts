@@ -30,6 +30,18 @@ describe('actual vs plan', () => {
     expect(rows.map(verdict)).toEqual(['over', 'under', 'hit']);
   });
 
+  it('ignores the settle window and scores ramps against the scored window', () => {
+    const S = INTERVAL_SETTLE_SECONDS;
+    const ramp: Workout = { name: 'R', steps: [{ type: 'ramp', duration: 60, from: 0.6, to: 0.4 }] };
+    const target = (i: number) => 120 - (40 * i) / 60; // 200 W FTP
+    const p = Array.from({ length: 60 }, (_, i) => (i < S ? 50 : target(i)));
+    const [r] = comparePlan(flatten(ramp), 200, series(p, p.map((_, i) => (i < S ? 200 : 140))));
+    expect(verdict(r)).toBe('hit');
+    expect(r.avgHr).toBe(140);
+    const hi = comparePlan(flatten(wk), 200, series([...Array(60).fill(100), ...Array(S).fill(0), ...Array(110).fill(200), ...Array(60).fill(100)]));
+    expect(hi[1].avgPower).toBe(200);
+  });
+
   it('summarizes a series', () => {
     const st = seriesStats(series(Array(3600).fill(200), Array(3600).fill(150)), 200);
     expect(st.np).toBeCloseTo(200);

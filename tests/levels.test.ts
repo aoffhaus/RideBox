@@ -64,6 +64,11 @@ describe('rideOutcome', () => {
     expect(rideOutcome(rideWith([plan[0], { ...plan[1], secs: 600 }]), 2100).outcome).toBe('fail');
     expect(rideOutcome(rideWith([plan[0], { ...plan[1], power: 218 }, plan[2]]), 2100).outcome).toBe('struggle');
   });
+  it('ignores the first seconds of a work lap', () => {
+    const r = rideWith([plan[0], { target: 240, power: 240, secs: 1200 }, plan[2]]);
+    for (let i = 600; i < 610; i++) r.samples[i].power = 0;
+    expect(rideOutcome(r, 2100).outcome).toBe('pass');
+  });
   it('counts an all-out feel on a barely-held workout as a struggle', () => {
     expect(rideOutcome(rideWith([plan[0], { ...plan[1], power: 232 }, plan[2]], 5), 2100).outcome).toBe('struggle');
   });

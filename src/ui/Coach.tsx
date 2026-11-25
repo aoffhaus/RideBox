@@ -78,9 +78,14 @@ function SuggestionDetail({ w, ftp, reason, onClose, children }: { w: Workout; f
   const s = plannedStats(ivs, ftp);
   const r = rateWorkout(w, ftp);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
+    // capture phase + stopImmediatePropagation so only this (topmost) dialog closes
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', k, true);
+    return () => window.removeEventListener('keydown', k, true);
   }, [onClose]);
   return (
     <div className="modal-backdrop coach-detail-bg" onClick={(e) => { e.stopPropagation(); onClose(); }}>
@@ -154,7 +159,9 @@ function WorkoutLine({ w, ftp, extra, reason, actions }: {
           <button className="link small" onClick={() => setOpen(true)}>Details</button>
         </div>
       )}
-      {open && <SuggestionDetail w={w} ftp={ftp} reason={reason} onClose={() => setOpen(false)}>{actions}</SuggestionDetail>}
+      {open && <SuggestionDetail w={w} ftp={ftp} reason={reason} onClose={() => setOpen(false)}>
+        <div style={{ display: 'contents' }} onClick={(e) => { if ((e.target as HTMLElement).closest('button')) setOpen(false); }}>{actions}</div>
+      </SuggestionDetail>}
     </div>
   );
 }

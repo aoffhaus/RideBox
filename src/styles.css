@@ -777,7 +777,7 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 4px; border: 1px sol
 .plan-vs td, .plan-vs th { padding: 4px 6px; font-size: 12px; }
 .verdict { font-size: 11px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
 .v-hit { background: #173a25; color: #7ee2a0; }
-.v-over { background: #3a2a14; color: #f2c94c; }
+.v-over { background: #173a25; color: #7ee2a0; }
 .v-under { background: #3a1517; color: #ffb3b0; }
 .v-short { background: #2b3340; color: #8b96a5; }
 
