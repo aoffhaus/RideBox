@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePlan, seriesFromStreams, seriesStats, verdict, type ActualSeries } from '../src/training/actual';
+import { INTERVAL_SETTLE_SECONDS, comparePlan, seriesFromStreams, seriesStats, verdict, type ActualSeries } from '../src/training/actual';
 import { flatten, type Workout } from '../src/workout/model';
 
 const wk: Workout = {
@@ -56,8 +56,18 @@ describe('Strava streams', () => {
 
 describe('card hit count', async () => {
   const { hitCount } = await import('../src/ui/CardActual');
-  it('counts targeted intervals within ±5%', () => {
-    const p = [...Array(60).fill(130), ...Array(120).fill(198), ...Array(60).fill(100)];
+  it('counts targeted intervals at or above target, not under', () => {
+    const p = [...Array(60).fill(70), ...Array(120).fill(198), ...Array(60).fill(100)];
     expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 2, of: 3 });
+  });
+  it('does not count over-power as a miss', () => {
+    const p = [...Array(60).fill(100), ...Array(120).fill(260), ...Array(60).fill(100)];
+    expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 3, of: 3 });
+  });
+  it('ignores the first seconds of an interval (ramp-up)', () => {
+    const p = [...Array(60).fill(100), ...Array(INTERVAL_SETTLE_SECONDS).fill(0), ...Array(120 - INTERVAL_SETTLE_SECONDS).fill(200), ...Array(60).fill(100)];
+    const rows = comparePlan(flatten(wk), 200, series(p));
+    expect(rows[1].avgPower).toBe(200);
+    expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 3, of: 3 });
   });
 });

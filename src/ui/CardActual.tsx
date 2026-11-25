@@ -7,10 +7,10 @@ import { linePath, useActualSeries } from './ActualDetail';
 
 const r0 = (x?: number) => (x == null || !Number.isFinite(x) ? undefined : Math.round(x));
 
-/** Intervals that hit their target (±5%), out of those with a target that were ridden. */
+/** Intervals that hit their target (not under it; over-power is fine), out of those with a target that were ridden. */
 export function hitCount(intervals: Interval[], ftp: number, s: ActualSeries) {
   const rows = comparePlan(intervals, ftp, s).filter((c) => !c.free && c.actualDuration > 0 && c.targetW);
-  return { hit: rows.filter((c) => verdict(c) === 'hit').length, of: rows.length };
+  return { hit: rows.filter((c) => ['hit', 'over'].includes(verdict(c) as string)).length, of: rows.length };
 }
 
 /** Tiny plan-vs-actual chart: planned blocks, actual power, heart rate. */
@@ -111,7 +111,7 @@ export const CardActual = memo(function CardActual({ ride, act, intervals, ftp, 
       )}
       {hits && hits.of > 0 && (
         <div className="cal-card-meta">
-          <span className={`verdict ${hits.hit === hits.of ? 'v-hit' : hits.hit >= hits.of * 0.7 ? 'v-over' : 'v-under'}`} title="Intervals within ±5% of target">
+          <span className={`verdict ${hits.hit === hits.of ? 'v-hit' : hits.hit >= hits.of * 0.7 ? 'v-over' : 'v-under'}`} title="Intervals at or above target (first 10 s ignored)">
             {hits.hit}/{hits.of} on target
           </span>
         </div>
