@@ -7,7 +7,27 @@ import { lapStats } from '../app/recorder';
  * with one lap per workout interval. Upload to Strava / TrainingPeaks /
  * intervals.icu / TrainerRoad (Career → Upload ride).
  */
-export function rideToFit(ride: RideRecord): Uint8Array {
+export interface FitOptions {
+  /**
+   * Label the file as recorded on a Garmin Edge. Garmin Connect only computes
+   * Training Effect / Exercise Load (from heart rate) for activities it
+   * attributes to one of its own devices; files from other manufacturers are
+   * stored without it. Used for the Garmin export only, so Strava and plain
+   * downloads still show RideBox as the device.
+   */
+  garminDevice?: boolean;
+}
+
+/** Garmin Edge 830 — a common bike computer Garmin Connect runs its load model for. */
+const GARMIN_EDGE_830 = 3122;
+
+/**
+ * Calories burned from mechanical work. Human gross efficiency on a bike is
+ * ~20-25%, and 1 kcal = 4.184 kJ, so kcal ≈ kJ — the standard cycling estimate.
+ */
+export const kjToKcal = (kj: number) => Math.round(kj);
+
+export function rideToFit(ride: RideRecord, opts: FitOptions = {}): Uint8Array {
   const encoder = new Encoder();
   // The SDK's TypeScript types are stricter than its runtime (which takes decoder-style objects).
   const enc = { onMesg: (num: number, mesg: Record<string, unknown>) => encoder.onMesg(num as any, mesg as any) };
@@ -16,19 +36,20 @@ export function rideToFit(ride: RideRecord): Uint8Array {
   const samples = ride.samples;
   const lastTs = samples.length ? new Date(samples[samples.length - 1].t) : start;
   const s = ride.summary;
+  const device = opts.garminDevice
+    ? { manufacturer: 'garmin', product: GARMIN_EDGE_830 }
+    : { manufacturer: 'development', product: 1 };
 
   enc.onMesg(M.FILE_ID, {
     type: 'activity',
-    manufacturer: 'development',
-    product: 1,
+    ...device,
     serialNumber: 1234,
     timeCreated: start,
   });
   enc.onMesg(M.DEVICE_INFO, {
     deviceIndex: 'creator',
-    manufacturer: 'development',
-    product: 1,
-    productName: 'RideBox',
+    ...device,
+    ...(opts.garminDevice ? {} : { productName: 'RideBox' }),
     softwareVersion: 1.0,
     timestamp: start,
   });
@@ -66,6 +87,7 @@ export function rideToFit(ride: RideRecord): Uint8Array {
       totalDistance: Math.max(0, last.distance - prevDist),
       avgPower: Math.round(ls.avgPower),
       maxPower: powers.length ? Math.max(...powers) : 0,
+      totalCalories: kjToKcal(powers.reduce((a, b) => a + Math.max(0, b), 0) / 1000),
       ...(ls.avgHr ? { avgHeartRate: Math.round(ls.avgHr), maxHeartRate: Math.round(ls.maxHr!) } : {}),
       ...(ls.avgCadence ? { avgCadence: Math.round(ls.avgCadence) } : {}),
       event: 'lap',
@@ -94,6 +116,7 @@ export function rideToFit(ride: RideRecord): Uint8Array {
     trainingStressScore: Math.round(s.tss * 10) / 10,
     intensityFactor: Math.round(s.if * 1000) / 1000,
     totalWork: Math.round(s.kj * 1000),
+    totalCalories: kjToKcal(s.kj),
     totalAscent: Math.round(s.climb),
     ...(s.avgHr ? { avgHeartRate: Math.round(s.avgHr), maxHeartRate: Math.round(s.maxHr!) } : {}),
     ...(s.avgCadence ? { avgCadence: Math.round(s.avgCadence) } : {}),
@@ -142,5 +165,5 @@ export const GARMIN_IMPORT_URL = 'https://connect.garmin.com/modern/import-data'
  */
 export function sendToGarmin(ride: RideRecord) {
   window.open(GARMIN_IMPORT_URL, '_blank', 'noopener');
-  downloadBlob(rideToFit(ride), rideFileName(ride));
+  downloadBlob(rideToFit(ride, { garminDevice: true }), rideFileName(ride));
 }
