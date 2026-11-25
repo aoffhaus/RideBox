@@ -5,6 +5,28 @@ import { dayStart } from '../training/load';
 // Validated (dataviz validator, dark surface #161b22): blue / orange / aqua.
 export const SERIES = { ctl: '#3987e5', atl: '#d95926', tsb: '#199e70' } as const;
 
+export const FITNESS_RANGES = [
+  { id: '4w', label: '4w', days: 28 },
+  { id: '3m', label: '3m', days: 91 },
+  { id: '6m', label: '6m', days: 182 },
+  { id: '1y', label: '1y', days: 365 },
+] as const;
+export type FitnessRangeId = (typeof FITNESS_RANGES)[number]['id'];
+export const rangeDays = (id: FitnessRangeId) => FITNESS_RANGES.find((r) => r.id === id)!.days;
+
+/** Time scale selector for the fitness chart (shared by the desktop and phone layouts). */
+export function RangeSelect({ value, onChange }: { value: FitnessRangeId; onChange: (id: FitnessRangeId) => void }) {
+  return (
+    <div className="seg" role="group" aria-label="Time scale">
+      {FITNESS_RANGES.map((r) => (
+        <button key={r.id} className={value === r.id ? 'active' : ''} aria-pressed={value === r.id} onClick={() => onChange(r.id)}>
+          {r.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [w, setW] = useState(600);
@@ -62,9 +84,12 @@ export function FitnessChart({ days, height = 260 }: { days: FitnessDay[]; heigh
   };
   const ticks: number[] = [];
   for (let v = lo; v <= hi + 1e-9; v += step) ticks.push(v);
+  // short windows get date labels every 1-2 weeks; long ones get month names
+  const byWeek = days.length <= 90;
+  const weekStep = (iw / days.length) * 7 >= 56 ? 7 : 14;
   const months: number[] = [];
   days.forEach((d, i) => {
-    if (d.date.endsWith('-01')) months.push(i);
+    if (byWeek ? i % weekStep === 0 && i < days.length - 4 : d.date.endsWith('-01')) months.push(i);
   });
   const last = days[split - 1] ?? days[days.length - 1];
   const h = hover != null ? days[hover] : null;
@@ -97,7 +122,7 @@ export function FitnessChart({ days, height = 260 }: { days: FitnessDay[]; heigh
         ))}
         {months.map((i) => (
           <text key={i} x={x(i)} y={height - 6} className="tick" textAnchor="middle">
-            {dayStart(days[i].date).toLocaleDateString(undefined, { month: 'short' })}
+            {dayStart(days[i].date).toLocaleDateString(undefined, byWeek ? { month: 'short', day: 'numeric' } : { month: 'short' })}
           </text>
         ))}
         {split < days.length && (

@@ -5,9 +5,9 @@ import { addDays, dayStart } from '../training/load';
 import type { PlannedWorkout, TrainingPlan } from '../training/model';
 import { weekStart } from '../training/calendar';
 import { rateWorkout } from '../training/levels';
-import { flatten, formatDuration, plannedStats, type Workout } from '../workout/model';
+import { flatten, formatDuration, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
 import { Modal } from './Calendar';
-import { WorkoutChart } from './WorkoutChart';
+import { WorkoutChart, intervalPowerText } from './WorkoutChart';
 
 // ---------- running a coach request ----------
 
@@ -72,19 +72,89 @@ function CoachProgress({ c }: { c: ReturnType<typeof useCoach> }) {
   );
 }
 
-function WorkoutLine({ w, ftp, extra }: { w: Workout; ftp: number; extra?: React.ReactNode }) {
+/** Full details of a suggested workout: stats, chart and interval list. */
+function SuggestionDetail({ w, ftp, reason, onClose, children }: { w: Workout; ftp: number; reason?: string; onClose: () => void; children?: React.ReactNode }) {
   const ivs = flatten(w);
   const s = plannedStats(ivs, ftp);
+  const r = rateWorkout(w, ftp);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   return (
-    <div className="coach-workout">
+    <div className="modal-backdrop coach-detail-bg" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={w.name} onClick={(e) => e.stopPropagation()}>
+        <div className="row space">
+          <h3>{w.name}</h3>
+          <button className="ghost icon" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="muted small">
+          {formatDuration(s.duration)} · TSS {Math.round(s.tss)} · IF {s.if.toFixed(2)} · {r.zone === 'recovery' || r.zone === 'test' ? r.zone : `${r.zone} L${r.level.toFixed(1)}`} · FTP {ftp} W
+        </div>
+        <WorkoutChart intervals={ivs} ftp={ftp} height={120} />
+        {reason && <div className="small">{reason}</div>}
+        {w.description && <div className="muted small">{w.description}</div>}
+        <div className="table-scroll">
+          <table className="interval-table">
+            <thead>
+              <tr><th>#</th><th>Start</th><th>Duration</th><th>Target</th><th></th></tr>
+            </thead>
+            <tbody>
+              {ivs.map((iv, i) => (
+                <tr key={i}>
+                  <td>
+                    <span className="zone-dot" style={{ background: iv.free ? '#5b6573' : zoneFor(intervalFtpFraction(iv, ftp)).color }} />
+                    {i + 1}
+                  </td>
+                  <td>{formatDuration(iv.start)}</td>
+                  <td>{formatDuration(iv.duration)}</td>
+                  <td>{intervalPowerText(iv, ftp)}</td>
+                  <td className="muted">{iv.label ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {children && <div className="row wrap">{children}</div>}
+      </div>
+    </div>
+  );
+}
+
+function WorkoutLine({ w, ftp, extra, reason, actions }: {
+  w: Workout;
+  ftp: number;
+  extra?: React.ReactNode;
+  /** with `actions`, the card opens a details view when clicked */
+  reason?: string;
+  actions?: React.ReactNode;
+}) {
+  const ivs = flatten(w);
+  const s = plannedStats(ivs, ftp);
+  const [open, setOpen] = useState(false);
+  const clickable = actions !== undefined;
+  return (
+    <div
+      className={`coach-workout${clickable ? ' clickable' : ''}`}
+      title={clickable ? 'Click for full workout details' : undefined}
+      onClick={clickable ? (e) => { if (!(e.target as HTMLElement).closest('button, a, input, select, textarea')) setOpen(true); } : undefined}
+    >
       <div className="row space">
         <b>{w.name}</b>
         <span className="muted small">
-          {formatDuration(s.duration)} · TSS {Math.round(s.tss)}
+          {formatDuration(s.duration)} · TSS {Math.round(s.tss)} · IF {s.if.toFixed(2)}
         </span>
       </div>
       <WorkoutChart intervals={ivs} ftp={ftp} height={34} />
       {extra}
+      {clickable && (
+        <div className="row wrap">
+          {actions}
+          <button className="link small" onClick={() => setOpen(true)}>Details</button>
+        </div>
+      )}
+      {open && <SuggestionDetail w={w} ftp={ftp} reason={reason} onClose={() => setOpen(false)}>{actions}</SuggestionDetail>}
     </div>
   );
 }
@@ -481,13 +551,12 @@ export function TodayCard({ state, onRide, onAdd, canRide = true }: {
               key={i}
               w={o.workout}
               ftp={state.settings.ftp}
-              extra={
+              reason={o.reason}
+              extra={<div className="muted small">{o.reason}</div>}
+              actions={
                 <>
-                  <div className="muted small">{o.reason}</div>
-                  <div className="row">
-                    {canRide && <button className="primary" onClick={() => onRide(o.workout, o.reason)}>Ride this</button>}
-                    <button className={canRide ? '' : 'primary'} onClick={() => onAdd(o.workout, o.reason)}>Add to today</button>
-                  </div>
+                  {canRide && <button className="primary" onClick={() => onRide(o.workout, o.reason)}>Ride this</button>}
+                  <button className={canRide ? '' : 'primary'} onClick={() => onAdd(o.workout, o.reason)}>Add to today</button>
                 </>
               }
             />
@@ -588,14 +657,9 @@ export function PlannedCoach({ state, planned, onSwap, btn = '' }: {
               key={i}
               w={o.workout}
               ftp={ftp}
-              extra={
-                <>
-                  <div className="muted small">{o.reason}</div>
-                  <div className="row">
-                    <button className={`primary ${btn}`} onClick={() => onSwap(o.workout, o.reason)}>Use this instead</button>
-                  </div>
-                </>
-              }
+              reason={o.reason}
+              extra={<div className="muted small">{o.reason}</div>}
+              actions={<button className={`primary ${btn}`} onClick={() => onSwap(o.workout, o.reason)}>Use this instead</button>}
             />
           ))}
           {answer.problems.length > 0 && <div className="muted small">Skipped {answer.problems.length} option{answer.problems.length === 1 ? '' : 's'} that didn&apos;t check out: {answer.problems.join(' ')}</div>}

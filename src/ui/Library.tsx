@@ -7,7 +7,27 @@ import { WorkoutChart } from './WorkoutChart';
 import { downloadBlob } from '../export/fit';
 import { WorkoutView } from './WorkoutView';
 import { LevelBadge } from './Levels';
-import { rateWorkout, type Levels } from '../training/levels';
+import { LEVEL_ZONES, ZONE_NAMES, rateWorkout, type Levels } from '../training/levels';
+
+/** [label, min, max) buckets for the library filters */
+type Bucket = readonly [label: string, min: number, max: number];
+const DURATIONS: Bucket[] = [['Under 30 min', 0, 30], ['30–45 min', 30, 45], ['45–75 min', 45, 75], ['75–120 min', 75, 120], ['2 h +', 120, Infinity]];
+const TSS_BUCKETS: Bucket[] = [['Under 40', 0, 40], ['40–70', 40, 70], ['70–100', 70, 100], ['100–150', 100, 150], ['150 +', 150, Infinity]];
+const IF_BUCKETS: Bucket[] = [['Under 0.65', 0, 0.65], ['0.65–0.80', 0.65, 0.8], ['0.80–0.90', 0.8, 0.9], ['0.90–1.00', 0.9, 1], ['1.00 +', 1, Infinity]];
+const LEVEL_BUCKETS: Bucket[] = [['1–3', 1, 4], ['4–5', 4, 6], ['6–7', 6, 8], ['8–10', 8, 11]];
+const NO_FILTERS = { zone: 'all', dur: '', tss: '', ifb: '', level: '' };
+
+function BucketSelect({ label, value, onChange, buckets }: { label: string; value: string; onChange: (v: string) => void; buckets: Bucket[] }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Any</option>
+        {buckets.map((b, i) => <option key={b[0]} value={i}>{b[0]}</option>)}
+      </select>
+    </label>
+  );
+}
 
 interface Props {
   workouts: StoredWorkout[];
@@ -25,6 +45,7 @@ export function Library({ workouts, ftp, levels, onChange, onRide, onEdit }: Pro
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [drag, setDrag] = useState(false);
   const [filter, setFilter] = useState('');
+  const [f, setF] = useState(NO_FILTERS);
   const [viewing, setViewing] = useState<StoredWorkout | null>(null);
 
   async function importTexts(items: { name: string; text: string }[]) {
@@ -50,7 +71,17 @@ export function Library({ workouts, ftp, levels, onChange, onRide, onEdit }: Pro
     await importTexts(items);
   }
 
-  const shown = workouts.filter((w) => w.workout.name.toLowerCase().includes(filter.toLowerCase()));
+  const inBucket = (b: Bucket[], idx: string, v: number) => idx === '' || (v >= b[Number(idx)][1] && v < b[Number(idx)][2]);
+  const filtering = JSON.stringify(f) !== JSON.stringify(NO_FILTERS);
+  const shown = workouts.filter((w) => {
+    if (!w.workout.name.toLowerCase().includes(filter.toLowerCase())) return false;
+    if (!filtering) return true;
+    const st = plannedStats(flatten(w.workout), ftp);
+    const r = rateWorkout(w.workout, ftp);
+    if (f.zone !== 'all' && r.zone !== f.zone) return false;
+    if (f.level !== '' && !(r.zone !== 'recovery' && r.zone !== 'test' && inBucket(LEVEL_BUCKETS, f.level, r.level))) return false;
+    return inBucket(DURATIONS, f.dur, st.duration / 60) && inBucket(TSS_BUCKETS, f.tss, st.tss) && inBucket(IF_BUCKETS, f.ifb, st.if);
+  });
 
   return (
     <div className="page">
@@ -93,9 +124,26 @@ export function Library({ workouts, ftp, levels, onChange, onRide, onEdit }: Pro
       </div>
 
       <div className="lib-head">
-        <h2>Library ({workouts.length})</h2>
+        <h2>Library ({shown.length === workouts.length ? workouts.length : `${shown.length} of ${workouts.length}`})</h2>
         <input placeholder="Search…" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
+      <div className="lib-filters">
+        <label className="field">
+          <span>Type / zone</span>
+          <select value={f.zone} onChange={(e) => setF({ ...f, zone: e.target.value })}>
+            <option value="all">All</option>
+            {LEVEL_ZONES.map((z) => <option key={z} value={z}>{ZONE_NAMES[z]}</option>)}
+            <option value="recovery">{ZONE_NAMES.recovery}</option>
+            <option value="test">{ZONE_NAMES.test}</option>
+          </select>
+        </label>
+        <BucketSelect label="Duration" value={f.dur} onChange={(v) => setF({ ...f, dur: v })} buckets={DURATIONS} />
+        <BucketSelect label="TSS" value={f.tss} onChange={(v) => setF({ ...f, tss: v })} buckets={TSS_BUCKETS} />
+        <BucketSelect label="IF" value={f.ifb} onChange={(v) => setF({ ...f, ifb: v })} buckets={IF_BUCKETS} />
+        <BucketSelect label="Level" value={f.level} onChange={(v) => setF({ ...f, level: v })} buckets={LEVEL_BUCKETS} />
+        {filtering && <button className="ghost" onClick={() => setF(NO_FILTERS)}>Clear filters</button>}
+      </div>
+      {!shown.length && <p className="muted">No workouts match these filters.</p>}
       <div className="lib-grid">
         {shown.map((sw) => {
           const iv = flatten(sw.workout);
