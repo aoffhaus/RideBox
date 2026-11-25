@@ -159,6 +159,13 @@ describe('recording + FIT', () => {
     expect(messages.sessionMesgs![0].subSport).toBe('virtualActivity');
     expect(messages.recordMesgs![10].heartRate).toBe(121);
     expect(messages.recordMesgs![10].power).toBe(150);
+    expect(messages.sessionMesgs![0].totalCalories).toBe(Math.round(ride.summary.kj));
+    expect(messages.lapMesgs![1].totalCalories).toBe(18); // 60 s × 300 W = 18 kJ
+    expect(messages.fileIdMesgs![0].manufacturer).toBe('development');
+    const garmin = new Decoder(Stream.fromByteArray(rideToFit(ride, { garminDevice: true }))).read();
+    expect(garmin.errors).toEqual([]);
+    expect(garmin.messages.fileIdMesgs![0].manufacturer).toBe('garmin');
+    expect(garmin.messages.fileIdMesgs![0].garminProduct).toBe('edge830');
   });
 });
 
