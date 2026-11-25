@@ -1,6 +1,7 @@
 // Ride photos: a couple of screenshots of the 3D world taken during the ride, like
-// Zwift's. Strava's public API can't attach photos, so they're kept on this device
-// (not synced) and offered on the ride summary to share or save, then add on Strava.
+// Zwift's. The first becomes the ride's stat card (src/ui/statCard.ts: the final
+// stats over the photo). Strava's public API can't attach photos, so they're kept on
+// this device (not synced) and offered on the ride summary to share or save.
 //
 // Two shots are kept per ride:
 //   - "highlight": taken during the ride's hardest effort (after a warm-up): once the

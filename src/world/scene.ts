@@ -887,13 +887,10 @@ function setLimb(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
 }
 
 /** The 3D world view. Reads the session each frame; never changes it. */
-/** Draws on top of a screenshot (e.g. the ride's stats); w × h is the photo size. */
-export type CaptureOverlay = (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
-
 export class WorldView {
   private renderer: THREE.WebGLRenderer;
   /** pending screenshot requests, served right after the next frame renders */
-  private captures: { maxWidth: number; overlay?: CaptureOverlay; resolve: (b: Blob | null) => void }[] = [];
+  private captures: { maxWidth: number; resolve: (b: Blob | null) => void }[] = [];
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(60, 1, 0.3, 12000);
   private rider: RiderModel;
@@ -1438,13 +1435,12 @@ export class WorldView {
   };
 
   /**
-   * A JPEG of the 3D view (not the HTML HUD), at most `maxWidth` px wide, with
-   * `overlay` drawn on top if given. Taken right after the
+   * A JPEG of the 3D view (not the HTML HUD), at most `maxWidth` px wide. Taken right after the
    * next frame renders, while the drawing buffer still holds it (the canvas isn't
    * created with preserveDrawingBuffer). Resolves null if no frame renders soon,
    * e.g. the tab is in the background.
    */
-  capture(maxWidth = 1280, overlay?: CaptureOverlay): Promise<Blob | null> {
+  capture(maxWidth = 1280): Promise<Blob | null> {
     return new Promise((resolve) => {
       let done = false;
       const once = (b: Blob | null) => {
@@ -1453,7 +1449,7 @@ export class WorldView {
           resolve(b);
         }
       };
-      this.captures.push({ maxWidth, overlay, resolve: once });
+      this.captures.push({ maxWidth, resolve: once });
       setTimeout(() => once(null), 10_000);
     });
   }
@@ -1468,9 +1464,7 @@ export class WorldView {
         const c = document.createElement('canvas');
         c.width = Math.round(src.width * k);
         c.height = Math.round(src.height * k);
-        const ctx = c.getContext('2d')!;
-        ctx.drawImage(src, 0, 0, c.width, c.height);
-        r.overlay?.(ctx, c.width, c.height);
+        c.getContext('2d')!.drawImage(src, 0, 0, c.width, c.height);
         c.toBlob((b) => r.resolve(b), 'image/jpeg', 0.88);
       } catch {
         r.resolve(null);
