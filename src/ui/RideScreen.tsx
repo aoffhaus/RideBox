@@ -184,7 +184,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
         <div className="row-badges">
           <span className={`badge ${snap.mode === 'erg' ? 'badge-erg' : 'badge-sim'}`}>{snap.mode === 'erg' ? 'ERG' : 'SIM'}</span>
           {engine && <span className="badge">Intensity {st?.intensity ?? 100}%</span>}
-          {snap.paused && <span className="badge badge-warn">{snap.autoPaused ? 'Paused, pedal to resume' : 'Paused'}</span>}
+          {snap.paused && <span className="badge badge-warn">Paused</span>}
           {!snap.started && <span className="badge badge-warn">Start pedaling to begin</span>}
         </div>
         <IntervalList session={session} snap={snap} ftp={ftp} />
@@ -209,7 +209,7 @@ export function RideScreen({ session, settings, onEnd, onSettingsChange }: Props
         <MiniMap session={session} settings={settings} snap={snap} />
 
         <div className="hud-controls">
-          <button className="span2" onClick={() => session.togglePause()}>{snap.paused && !snap.autoPaused ? '▶ Resume' : '⏸ Pause'}</button>
+          <button className="span2" onClick={() => session.togglePause()}>{snap.paused ? '▶ Resume' : '⏸ Pause'}</button>
           {engine && (
             <>
               <button onClick={() => session.adjustIntensity(-1)} title="Intensity −1% (− key)">−1%</button>

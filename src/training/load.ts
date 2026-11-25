@@ -155,6 +155,52 @@ export function weeklyTotals(entries: LoadEntry[], from: DayKey, to: DayKey): { 
   return [...weeks].map(([week, t]) => ({ week, ...t }));
 }
 
+export interface PeriodTotals {
+  plannedTss: number;
+  plannedSec: number;
+  doneTss: number;
+  doneSec: number;
+  /** Part of planned that was skipped or missed (still included in planned). */
+  skippedTss: number;
+  skippedSec: number;
+}
+
+/**
+ * Planned vs done totals for the days `from`..`to` (inclusive).
+ * Planned = every planned workout in the period, including skipped and missed ones
+ * (those are also reported separately as skipped). Done = everything completed,
+ * planned or not: RideBox rides plus imported Strava activities.
+ */
+const statsCache = new WeakMap<object, { ftp: number; s: ReturnType<typeof plannedStats> }>();
+/** plannedStats of a workout, cached per workout object and FTP. */
+function cachedStats(w: PlannedWorkout['workout'], ftp: number) {
+  const hit = statsCache.get(w);
+  if (hit && hit.ftp === ftp) return hit.s;
+  const s = plannedStats(flatten(w), ftp);
+  statsCache.set(w, { ftp, s });
+  return s;
+}
+
+export function periodTotals(cal: PlannedWorkout[], entries: LoadEntry[], ftp: number, from: DayKey, to: DayKey): PeriodTotals {
+  const t: PeriodTotals = { plannedTss: 0, plannedSec: 0, doneTss: 0, doneSec: 0, skippedTss: 0, skippedSec: 0 };
+  for (const c of cal) {
+    if (c.date < from || c.date > to) continue;
+    const s = cachedStats(c.workout, ftp);
+    t.plannedTss += s.tss;
+    t.plannedSec += s.duration;
+    if (c.status === 'skipped' || c.status === 'missed') {
+      t.skippedTss += s.tss;
+      t.skippedSec += s.duration;
+    }
+  }
+  for (const e of entries) {
+    if (e.date < from || e.date > to) continue;
+    t.doneTss += e.tss;
+    t.doneSec += e.seconds;
+  }
+  return t;
+}
+
 /** Highest average power over any `window`-second stretch of a 1 Hz power series. */
 export function bestAverage(power: number[], window: number): number {
   if (power.length < window) return 0;

@@ -20,7 +20,6 @@ export interface IntervalStats {
 export interface Snapshot {
   started: boolean;
   paused: boolean;
-  autoPaused: boolean;
   elapsed: number; // ride (moving) time
   power: number; // instantaneous
   power3s: number;
@@ -113,9 +112,6 @@ export class RideSession {
 
   started = false;
   paused = false;
-  /** paused automatically because you stopped pedalling */
-  autoPaused = false;
-  private zeroSince = 0;
   ergOn = true;
   elapsed = 0;
   distance = 0;
@@ -226,17 +222,7 @@ export class RideSession {
 
   /** Advance the simulation by dt seconds (exposed for tests). */
   tick(dt: number) {
-    // auto-pause after 3 s without power; resume as soon as you pedal
-    if (this.started) {
-      if (this.power < 5) {
-        this.zeroSince += dt;
-        if (this.zeroSince >= 3) this.autoPaused = true;
-      } else {
-        this.zeroSince = 0;
-        if (this.power > 20) this.autoPaused = false;
-      }
-    }
-    const moving = this.started && !this.paused && !this.autoPaused;
+    const moving = this.started && !this.paused;
     // was the gate ahead a portal? (as of the last tick, before the interval changed under it)
     const portalAhead = this.portalArmed;
     let pt = this.route.at(this.routeDistance);
@@ -377,8 +363,7 @@ export class RideSession {
     }
     return {
       started: this.started,
-      paused: this.paused || this.autoPaused,
-      autoPaused: this.autoPaused,
+      paused: this.paused,
       elapsed: this.elapsed,
       power: this.power,
       power3s: this.power3s,

@@ -7,7 +7,7 @@ import type { Settings, StoredWorkout } from '../storage/db';
 import type { StravaConfig } from '../strava/strava';
 import type { SyncStatus } from '../storage/sync';
 import { monthWeeks, moveTo, newPlanned, scaleWorkout, weekStart } from '../training/calendar';
-import { addDays, dayKey, dayStart, fitnessSeries, formLabel, loadEntries, plannedLoad, today, weeklyTotals, type LoadEntry } from '../training/load';
+import { addDays, dayKey, dayStart, fitnessSeries, formLabel, loadEntries, periodTotals, plannedLoad, today, weeklyTotals, type LoadEntry } from '../training/load';
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../training/model';
 import { LEVEL_ZONES, ZONE_NAMES, difficultyLabel, rateWorkout, type LevelEvent, type LevelZone, type Levels } from '../training/levels';
 import type { AdaptSuggestion, CoachState } from '../training/coach';
@@ -17,7 +17,7 @@ import { WorkoutChart } from '../ui/WorkoutChart';
 import { ActualDetail } from '../ui/ActualDetail';
 import { MiniChart, useCardStats } from '../ui/CardActual';
 import { LEVEL_COLORS } from '../ui/Levels';
-import { FitnessChart, SERIES, WeeklyBars } from '../ui/FitnessChart';
+import { FitnessChart, RangeSelect, rangeDays, SERIES, WeeklyBars, type FitnessRangeId } from '../ui/FitnessChart';
 import { StravaSettings } from '../ui/StravaSettings';
 import { RiderLog } from '../ui/RiderLog';
 import { PlannedCoach, TodayCard } from '../ui/Coach';
@@ -553,34 +553,16 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToas
     for (const e of entries) m.set(e.date, [...(m.get(e.date) ?? []), e]);
     return m;
   }, [entries]);
-  const stats = useMemo(() => new Map(p.calendar.map((c) => [c.id, plannedStats(flatten(c.workout), ftp)])), [p.calendar, ftp]);
   const ridesById = useMemo(() => new Map(p.rides.map((r) => [r.id, r])), [p.rides]);
   const actsById = useMemo(() => new Map(p.acts.map((x) => [x.id, x])), [p.acts]);
   const tssById = useMemo(() => new Map(entries.map((e) => [e.id, e.tss])), [entries]);
   const activePlan = p.plans.find((x) => x.active);
 
   const phaseOf = (ws: DayKey) => activePlan?.phases.find((ph) => ph.start <= addDays(ws, 3) && addDays(ws, 3) <= ph.end);
-  const weekTotals = (ws: DayKey) => {
-    let plannedTss = 0;
-    let plannedSec = 0;
-    let doneTss = 0;
-    let doneSec = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(ws, i);
-      for (const c of byDay.get(d) ?? []) {
-        if (c.status === 'skipped') continue;
-        plannedTss += stats.get(c.id)!.tss;
-        plannedSec += stats.get(c.id)!.duration;
-      }
-      for (const e of actsByDay.get(d) ?? []) {
-        doneTss += e.tss;
-        doneSec += e.seconds;
-      }
-    }
-    return { plannedTss, plannedSec, doneTss, doneSec };
-  };
+  const weekTotals = (ws: DayKey) => periodTotals(p.calendar, entries, ftp, ws, addDays(ws, 6));
 
   const go = (d: DayKey, scroll = true) => {
+    userScrolled.current = true;
     const ws = weekStart(d);
     if (ws < range.from) {
       captureAnchor();
@@ -593,11 +575,15 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToas
     if (d === selected && scroll) scrollToDay(d, true);
   };
   const headRef = useRef<HTMLElement>(null);
-  const scrollToDay = (d: DayKey, smooth: boolean) => {
+  const scrollToDay = (d: DayKey, smooth: boolean, center = false) => {
     const el = dayRefs.current.get(d);
     if (!el) return;
-    const off = (headRef.current?.getBoundingClientRect().height ?? 0) + 12;
-    const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - off);
+    const headH = headRef.current?.getBoundingClientRect().height ?? 0;
+    const rect = el.getBoundingClientRect();
+    // centered: the day sits in the middle of the space below the header (never above its top edge)
+    const space = window.innerHeight - headH;
+    const lead = center ? Math.max(12, (space - rect.height) / 2) : 12;
+    const top = Math.max(0, rect.top + window.scrollY - headH - lead);
     if (Math.abs(top - window.scrollY) < 2) return;
     // Gliding across months of list is slow; long jumps go straight there.
     if (Math.abs(top - window.scrollY) > window.innerHeight * 3) smooth = false;
@@ -618,10 +604,36 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToas
     scrollPending.current = false;
     scrollToDay(selected, true);
   }, [selected, range]); // eslint-disable-line react-hooks/exhaustive-deps
-  // open on today
+  // Open centered on today, and keep it centered while data (plan, rides,
+  // Strava) loads in and shifts the layout, until the person scrolls themselves.
+  const userScrolled = useRef(false);
+  useEffect(() => {
+    const mark = () => {
+      userScrolled.current = true;
+    };
+    const opts = { passive: true } as const;
+    window.addEventListener('touchstart', mark, opts);
+    window.addEventListener('wheel', mark, opts);
+    window.addEventListener('keydown', mark);
+    window.addEventListener('mousedown', mark);
+    return () => {
+      window.removeEventListener('touchstart', mark);
+      window.removeEventListener('wheel', mark);
+      window.removeEventListener('keydown', mark);
+      window.removeEventListener('mousedown', mark);
+    };
+  }, []);
   useLayoutEffect(() => {
-    scrollToDay(t, false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (userScrolled.current) return;
+    scrollToDay(t, false, true);
+  }, [p.calendar, p.rides, p.acts, p.plans, ftp]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // one more pass after first paint (fonts, tile heights), still before any touch
+    const id = requestAnimationFrame(() => {
+      if (!userScrolled.current) scrollToDay(t, false, true);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [p.calendar, p.rides, p.acts, p.plans, ftp]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const captureAnchor = () => {
     const day = agendaRef.current[0];
@@ -657,7 +669,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToas
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        if (autoScrolling.current) return;
+        if (autoScrolling.current || !userScrolled.current) return;
         const line = (headRef.current?.getBoundingClientRect().height ?? 0) + 16;
         const top = agendaRef.current.find((d) => (dayRefs.current.get(d)?.getBoundingClientRect().bottom ?? 0) > line);
         if (top) setSelected(top);
@@ -739,6 +751,7 @@ function CalendarScreen(p: MobileAppProps & { onOpen: (s: Sheet) => void; onToas
             {showDone
               ? `${Math.round(w.doneTss)} / ${Math.round(w.plannedTss)} TSS · ${fmtHm(w.doneSec)} / ${fmtHm(w.plannedSec)}`
               : `${Math.round(w.plannedTss)} TSS · ${fmtHm(w.plannedSec)}`}
+            {w.skippedSec > 0 && ` · ${Math.round(w.skippedTss)} TSS skipped`}
           </span>
         </div>
         {current && (
@@ -1332,11 +1345,13 @@ function ProgressScreen(p: MobileAppProps) {
   const { settings } = p;
   const entries = useMemo(() => loadEntries(p.rides, p.acts, settings.ftp, settings.maxHr), [p.rides, p.acts, settings.ftp, settings.maxHr]);
   const planned = useMemo(() => plannedLoad(p.calendar, settings.ftp), [p.calendar, settings.ftp]);
+  const [range, setRange] = useState<FitnessRangeId>('3m');
+  const days = rangeDays(range);
   const series = useMemo(() => {
-    const all = fitnessSeries(entries, planned, addDays(t, -42 - 365), addDays(t, 14), t);
-    return all.slice(all.length - (42 + 1 + 14));
-  }, [entries, planned, t]);
-  const weeks = useMemo(() => weeklyTotals(entries, addDays(t, -55), t), [entries, t]);
+    const all = fitnessSeries(entries, planned, addDays(t, -days - 365), addDays(t, 14), t);
+    return all.slice(all.length - (days + 1 + 14));
+  }, [entries, planned, t, days]);
+  const weeks = useMemo(() => weeklyTotals(entries, addDays(t, -days), t), [entries, t, days]);
   const now = series.find((d) => d.date === t) ?? series[series.length - 1];
   const recent = p.levelHistory.filter((h) => h.after !== h.before).slice(-4).reverse();
 
@@ -1382,7 +1397,10 @@ function ProgressScreen(p: MobileAppProps) {
           <Stat label="FTP" value={<>{settings.ftp}<small className="m-stat-unit"> W</small></>} sub={`${settings.riderKg > 0 ? (settings.ftp / settings.riderKg).toFixed(2) : '–'} W/kg`} />
         </div>
         <div className="m-card">
-          <div className="small muted">Last 6 weeks · dashed is your plan</div>
+          <div className="row space">
+            <div className="small muted">Dashed is your plan</div>
+            <RangeSelect value={range} onChange={setRange} />
+          </div>
           <FitnessChart days={series} height={190} />
         </div>
         <div className="m-card">

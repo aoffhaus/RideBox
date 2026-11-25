@@ -9,6 +9,7 @@
 
 import type { RideRecord } from '../app/recorder';
 import { flatten, intervalFtpFraction, intervalPowerAt, plannedStats, toWatts, type Workout } from '../workout/model';
+import { settleSkip } from './actual';
 import { dayKey, stravaCopyChecker } from './load';
 import type { PlannedWorkout, StravaActivity } from './model';
 import { isRide } from './model';
@@ -155,7 +156,9 @@ export function rideOutcome(ride: RideRecord, plannedSeconds: number): { outcome
   let held = 0;
   for (const lap of ride.laps) {
     if (!lap.target || lap.target < 0.75 * ride.ftp) continue;
-    const s = ride.samples.slice(lap.startIndex, lap.endIndex);
+    const all = ride.samples.slice(lap.startIndex, lap.endIndex);
+    // ignore the settle window at the start of each lap, like comparePlan
+    const s = all.slice(settleSkip(all.length));
     if (!s.length) continue;
     const avg = s.reduce((a, x) => a + x.power, 0) / s.length;
     work += s.length;

@@ -4,15 +4,8 @@ import type { Settings } from '../storage/db';
 import { addDays, fitnessSeries, formLabel, loadEntries, plannedLoad, today, weeklyTotals } from '../training/load';
 import type { PlannedWorkout, StravaActivity } from '../training/model';
 import { formatDuration } from '../workout/model';
-import { FitnessChart, SERIES, WeeklyBars } from './FitnessChart';
+import { FitnessChart, RangeSelect, rangeDays, SERIES, WeeklyBars, type FitnessRangeId } from './FitnessChart';
 import { RiderLog } from './RiderLog';
-
-const RANGES = [
-  { id: '6w', label: '6 weeks', days: 42 },
-  { id: '3m', label: '3 months', days: 91 },
-  { id: '6m', label: '6 months', days: 182 },
-  { id: '1y', label: '1 year', days: 365 },
-] as const;
 
 export function Fitness({ rides, acts, calendar, settings, onSettingsChange, children }: {
   rides: RideRecord[];
@@ -23,9 +16,9 @@ export function Fitness({ rides, acts, calendar, settings, onSettingsChange, chi
   /** extra sections (progression levels) */
   children?: React.ReactNode;
 }) {
-  const [range, setRange] = useState<(typeof RANGES)[number]['id']>('3m');
+  const [range, setRange] = useState<FitnessRangeId>('3m');
   const [showTable, setShowTable] = useState(false);
-  const days = RANGES.find((r) => r.id === range)!.days;
+  const days = rangeDays(range);
   const t = today();
 
   const entries = useMemo(() => loadEntries(rides, acts, settings.ftp, settings.maxHr), [rides, acts, settings.ftp, settings.maxHr]);
@@ -77,13 +70,7 @@ export function Fitness({ rides, acts, calendar, settings, onSettingsChange, chi
       <div className="card">
         <div className="row space">
           <div className="card-title">Fitness, fatigue &amp; form</div>
-          <div className="seg">
-            {RANGES.map((r) => (
-              <button key={r.id} className={range === r.id ? 'active' : ''} onClick={() => setRange(r.id)}>
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <RangeSelect value={range} onChange={setRange} />
         </div>
         <FitnessChart days={series} />
         <div className="legend">

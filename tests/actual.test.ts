@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePlan, seriesFromStreams, seriesStats, verdict, type ActualSeries } from '../src/training/actual';
+import { INTERVAL_SETTLE_SECONDS, comparePlan, seriesFromStreams, seriesStats, verdict, type ActualSeries } from '../src/training/actual';
 import { flatten, type Workout } from '../src/workout/model';
 
 const wk: Workout = {
@@ -30,6 +30,18 @@ describe('actual vs plan', () => {
     expect(rows.map(verdict)).toEqual(['over', 'under', 'hit']);
   });
 
+  it('ignores the settle window and scores ramps against the scored window', () => {
+    const S = INTERVAL_SETTLE_SECONDS;
+    const ramp: Workout = { name: 'R', steps: [{ type: 'ramp', duration: 60, from: 0.6, to: 0.4 }] };
+    const target = (i: number) => 120 - (40 * i) / 60; // 200 W FTP
+    const p = Array.from({ length: 60 }, (_, i) => (i < S ? 50 : target(i)));
+    const [r] = comparePlan(flatten(ramp), 200, series(p, p.map((_, i) => (i < S ? 200 : 140))));
+    expect(verdict(r)).toBe('hit');
+    expect(r.avgHr).toBe(140);
+    const hi = comparePlan(flatten(wk), 200, series([...Array(60).fill(100), ...Array(S).fill(0), ...Array(110).fill(200), ...Array(60).fill(100)]));
+    expect(hi[1].avgPower).toBe(200);
+  });
+
   it('summarizes a series', () => {
     const st = seriesStats(series(Array(3600).fill(200), Array(3600).fill(150)), 200);
     expect(st.np).toBeCloseTo(200);
@@ -56,8 +68,18 @@ describe('Strava streams', () => {
 
 describe('card hit count', async () => {
   const { hitCount } = await import('../src/ui/CardActual');
-  it('counts targeted intervals within ±5%', () => {
-    const p = [...Array(60).fill(130), ...Array(120).fill(198), ...Array(60).fill(100)];
+  it('counts targeted intervals at or above target, not under', () => {
+    const p = [...Array(60).fill(70), ...Array(120).fill(198), ...Array(60).fill(100)];
     expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 2, of: 3 });
+  });
+  it('does not count over-power as a miss', () => {
+    const p = [...Array(60).fill(100), ...Array(120).fill(260), ...Array(60).fill(100)];
+    expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 3, of: 3 });
+  });
+  it('ignores the first seconds of an interval (ramp-up)', () => {
+    const p = [...Array(60).fill(100), ...Array(INTERVAL_SETTLE_SECONDS).fill(0), ...Array(120 - INTERVAL_SETTLE_SECONDS).fill(200), ...Array(60).fill(100)];
+    const rows = comparePlan(flatten(wk), 200, series(p));
+    expect(rows[1].avgPower).toBe(200);
+    expect(hitCount(flatten(wk), 200, series(p))).toEqual({ hit: 3, of: 3 });
   });
 });

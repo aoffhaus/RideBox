@@ -201,7 +201,7 @@ export function MetricsChart({ series, intervals, ftp }: { series: ActualSeries;
 
 // ---------- plan vs actual ----------
 
-const VERDICT = { hit: 'On target', over: 'Over', under: 'Under', short: 'Cut short' } as const;
+const VERDICT = { hit: 'On target', over: 'On target (over)', under: 'Under', short: 'Cut short' } as const;
 
 function PlanTable({ intervals, ftp, series }: { intervals: Interval[]; ftp: number; series: ActualSeries }) {
   const rows = useMemo(() => comparePlan(intervals, ftp, series), [intervals, ftp, series]);
