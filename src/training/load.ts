@@ -155,6 +155,35 @@ export function weeklyTotals(entries: LoadEntry[], from: DayKey, to: DayKey): { 
   return [...weeks].map(([week, t]) => ({ week, ...t }));
 }
 
+export interface PeriodTotals {
+  plannedTss: number;
+  plannedSec: number;
+  doneTss: number;
+  doneSec: number;
+}
+
+/**
+ * Planned vs done totals for the days `from`..`to` (inclusive).
+ * Planned = every planned workout in the period, ridden or not (skipped ones were
+ * dropped from the plan, so they don't count). Done = everything completed,
+ * planned or not: RideBox rides plus imported Strava activities.
+ */
+export function periodTotals(cal: PlannedWorkout[], entries: LoadEntry[], ftp: number, from: DayKey, to: DayKey): PeriodTotals {
+  const t: PeriodTotals = { plannedTss: 0, plannedSec: 0, doneTss: 0, doneSec: 0 };
+  for (const c of cal) {
+    if (c.date < from || c.date > to || c.status === 'skipped') continue;
+    const s = plannedStats(flatten(c.workout), ftp);
+    t.plannedTss += s.tss;
+    t.plannedSec += s.duration;
+  }
+  for (const e of entries) {
+    if (e.date < from || e.date > to) continue;
+    t.doneTss += e.tss;
+    t.doneSec += e.seconds;
+  }
+  return t;
+}
+
 /** Highest average power over any `window`-second stretch of a 1 Hz power series. */
 export function bestAverage(power: number[], window: number): number {
   if (power.length < window) return 0;

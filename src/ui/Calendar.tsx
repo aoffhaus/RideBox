@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings, StoredWorkout } from '../storage/db';
 import { copyTo, monthWeeks, moveTo, newPlanned, scaleWorkout } from '../training/calendar';
-import { addDays, dayKey, dayStart, loadEntries, today, type LoadEntry } from '../training/load';
+import { addDays, dayKey, dayStart, loadEntries, periodTotals, today, type LoadEntry } from '../training/load';
 import type { DayKey, PlannedWorkout, StravaActivity, TrainingPlan } from '../training/model';
 import { flatten, formatDuration, intervalFtpFraction, plannedStats, zoneFor, type Workout } from '../workout/model';
 import { WorkoutChart } from './WorkoutChart';
@@ -117,21 +117,7 @@ export function Calendar(props: CalendarProps) {
         </div>
         {weeks.map((w) => {
           const days = Array.from({ length: 7 }, (_, i) => addDays(w, i));
-          let plannedTss = 0;
-          let plannedSec = 0;
-          let doneTss = 0;
-          let doneSec = 0;
-          for (const d of days) {
-            for (const p of byDay.get(d) ?? []) {
-              const s = stats.get(p.id)!;
-              plannedTss += s.tss;
-              plannedSec += s.duration;
-            }
-            for (const e of actsByDay.get(d) ?? []) {
-              doneTss += e.tss;
-              doneSec += e.seconds;
-            }
-          }
+          const { plannedTss, plannedSec, doneTss, doneSec } = periodTotals(calendar, entries, settings.ftp, w, addDays(w, 6));
           const ph = phaseOn(addDays(w, 3));
           return (
             <div className="cal-row" key={w}>

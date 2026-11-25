@@ -121,3 +121,19 @@ describe('FTP estimate', () => {
     expect(est).toMatchObject({ ftp: 285, best20: 300, rideId: 'recent' });
   });
 });
+
+describe('periodTotals', () => {
+  it('planned counts every planned workout, done counts everything completed', async () => {
+    const { periodTotals } = await import('../src/training/load');
+    const w = { name: 'w', steps: [{ type: 'steady', duration: 3600, power: 1, unit: 'ftp' }] } as never;
+    const pw = (id: string, date: string, status: 'planned' | 'done' | 'missed' | 'skipped') => ({ id, date, workout: w, status, origin: 'manual', createdAt: 0 }) as never;
+    const cal = [pw('a', '2026-06-01', 'done'), pw('b', '2026-06-02', 'missed'), pw('c', '2026-06-03', 'planned'), pw('d', '2026-06-04', 'skipped'), pw('e', '2026-06-09', 'planned')];
+    const entries = loadEntries([ride('r1', new Date(2026, 5, 1, 8).getTime(), 80)], [act({ start: new Date(2026, 5, 5, 9).getTime(), weightedWatts: 200, deviceWatts: true })], 250, 190);
+    const t = periodTotals(cal, entries, 250, '2026-06-01', '2026-06-07');
+    expect(t.plannedTss).toBeCloseTo(300, 0);
+    expect(t.plannedSec).toBe(3 * 3600);
+    // planned ride + unplanned Strava ride both count as done
+    expect(t.doneSec).toBe(7200);
+    expect(t.doneTss).toBeGreaterThan(80);
+  });
+});
