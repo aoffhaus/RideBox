@@ -5,6 +5,8 @@ import { DEFAULT_RIDER, stepSpeed, type RiderParams } from '../physics/rider';
 import { ROUTE_PRESETS, generateRoute, rng, type Route, type RoutePresetId } from '../world/route';
 import { ArchTracker } from '../world/arches';
 import { summarize, type Lap, type RideRecord, type Sample } from './recorder';
+import { rateWorkout, ZONE_NAMES } from '../training/levels';
+import type { PhotoKind } from './photos';
 import type { Settings } from '../storage/db';
 import { uid } from '../storage/db';
 
@@ -103,6 +105,8 @@ export class RideSession {
   readonly engine?: WorkoutEngine;
   readonly startTime = Date.now();
   readonly samples: Sample[] = [];
+  /** screenshots taken by the ride screen; saved with the ride when it ends */
+  readonly photos = new Map<PhotoKind, Blob>();
   readonly laps: Lap[] = [];
   readonly arch = new ArchTracker();
   readonly rider: RiderParams;
@@ -412,10 +416,12 @@ export class RideSession {
     this.closeLap(this.engine ? this.intervalName(this.lastIntervalIndex) ?? 'Cool down' : undefined);
     const ftp = this.opts.settings.ftp;
     const workoutName = this.engine?.workout.name;
+    const focus = this.engine ? ZONE_NAMES[rateWorkout(this.engine.workout, ftp).zone] : undefined;
     return {
       id: uid(),
       name: workoutName ?? (this.portalRun ? 'Portal run' : `${this.route.preset.name} ride`),
       workoutName,
+      focus,
       // a portal run has no single route: it goes by the workout that was ridden
       routeName: this.portalRun ? workoutName ?? 'Portal run' : this.route.preset.name,
       startTime: this.startTime,

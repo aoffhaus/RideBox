@@ -3,12 +3,18 @@ import { rideFileName, rideToFit } from '../export/fit';
 import { formatDuration } from '../workout/model';
 import { saveRide } from '../storage/db';
 import { updateActivity, uploadFit } from './strava';
+import { ZONE_NAMES, zoneOfFraction } from '../training/levels';
+
+/** The workout's focus, or for a free ride (or an older record) the zone its IF lands in. */
+export function rideFocus(ride: RideRecord): string {
+  return ride.focus ?? ZONE_NAMES[zoneOfFraction(ride.summary.if)];
+}
 
 function description(ride: RideRecord) {
   const s = ride.summary;
   const parts = [
     ride.workoutName ? `Workout: ${ride.workoutName}` : 'Free ride',
-    `Route: ${ride.routeName}`,
+    `Focus: ${rideFocus(ride)}`,
     `${formatDuration(s.duration)} · NP ${Math.round(s.np)} W · IF ${s.if.toFixed(2)} · TSS ${Math.round(s.tss)}`,
     'Ridden on RideBox',
   ];

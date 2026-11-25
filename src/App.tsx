@@ -4,7 +4,8 @@ import { bluetoothAvailable, pairHeartRate, pairTrainer } from './ble/bluetooth'
 import { SimulatedHrm, SimulatedTrainer } from './ble/simulated';
 import { RideSession } from './app/session';
 import type { RideRecord } from './app/recorder';
-import { DEFAULT_SETTINGS, deleteOne, deleteRide, getFlag, listAll, listRides, putOne, listWorkouts, loadSettings, saveRide, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
+import { DEFAULT_SETTINGS, deleteOne, deleteRide, getFlag, listAll, listRides, putOne, listWorkouts, loadSettings, saveRide, saveRidePhotos, saveSettings, saveWorkout, setFlag, uid, type Settings, type StoredWorkout } from './storage/db';
+import { orderedPhotos } from './app/photos';
 import { BUILTIN_WORKOUTS } from './workout/builtin';
 import { flatten, formatDuration, plannedStats } from './workout/model';
 import { ROUTE_PRESETS, generateRoute, type Route, type RoutePresetId } from './world/route';
@@ -410,6 +411,7 @@ export function App() {
     const rec = session.finish();
     if (rec.samples.length > 10) {
       await saveRide(rec);
+      await saveRidePhotos(rec.id, orderedPhotos(session.photos)).catch(() => {});
       setSummary(rec);
       // ridden from the calendar: link it to that workout
       const planned = calendar.find((c) => `cal:${c.id}` === selected);

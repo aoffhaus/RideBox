@@ -16,7 +16,7 @@ export type SyncedStore = (typeof SYNCED_STORES)[number];
 
 let dbp: Promise<IDBPDatabase> | null = null;
 export function db() {
-  dbp ??= openDB('ridebox', 3, {
+  dbp ??= openDB('ridebox', 4, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore('workouts', { keyPath: 'id' });
@@ -32,6 +32,8 @@ export function db() {
       }
       // second-by-second Strava data, downloaded once per activity
       if (oldVersion < 3) d.createObjectStore('strava_streams', { keyPath: 'id' });
+      // ride screenshots (Blobs), keyed by ride id; local-only, not synced
+      if (oldVersion < 4) d.createObjectStore('ride_photos');
     },
   });
   return dbp;
@@ -105,6 +107,15 @@ export async function saveRide(r: RideRecord) {
 }
 export async function deleteRide(id: string) {
   await del('rides', id);
+  await (await db()).delete('ride_photos', id);
+}
+
+/** Screenshots from a ride, kept on this device only (see src/app/photos.ts). */
+export async function saveRidePhotos(rideId: string, photos: Blob[]) {
+  if (photos.length) await (await db()).put('ride_photos', photos, rideId);
+}
+export async function getRidePhotos(rideId: string): Promise<Blob[]> {
+  return ((await (await db()).get('ride_photos', rideId)) as Blob[] | undefined) ?? [];
 }
 
 export async function getFlag(key: string): Promise<unknown> {
