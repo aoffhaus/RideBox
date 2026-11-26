@@ -6,6 +6,8 @@ import { comparePlan, seriesFromRide, seriesStats, verdict, type ActualSeries } 
 import type { StravaActivity } from '../training/model';
 import { formatDuration, intervalFtpFraction, plannedStats, toWatts, totalDuration, zoneFor, type Interval } from '../workout/model';
 import { CADENCE_COLOR } from './WorkoutChart';
+import { ActivityPowerCurve } from './PowerCurve';
+import { useRideCurve } from '../app/efforts';
 
 const HR_COLOR = '#ff6b81';
 const TARGET_COLOR = '#f2c94c';
@@ -72,7 +74,13 @@ export function linePath(values: (number | undefined)[], n: number, x: (i: numbe
 const W = 1000;
 
 /** Power (with the plan behind it), heart rate and cadence, stacked on one timeline with a hover readout. */
-export function MetricsChart({ series, intervals, ftp }: { series: ActualSeries; intervals?: Interval[]; ftp: number }) {
+export function MetricsChart({ series, intervals, ftp, highlight }: {
+  series: ActualSeries;
+  intervals?: Interval[];
+  ftp: number;
+  /** a window (s) to mark, e.g. the best effort hovered on the power curve */
+  highlight?: [number, number] | null;
+}) {
   const [hover, setHover] = useState<number | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const planned = intervals ? totalDuration(intervals) : 0;
@@ -187,6 +195,12 @@ export function MetricsChart({ series, intervals, ftp }: { series: ActualSeries;
             </svg>
           </div>
         )}
+        {highlight && (
+          <div
+            className="metrics-band"
+            style={{ left: `${(Math.min(highlight[0], n) / n) * 100}%`, width: `${Math.max(0.3, ((Math.min(highlight[1], n) - Math.min(highlight[0], n)) / n) * 100)}%` }}
+          />
+        )}
         {hover != null && <div className="metrics-cursor" style={{ left: `${(at / n) * 100}%` }} />}
         <div className="metrics-axis">
           {ticks.map((t) => (
@@ -281,8 +295,10 @@ function PlanList({ intervals, ftp, series }: { intervals: Interval[]; ftp: numb
  * Everything about a ride that happened: summary stats (next to the plan's when there was one),
  * the power / HR / cadence chart, and a per-interval plan vs actual table.
  */
-export function ActualDetail({ ride, act, intervals, settings, tss, compact }: {
+export function ActualDetail({ ride, act, intervals, settings, tss, compact, focus }: {
   ride?: RideRecord;
+  /** a window (s) to mark on the chart, e.g. a record effort */
+  focus?: [number, number];
   /** phone layout: intervals as a list instead of a wide table */
   compact?: boolean;
   /** estimated TSS to show when there's no power series (e.g. HR-based for a Strava activity) */
@@ -293,6 +309,9 @@ export function ActualDetail({ ride, act, intervals, settings, tss, compact }: {
   settings: Settings;
 }) {
   const { series, loading, error } = useActualSeries(ride, act, true);
+  const curve = useRideCurve(ride, act, series);
+  const [hl, setHl] = useState<[number, number] | null>(null);
+  const start = ride?.startTime ?? act?.start ?? 0;
   const ftp = ride?.ftp || settings.ftp;
   const st = useMemo(() => (series ? seriesStats(series, ftp) : null), [series, ftp]);
   const plan = useMemo(() => (intervals?.length ? plannedStats(intervals, ftp) : null), [intervals, ftp]);
@@ -339,7 +358,7 @@ export function ActualDetail({ ride, act, intervals, settings, tss, compact }: {
         </div>
       )}
       {error && <div className="banner err small">{error}</div>}
-      {series && <MetricsChart series={series} intervals={intervals} ftp={ftp} />}
+      {series && <MetricsChart series={series} intervals={intervals} ftp={ftp} highlight={hl ?? focus} />}
       {series && (
         <div className="muted small legend">
           <span style={{ color: '#fff' }}>■ power</span>
@@ -348,6 +367,7 @@ export function ActualDetail({ ride, act, intervals, settings, tss, compact }: {
           {series.cadence && <span style={{ color: CADENCE_COLOR }}>■ cadence</span>}
         </div>
       )}
+      {curve && (ride || act) && <ActivityPowerCurve id={(ride ?? act)!.id} start={start} curve={curve} settings={settings} onHighlight={setHl} />}
       {series && intervals && intervals.length > 1 && (
         <>
           <div className="card-title">Plan vs actual</div>

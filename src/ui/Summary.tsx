@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { seriesFromRide } from '../training/actual';
 import { MetricsChart } from './ActualDetail';
+import { ActivityPowerCurve } from './PowerCurve';
+import { rideEfforts } from '../app/efforts';
 import { CADENCE_COLOR } from './WorkoutChart';
 import type { RideRecord } from '../app/recorder';
 import { lapStats } from '../app/recorder';
@@ -156,6 +158,8 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
 }) {
   const s = ride.summary;
   const series = useMemo(() => seriesFromRide(ride), [ride]);
+  const curve = useMemo(() => rideEfforts(ride).power, [ride]);
+  const [hl, setHl] = useState<[number, number] | null>(null);
   const [name, setName] = useState(ride.name);
   const [renameMsg, setRenameMsg] = useState('');
   const [garminHint, setGarminHint] = useState(false);
@@ -240,11 +244,12 @@ export function Summary({ ride, settings, stravaConnected, onStravaUpload, onRen
           </div>
         ))}
       </div>
-      {ride.samples.length > 1 && <MetricsChart series={series} ftp={ride.ftp} />}
+      {ride.samples.length > 1 && <MetricsChart series={series} ftp={ride.ftp} highlight={hl} />}
       <div className="muted small legend">
         <span style={{ color: '#fff' }}>■ power</span> <span style={{ color: '#f2c94c' }}>■ target</span> <span style={{ color: '#ff6b81' }}>■ heart rate</span>{' '}
         <span style={{ color: CADENCE_COLOR }}>■ cadence</span>
       </div>
+      {curve && <ActivityPowerCurve id={ride.id} start={ride.startTime} curve={curve} settings={settings} onHighlight={setHl} />}
       {ride.laps.length > 1 && (
         <table className="laps">
           <thead>
