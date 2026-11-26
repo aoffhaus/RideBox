@@ -2,7 +2,7 @@
 // the all-time top 3 for Strava's power durations and, from outdoor rides, its
 // cycling distances.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RideRecord } from '../app/recorder';
 import { useEffortSources } from '../app/efforts';
 import { listAll, listRides, type Settings } from '../storage/db';
@@ -15,7 +15,7 @@ import type { StravaActivity } from '../training/model';
 import { formatDuration } from '../workout/model';
 import { ActualDetail } from './ActualDetail';
 import { Modal } from './Calendar';
-import { fmtSpeed } from './format';
+import { fmtSpeed, speedUnit } from './format';
 import { CURVE_COLORS, PeriodSelect, PERIODS, periodRange, periodSeries, PowerCurveChart, shortDate, type CurveSeries, type PeriodId } from './PowerCurve';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -124,6 +124,58 @@ function HistoryLoader({ rides, acts, onImported }: { rides: RideRecord[]; acts:
   );
 }
 
+interface RecordItem {
+  key: string;
+  label: string;
+  /** the record, shown under the label */
+  best?: string;
+  rows: { src: EffortSource; value: ReactNode; extra: string; open: () => void }[];
+}
+
+/** A row of intervals; tapping one opens its top 3 (tap again to close). */
+function RecordPicker({ items, empty }: { items: RecordItem[]; empty: string }) {
+  const [sel, setSel] = useState<string | null>(null);
+  const item = items.find((i) => i.key === sel);
+  return (
+    <div className="record-picker">
+      <div className="record-chips" role="tablist">
+        {items.map((i) => (
+          <button
+            key={i.key}
+            role="tab"
+            aria-selected={i.key === sel}
+            className={`record-chip${i.key === sel ? ' active' : ''}${i.best ? '' : ' none'}`}
+            onClick={() => setSel(i.key === sel ? null : i.key)}
+          >
+            <span className="record-chip-label">{i.label}</span>
+            <span className="record-chip-best">{i.best ?? '—'}</span>
+          </button>
+        ))}
+      </div>
+      {item && (
+        <div className="record-card" role="tabpanel">
+          <div className="record-name">{item.label}</div>
+          {item.rows.length ? (
+            item.rows.map((r, k) => (
+              <button key={r.src.id} className="record-row" onClick={r.open}>
+                <span className="record-medal" aria-label={`#${k + 1}`}>{MEDALS[k]}</span>
+                <span className="record-val">
+                  {r.value} <span className="muted">{r.extra}</span>
+                </span>
+                <span className="record-src muted">
+                  {shortDate(r.src.start)} · {r.src.name}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="muted small">{empty}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BestEfforts({ rides, acts, settings, stravaReady, onImported, phone }: {
   rides: RideRecord[];
   acts: StravaActivity[];
@@ -177,56 +229,40 @@ export function BestEfforts({ rides, acts, settings, stravaReady, onImported, ph
       </div>
 
       <h3 className="be-h">All-time power records</h3>
-      <div className="records">
-        {power.map((r) => (
-          <div key={r.s} className="record-card">
-            <div className="record-name">{r.label}</div>
-            {r.top.length ? (
-              r.top.map((t, i) => {
-                const kg = weightOn(settings, dayKey(t.src.start));
-                return (
-                  <button key={t.src.id} className="record-row" onClick={() => setPick({ src: t.src, focus: [t.at, t.at + r.s], title: `${r.label} · ${t.w} W` })}>
-                    <span className="record-medal" aria-label={`#${i + 1}`}>{MEDALS[i]}</span>
-                    <span className="record-val">
-                      <b>{t.w} W</b> <span className="muted">{(t.w / kg).toFixed(2)} W/kg</span>
-                    </span>
-                    <span className="record-src muted">
-                      {shortDate(t.src.start)} · {t.src.name}
-                    </span>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="muted small">No effort yet</div>
-            )}
-          </div>
-        ))}
-      </div>
+      <RecordPicker
+        items={power.map((r) => ({
+          key: String(r.s),
+          label: r.label,
+          best: r.top[0] ? `${r.top[0].w} W` : undefined,
+          rows: r.top.map((t) => {
+            const kg = weightOn(settings, dayKey(t.src.start));
+            return {
+              src: t.src,
+              value: <b>{t.w} W</b>,
+              extra: `${(t.w / kg).toFixed(2)} W/kg`,
+              open: () => setPick({ src: t.src, focus: [t.at, t.at + r.s], title: `${r.label} · ${t.w} W` }),
+            };
+          }),
+        }))}
+        empty="No effort yet"
+      />
 
       <h3 className="be-h">All-time distance records</h3>
       <div className="muted small">Outdoor rides only. Fastest elapsed time over each distance, as Strava times it.</div>
-      <div className="records">
-        {dist.map((r) => (
-          <div key={r.label} className="record-card">
-            <div className="record-name">{r.label}</div>
-            {r.top.length ? (
-              r.top.map((t, i) => (
-                <button key={t.src.id} className="record-row" onClick={() => setPick({ src: t.src, focus: [t.at, t.at + t.t], title: `${r.label} · ${formatDuration(t.t)}` })}>
-                  <span className="record-medal" aria-label={`#${i + 1}`}>{MEDALS[i]}</span>
-                  <span className="record-val">
-                    <b>{formatDuration(t.t)}</b> <span className="muted">{fmtSpeed(r.m / t.t, settings)} {settings.units === 'metric' ? 'km/h' : 'mph'}</span>
-                  </span>
-                  <span className="record-src muted">
-                    {shortDate(t.src.start)} · {t.src.name}
-                  </span>
-                </button>
-              ))
-            ) : (
-              <div className="muted small">No outdoor ride this long yet</div>
-            )}
-          </div>
-        ))}
-      </div>
+      <RecordPicker
+        items={dist.map((r) => ({
+          key: r.label,
+          label: r.label,
+          best: r.top[0] ? formatDuration(r.top[0].t) : undefined,
+          rows: r.top.map((t) => ({
+            src: t.src,
+            value: <b>{formatDuration(t.t)}</b>,
+            extra: `${fmtSpeed(r.m / t.t, settings)} ${speedUnit(settings)}`,
+            open: () => setPick({ src: t.src, focus: [t.at, t.at + t.t], title: `${r.label} · ${formatDuration(t.t)}` }),
+          })),
+        }))}
+        empty="No outdoor ride this long yet"
+      />
 
       {pick && (
         <Modal title={pick.src.name} onClose={() => setPick(null)}>
