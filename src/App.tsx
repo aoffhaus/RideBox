@@ -36,8 +36,10 @@ import { newPlanned } from './training/calendar';
 import { AdaptReview, PlanBuilder, PlannedCoach, TodayCard } from './ui/Coach';
 import { PlanManager } from './ui/Plans';
 import { invalidateStreams, syncMissingStreams } from './strava/streams';
+import { invalidateEfforts } from './app/efforts';
 import type { Workout } from './workout/model';
 import { Fitness } from './ui/Fitness';
+import { BestEfforts } from './ui/BestEfforts';
 import { MobileApp } from './mobile/MobileApp';
 import { ChainTracker } from './chains/ChainTracker';
 
@@ -78,8 +80,9 @@ if (pendingOAuth || serverReturn) history.replaceState(null, '', location.pathna
 
 const SYNC_LABEL: Record<SyncStatus, string> = { off: '', syncing: '⟳ Syncing', synced: '✓ Synced', offline: '⚠ Offline', error: '⚠ Sync error' };
 
-type Tab = 'ride' | 'calendar' | 'workouts' | 'fitness' | 'history' | 'chains' | 'settings';
-const TABS: Tab[] = ['ride', 'calendar', 'workouts', 'fitness', 'history', 'chains', 'settings'];
+type Tab = 'ride' | 'calendar' | 'workouts' | 'fitness' | 'efforts' | 'history' | 'chains' | 'settings';
+const TABS: Tab[] = ['ride', 'calendar', 'workouts', 'fitness', 'efforts', 'history', 'chains', 'settings'];
+const TAB_LABELS: Partial<Record<Tab, string>> = { efforts: 'Best efforts' };
 
 /** The chain tracker keeps its data in the Worker's D1, so it needs the private site. */
 export function ChainsNeedServer() {
@@ -163,6 +166,7 @@ export function App() {
     setRides(rs);
     setActs(as);
     setCalendar(cal);
+    invalidateEfforts();
     setPlans(await listAll<TrainingPlan>('plans'));
     setLastReview((await getFlag('coach-last-review')) as string | undefined);
   }, []);
@@ -513,7 +517,7 @@ export function App() {
                 setEditing(undefined);
               }}
             >
-              {t[0].toUpperCase() + t.slice(1)}
+              {TAB_LABELS[t] ?? t[0].toUpperCase() + t.slice(1)}
             </button>
           ))}
         </nav>
@@ -826,6 +830,8 @@ export function App() {
         <Fitness rides={rides} acts={acts} calendar={calendar} settings={settings} onSettingsChange={updateSettings}>
           <LevelsCard levels={levels} history={levelHistory} />
         </Fitness>
+      ) : tab === 'efforts' ? (
+        <BestEfforts rides={rides} acts={acts} settings={settings} stravaReady={canReadActivities(strava)} onImported={refresh} />
       ) : tab === 'history' ? (
         <History rides={rides} settings={settings} stravaConnected={isConnected(strava)} onOpen={setSummary} onChange={refresh} />
       ) : tab === 'chains' ? (

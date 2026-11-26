@@ -64,6 +64,13 @@ Strava's API doesn't let apps upload an activity as *Only You*. To keep uploads 
   - After each ride, **How did it feel?** on the summary feeds levels and adaptations.
   - Requests stream the coach's reasoning while it works. A daily cap (`COACH_DAILY_LIMIT` in `wrangler.jsonc`, default 40) guards against runaway cost; a new plan typically costs well under a dollar with Claude Opus, and a daily pick a few cents.
 
+## Power curve and best efforts
+
+- **On every ride** (click a ride or Strava activity on the calendar, or open a ride from History) a **power curve** shows the ride's best power for every duration against the best of the **past 6 weeks** up to that ride (switch to 3 months, 6 months, a year or all time). Hover or drag across it: the readout shows the watts, W/kg and when each best effort happened (the time into this ride, or the date and ride for the period), and the ride's power chart above marks the window.
+- **Best efforts** (a tab on the desktop; *Progress → Best efforts* on a phone): your power curve for 6 weeks, 3 months, 6 months, a year, this year, all time or a custom date range, optionally compared with a second period, then your **all-time top 3** for Strava's power durations (5 s to 1 hr) and its cycling distances (5 mi to 180 km). Each set of records is a row of intervals (with your record under each); tap one to open its top 3, and tap a ride there to open it with the effort highlighted. Distance records count **outdoor rides only**.
+- Best efforts are worked out the way Strava does, so they match its numbers: power is the best average on the elapsed clock with stopped time counting as 0 W, rounded down; distance is the fastest elapsed time between GPS samples that far apart. Strava's estimated power (no power meter) doesn't count, and a Strava copy of a RideBox ride counts once.
+- RideBox first imports the last 180 days from Strava. **Load full Strava history** on the Best efforts page imports everything older and downloads each ride's data, paced to Strava's request limits (about 90 rides per 15 minutes while the page is open). Rides downloaded before this update are downloaded again in the background to pick up distance.
+
 ## Claude connector (chat with your training in Claude)
 
 RideBox is also an MCP server, so you can add it to Claude (claude.ai on the web, desktop or phone, and Claude Code) as a **custom connector**. Then you can talk through your training in any Claude chat, and Claude can change things directly.

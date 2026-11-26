@@ -34,6 +34,8 @@ export interface StravaStreams {
   heartrate?: { data: (number | null)[] };
   cadence?: { data: (number | null)[] };
   moving?: { data: boolean[] };
+  /** cumulative metres */
+  distance?: { data: (number | null)[] };
 }
 
 /**

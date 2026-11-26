@@ -77,6 +77,44 @@ export async function importStravaActivities(): Promise<number> {
   return n;
 }
 
+const OLDEST_KEY = 'strava-import-oldest';
+
+/**
+ * Imports activities older than anything imported so far, back to the start of the
+ * rider's Strava history (the regular import only reaches back 180 days), so all-time
+ * best efforts see every ride. Returns how many were added.
+ */
+export async function importOlderStravaActivities(onProgress?: (n: number) => void): Promise<number> {
+  const acts = await listAll<StravaActivity>('strava_acts');
+  let before = Math.floor(((await getFlag(OLDEST_KEY)) as number | undefined ?? Math.min(Date.now(), ...acts.map((a) => a.start))) / 1000);
+  let n = 0;
+  for (;;) {
+    const res = await stravaFetch(`athlete/activities?before=${before}&per_page=100`);
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) throw new Error('Strava didn’t allow reading activities. Disconnect and connect Strava again in Settings to grant it.');
+      throw new Error(`Strava history import failed (${res.status}): ${res.status === 429 ? 'request limit reached, try again in 15 minutes' : describeError(json)}`);
+    }
+    const list = json as SummaryActivity[];
+    for (const a of list) {
+      const act = toActivity(a);
+      await putOne('strava_acts', act);
+      before = Math.min(before, Math.floor(act.start / 1000));
+      n++;
+    }
+    onProgress?.(n);
+    if (list.length < 100) {
+      // reached the first activity: remember it so this never runs again
+      await setFlag(OLDEST_KEY, 0);
+      return n;
+    }
+    await setFlag(OLDEST_KEY, before * 1000);
+  }
+}
+
+/** True once the whole Strava history has been imported. */
+export const fullHistoryImported = async () => (await getFlag(OLDEST_KEY)) === 0;
+
 export const listStravaActivities = () => listAll<StravaActivity>('strava_acts');
 
 export class StravaHttpError extends Error {
@@ -85,9 +123,9 @@ export class StravaHttpError extends Error {
   }
 }
 
-/** Second-by-second power, heart rate and cadence for one activity. Empty when Strava has none (manual entries). */
+/** Second-by-second power, heart rate, cadence and distance for one activity. Empty when Strava has none (manual entries). */
 export async function fetchStreams(stravaId: number): Promise<StravaStreams> {
-  const res = await stravaFetch(`activities/${stravaId}/streams?keys=time,watts,heartrate,cadence,moving&key_by_type=true`);
+  const res = await stravaFetch(`activities/${stravaId}/streams?keys=time,watts,heartrate,cadence,moving,distance&key_by_type=true`);
   const json = await res.json().catch(() => ({}));
   if (res.status === 404) return {};
   if (!res.ok) {

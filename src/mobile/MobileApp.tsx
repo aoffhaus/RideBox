@@ -4,7 +4,8 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
 import type { RideRecord } from '../app/recorder';
 import type { Settings, StoredWorkout } from '../storage/db';
-import type { StravaConfig } from '../strava/strava';
+import { canReadActivities, type StravaConfig } from '../strava/strava';
+import { BestEfforts } from '../ui/BestEfforts';
 import type { SyncStatus } from '../storage/sync';
 import { monthWeeks, moveTo, newPlanned, scaleWorkout, weekStart } from '../training/calendar';
 import { addDays, dayKey, dayStart, fitnessSeries, formLabel, loadEntries, periodTotals, plannedLoad, today, weeklyTotals, type LoadEntry } from '../training/load';
@@ -1354,14 +1355,31 @@ function ProgressScreen(p: MobileAppProps) {
   const weeks = useMemo(() => weeklyTotals(entries, addDays(t, -days), t), [entries, t, days]);
   const now = series.find((d) => d.date === t) ?? series[series.length - 1];
   const recent = p.levelHistory.filter((h) => h.after !== h.before).slice(-4).reverse();
+  const [view, setView] = useState<'fitness' | 'efforts'>('fitness');
+  const head = (
+    <header className="m-head">
+      <div className="m-head-row">
+        <h1 className="m-h1">Progress</h1>
+        <div className="seg" role="group" aria-label="View">
+          <button className={view === 'fitness' ? 'active' : ''} aria-pressed={view === 'fitness'} onClick={() => setView('fitness')}>Fitness</button>
+          <button className={view === 'efforts' ? 'active' : ''} aria-pressed={view === 'efforts'} onClick={() => setView('efforts')}>Best efforts</button>
+        </div>
+      </div>
+    </header>
+  );
+  if (view === 'efforts')
+    return (
+      <>
+        {head}
+        <div className="m-pad">
+          <BestEfforts rides={p.rides} acts={p.acts} settings={settings} stravaReady={canReadActivities(p.strava)} onImported={p.onImported} phone />
+        </div>
+      </>
+    );
 
   return (
     <>
-      <header className="m-head">
-        <div className="m-head-row">
-          <h1 className="m-h1">Progress</h1>
-        </div>
-      </header>
+      {head}
       <div className="m-pad">
         <div className="m-section-label">Progression levels</div>
         <div className="m-card">
