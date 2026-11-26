@@ -310,7 +310,7 @@ export function Modal({ title, onClose, children }: { title: ReactNode; onClose:
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="row space">
+        <div className="row space modal-head">
           <h3>{title}</h3>
           <button className="ghost icon" onClick={onClose} aria-label="Close">✕</button>
         </div>

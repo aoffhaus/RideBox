@@ -110,33 +110,32 @@ export function PowerCurveChart({ series, height = 200, onHover, empty }: {
 
   return (
     <div className="curve">
+      {/* fixed layout: every line is always there and truncates, so scrubbing never moves the chart */}
       <div className="curve-readout small">
-        {hover == null ? (
-          <span className="muted">{coarse ? 'Touch and drag' : 'Hover or drag'} across the curve to see each best effort and when it happened</span>
-        ) : (
-          <>
+        <div className="curve-line curve-head">
+          {hover == null ? (
+            <span className="muted curve-hint">{coarse ? 'Touch and drag' : 'Hover or drag'} across the curve to see each best effort and when it happened</span>
+          ) : (
             <b className="curve-dur">{durationLabel(CURVE_DURATIONS[at])}</b>
-            {shown.map((s) => {
-              const w = s.w[at];
-              const kg = s.kg?.(at);
-              return (
-                <span key={s.key} className="curve-val">
-                  <i className="swatch" style={{ background: s.color }} />
-                  <span className="muted">{s.label}</span>{' '}
-                  {w == null ? (
-                    <span className="muted">—</span>
-                  ) : (
-                    <>
-                      <b>{w} W</b>
-                      {kg ? <span className="muted"> · {(w / kg).toFixed(2)} W/kg</span> : null}
-                      {s.detail && <span className="curve-detail muted"> · {s.detail(at)}</span>}
-                    </>
-                  )}
-                </span>
-              );
-            })}
-          </>
-        )}
+          )}
+        </div>
+        {shown.map((s) => {
+          const w = hover == null ? undefined : s.w[at];
+          const kg = w == null ? undefined : s.kg?.(at);
+          return (
+            <div key={s.key} className="curve-line">
+              <span className="curve-name">
+                <i className="swatch" style={{ background: s.color }} />
+                <span className="muted">{s.label}</span>
+              </span>
+              <span className="curve-w">
+                {w == null ? <span className="muted">—</span> : <b>{w} W</b>}
+                {kg ? <span className="muted"> · {(w! / kg).toFixed(2)} W/kg</span> : null}
+              </span>
+              <span className="curve-detail muted">{w != null && s.detail ? s.detail(at) : '\u00a0'}</span>
+            </div>
+          );
+        })}
       </div>
       <div className="curve-plot" style={{ height: H }}>
         <div className="curve-y">
